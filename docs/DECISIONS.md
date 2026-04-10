@@ -366,3 +366,22 @@
 - `backend/api/routes/dashboard.py`
 - `frontend/src/pages/DashboardPage.tsx`
 - `tests/test_web_api.py`
+
+## 2026-04-10: Production backend на REG.RU запускается через Passenger
+
+Решение:
+- для REG.RU shared hosting использовать `passenger_wsgi.py`, а не ручной долгоживущий `uvicorn` в открытом shell
+- FastAPI адаптировать к Passenger через `a2wsgi.ASGIMiddleware`
+- production-приложение держать в `backend/site_app.py`, где `/api` обслуживается backend-роутами, а остальное может отдавать React frontend
+
+Зачем:
+- ручной запуск `python run_web_backend.py` работает только пока открыт терминал
+- `nohup`/cron считаются временным костылем, а не нормальным production-режимом
+- Passenger является штатным механизмом REG.RU для постоянного Python-приложения на shared-хостинге
+
+Где влияет:
+- `passenger_wsgi.py`
+- `backend/site_app.py`
+- `requirements-web.txt`
+- `docs/DEPLOYMENT_GUIDE.md`
+- production-деплой `domfindom.ru`

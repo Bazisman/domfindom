@@ -266,3 +266,13 @@
 Последние проверки:
 - `python -m unittest tests.test_web_api -v` -> `OK`
 - `npm run build` -> `OK`
+
+## Промежуточное обновление 2026-04-10
+
+- Web-версия опубликована на домене `domfindom.ru`.
+- Production-запуск backend переведен с ручного `python run_web_backend.py` / `uvicorn` на режим REG.RU Passenger через `passenger_wsgi.py`.
+- Добавлен `backend/site_app.py`: единое FastAPI-приложение для production, которое обслуживает `/api` и отдает собранный React frontend.
+- Добавлена зависимость `a2wsgi`, чтобы ASGI-приложение FastAPI могло запускаться через WSGI/Passenger на shared-хостинге REG.RU.
+- На сервере проверено: `curl -L https://domfindom.ru/api/v1/health` возвращает `{"status":"ok"}`.
+- Старый ручной backend-процесс в терминале больше не должен считаться рабочим production-способом запуска.
+- Следующий фокус: проверить живой сайт через браузер, затем добавить авторизацию и резервное копирование базы перед расширением публичного использования.

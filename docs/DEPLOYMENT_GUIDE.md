@@ -89,3 +89,45 @@ server {
 - подумать о переходе с `SQLite` на `PostgreSQL`
 - настроить регулярные бэкапы базы
 - добавить отдельный production-лог
+
+## REG.RU shared hosting / Passenger
+
+Фактический production-способ для `domfindom.ru`:
+
+- сайт создан в REG.RU ISPmanager
+- frontend собирается локально командой `npm run build`
+- содержимое `frontend/dist` загружается в `/var/www/u3480024/data/www/domfindom.ru`
+- backend запускается не вручную через `uvicorn`, а через Passenger-файл `passenger_wsgi.py`
+- FastAPI адаптирован к Passenger через `a2wsgi`
+
+После обновления кода на сервере:
+
+```bash
+cd ~/finance-app
+git pull
+source .venv/bin/activate
+python -m pip install -r requirements-web.txt
+cp ~/finance-app/passenger_wsgi.py /var/www/u3480024/data/www/domfindom.ru/passenger_wsgi.py
+touch /var/www/u3480024/data/www/domfindom.ru/.restart-app
+```
+
+В ISPmanager для сайта `domfindom.ru`:
+- включить `Python`
+- выбрать `python-3.8.6` или `python-3.8.8`
+- включить SSL и редирект `HTTP -> HTTPS`
+
+Проверка:
+
+```bash
+curl -L https://domfindom.ru/api/v1/health
+```
+
+Ожидаемый ответ:
+
+```json
+{"status":"ok"}
+```
+
+Важно:
+- `python run_web_backend.py` остается удобным локальным/dev-запуском, но не production-способом для REG.RU.
+- `nohup` и cron для `uvicorn` считаются запасным временным вариантом, а не основным решением.
