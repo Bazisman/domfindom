@@ -3,6 +3,7 @@ import core
 from models import Transaction, Balance, Transfer
 from typing import List, Optional, Callable, Any
 from datetime import datetime, timedelta
+import calendar
 from utils.logger import app_logger
 
 
@@ -294,10 +295,8 @@ class TransactionService:
         try:
             # Р¤РѕСЂРјРёСЂСѓРµРј РґР°С‚С‹
             start_date = f"{year}-{month:02d}-01"
-            if month == 12:
-                end_date = f"{year+1}-01-01"
-            else:
-                end_date = f"{year}-{month+1:02d}-01"
+            last_day = calendar.monthrange(year, month)[1]
+            end_date = f"{year}-{month:02d}-{last_day:02d}"
             
             # РџРѕР»СѓС‡Р°РµРј РґР°РЅРЅС‹Рµ Р·Р° РїРµСЂРёРѕРґ
             income = core.get_income_by_category(start_date, end_date)

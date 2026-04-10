@@ -1,3 +1,4 @@
+import calendar
 from typing import List
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -23,6 +24,12 @@ def _resolve_category_name(payload: TransactionCreateRequest) -> str:
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
     return category.name
+
+
+def _month_range(date_value: str) -> tuple[str, str]:
+    year, month = map(int, date_value.split("-")[:2])
+    last_day = calendar.monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
 
 
 @router.get("", response_model=List[TransactionResponse])
@@ -69,7 +76,7 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
 
     if payload.recurring and payload.recurring.enabled:
         template_name = payload.recurring.template_name.strip() or payload.comment.strip() or category_name
-        core.create_recurring_template(
+        template_id = core.create_recurring_template(
             template_type=payload.type,
             name=template_name,
             amount=payload.amount,
@@ -79,6 +86,8 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
             months_ahead=payload.recurring.months_ahead,
             working_days_only=payload.recurring.working_days_only,
         )
+        month_start, month_end = _month_range(payload.date)
+        core.delete_planned_transactions_in_period(template_id, month_start, month_end)
 
     row = core.get_transaction_by_id(created_id)
     if not row:

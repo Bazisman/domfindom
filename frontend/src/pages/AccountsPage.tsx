@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 
 import {
   createAccount,
@@ -56,8 +57,13 @@ export function AccountsPage() {
   const [accountError, setAccountError] = useState<string | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSavedNotice, setSettingsSavedNotice] = useState(false);
   const [autoCapitalEnabled, setAutoCapitalEnabled] = useState(true);
   const [autoCapitalPercent, setAutoCapitalPercent] = useState("10");
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const lastSavedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
+  const lastRequestedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
+  const settingsSavedNoticeTimeoutRef = useRef<number | null>(null);
 
   const accounts = useQuery({
     queryKey: ["accounts"],
@@ -100,6 +106,16 @@ export function AccountsPage() {
     }
     setAutoCapitalEnabled(settings.data.auto_capital_enabled);
     setAutoCapitalPercent(String(settings.data.auto_capital_percent));
+    lastSavedSettingsRef.current = {
+      enabled: settings.data.auto_capital_enabled,
+      percent: String(settings.data.auto_capital_percent),
+    };
+    lastRequestedSettingsRef.current = {
+      enabled: settings.data.auto_capital_enabled,
+      percent: String(settings.data.auto_capital_percent),
+    };
+    setSettingsSavedNotice(false);
+    setSettingsHydrated(true);
   }, [settings.data]);
 
   const createAccountMutation = useMutation({
@@ -177,7 +193,22 @@ export function AccountsPage() {
     onSuccess: async (response) => {
       setAutoCapitalEnabled(response.auto_capital_enabled);
       setAutoCapitalPercent(String(response.auto_capital_percent));
+      lastSavedSettingsRef.current = {
+        enabled: response.auto_capital_enabled,
+        percent: String(response.auto_capital_percent),
+      };
+      lastRequestedSettingsRef.current = {
+        enabled: response.auto_capital_enabled,
+        percent: String(response.auto_capital_percent),
+      };
       setSettingsError(null);
+      setSettingsSavedNotice(true);
+      if (settingsSavedNoticeTimeoutRef.current) {
+        window.clearTimeout(settingsSavedNoticeTimeoutRef.current);
+      }
+      settingsSavedNoticeTimeoutRef.current = window.setTimeout(() => {
+        setSettingsSavedNotice(false);
+      }, 1800);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["settings"] }),
         queryClient.invalidateQueries({ queryKey: ["accounts"] }),
@@ -185,9 +216,83 @@ export function AccountsPage() {
       ]);
     },
     onError: (error: Error) => {
+      lastRequestedSettingsRef.current = null;
+      setSettingsSavedNotice(false);
       setSettingsError(error.message);
     },
   });
+
+  function applySettings(enabled: boolean, percentValue: string) {
+    const percent = Number(percentValue.replace(",", "."));
+    if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
+      setSettingsError("Процент автоотчислений должен быть целым числом от 0 до 100.");
+      return;
+    }
+
+    const lastSaved = lastSavedSettingsRef.current;
+    if (lastSaved && lastSaved.enabled === enabled && lastSaved.percent === String(percent)) {
+      setSettingsError(null);
+      return;
+    }
+
+    const lastRequested = lastRequestedSettingsRef.current;
+    if (lastRequested && lastRequested.enabled === enabled && lastRequested.percent === String(percent)) {
+      return;
+    }
+
+    setSettingsSavedNotice(false);
+    lastRequestedSettingsRef.current = {
+      enabled,
+      percent: String(percent),
+    };
+    updateSettingsMutation.mutate({
+      auto_capital_enabled: enabled,
+      auto_capital_percent: percent,
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (settingsSavedNoticeTimeoutRef.current) {
+        window.clearTimeout(settingsSavedNoticeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!settingsHydrated) {
+      return;
+    }
+
+    const normalizedPercent = autoCapitalPercent.trim();
+    if (!normalizedPercent) {
+      return;
+    }
+
+    const lastSaved = lastSavedSettingsRef.current;
+    if (
+      lastSaved &&
+      lastSaved.enabled === autoCapitalEnabled &&
+      lastSaved.percent === normalizedPercent
+    ) {
+      return;
+    }
+
+    const lastRequested = lastRequestedSettingsRef.current;
+    if (
+      lastRequested &&
+      lastRequested.enabled === autoCapitalEnabled &&
+      lastRequested.percent === normalizedPercent
+    ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      applySettings(autoCapitalEnabled, normalizedPercent);
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [autoCapitalEnabled, autoCapitalPercent, settingsHydrated]);
 
   function resetAccountForm() {
     setEditingAccountId(null);
@@ -270,22 +375,6 @@ export function AccountsPage() {
     });
   }
 
-  function submitSettingsForm(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSettingsError(null);
-
-    const percent = Number(autoCapitalPercent.replace(",", "."));
-    if (Number.isNaN(percent) || percent < 0 || percent > 100) {
-      setSettingsError("Процент автоотчислений должен быть от 0 до 100.");
-      return;
-    }
-
-    updateSettingsMutation.mutate({
-      auto_capital_enabled: autoCapitalEnabled,
-      auto_capital_percent: Math.round(percent),
-    });
-  }
-
   function getAccountTone(account: Account) {
     if (account.type === "main") {
       return "Основной счёт";
@@ -308,18 +397,24 @@ export function AccountsPage() {
             <h2>Автоотчисления</h2>
           </div>
 
-          <form className="transaction-form" onSubmit={submitSettingsForm}>
+          <form className="transaction-form">
             <div className="toggle-row">
               <button
                 className={autoCapitalEnabled ? "toggle active" : "toggle"}
-                onClick={() => setAutoCapitalEnabled(true)}
+                onClick={() => {
+                  setAutoCapitalEnabled(true);
+                  applySettings(true, autoCapitalPercent);
+                }}
                 type="button"
               >
                 Включены
               </button>
               <button
                 className={!autoCapitalEnabled ? "toggle active" : "toggle"}
-                onClick={() => setAutoCapitalEnabled(false)}
+                onClick={() => {
+                  setAutoCapitalEnabled(false);
+                  applySettings(false, autoCapitalPercent);
+                }}
                 type="button"
               >
                 Выключены
@@ -332,7 +427,10 @@ export function AccountsPage() {
                 inputMode="numeric"
                 max="100"
                 min="0"
-                onChange={(event) => setAutoCapitalPercent(event.target.value)}
+                onChange={(event) => {
+                  setAutoCapitalPercent(event.target.value);
+                  setSettingsError(null);
+                }}
                 placeholder="10"
                 type="number"
                 value={autoCapitalPercent}
@@ -344,10 +442,12 @@ export function AccountsPage() {
             </p>
 
             {settingsError && <p className="form-error">{settingsError}</p>}
-
-            <button className="primary-button" disabled={updateSettingsMutation.isPending || settings.isLoading} type="submit">
-              {updateSettingsMutation.isPending ? "Сохраняем..." : "Сохранить настройки"}
-            </button>
+            {!settingsError && !updateSettingsMutation.isPending && settingsSavedNotice && (
+              <p className="form-status form-status-success">Сохранено</p>
+            )}
+            {!settingsError && updateSettingsMutation.isPending && (
+              <p className="form-status">Сохраняем настройки...</p>
+            )}
           </form>
         </section>
 

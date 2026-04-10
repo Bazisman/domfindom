@@ -2064,6 +2064,25 @@ def delete_planned_transactions(template_id, from_date=None):
         return deleted
 
 
+def delete_planned_transactions_in_period(template_id, start_date, end_date):
+    """Удаляет плановые транзакции шаблона в указанном диапазоне дат включительно."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+                DELETE FROM transactions
+                WHERE template_id = ? AND status = 'planned' AND date BETWEEN ? AND ?
+            ''',
+            (template_id, start_date, end_date),
+        )
+        conn.commit()
+        deleted = cursor.rowcount
+        app_logger.info(
+            f"Удалено {deleted} плановых транзакций шаблона {template_id} в период {start_date}..{end_date}"
+        )
+        return deleted
+
+
 def get_planned_transactions_due():
     """Получает просроченные плановые транзакции"""
     from datetime import datetime

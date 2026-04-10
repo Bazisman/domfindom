@@ -1,6 +1,7 @@
 import sqlite3
 import unittest
 from contextlib import contextmanager
+import calendar
 from datetime import datetime
 
 import core
@@ -138,6 +139,59 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["balance"]["income"], 10000.0)
         self.assertEqual(payload["balance"]["expense"], 2500.0)
 
+    def test_dashboard_balance_income_and_expense_exclude_next_month_boundary(self):
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        now = datetime.now()
+        current_month_date = now.strftime("%Y-%m-08")
+        if now.month == 12:
+            next_month_date = f"{now.year + 1}-01-01"
+        else:
+            next_month_date = f"{now.year}-{now.month + 1:02d}-01"
+
+        current_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 10000.0,
+                "comment": "Current month income",
+                "date": current_month_date,
+            },
+        )
+        self.assertEqual(current_income.status_code, 201)
+
+        next_month_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 5000.0,
+                "comment": "Next month income",
+                "date": next_month_date,
+            },
+        )
+        self.assertEqual(next_month_income.status_code, 201)
+
+        next_month_expense = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 1500.0,
+                "comment": "Next month expense",
+                "date": next_month_date,
+            },
+        )
+        self.assertEqual(next_month_expense.status_code, 201)
+
+        response = self.client.get("/api/v1/dashboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["balance"]["income"], 10000.0)
+        self.assertEqual(payload["balance"]["expense"], 0.0)
+
     def test_categories_endpoint_returns_seed_categories(self):
         response = self.client.get("/api/v1/categories")
         payload = response.json()
@@ -235,6 +289,47 @@ class WebApiTestCase(unittest.TestCase):
         templates = self.client.get("/api/v1/recurring-templates")
         self.assertEqual(templates.status_code, 200)
         self.assertTrue(any(item["name"] == "Домашний интернет" for item in templates.json()))
+
+    def test_create_transaction_with_recurring_skips_same_month_planned_duplicate(self):
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
+        now = datetime.now()
+        if now.month == 12:
+            target_year = now.year + 1
+            target_month = 1
+        else:
+            target_year = now.year
+            target_month = now.month + 1
+        target_day = min(15, calendar.monthrange(target_year, target_month)[1])
+        target_date = f"{target_year}-{target_month:02d}-{target_day:02d}"
+        target_month_prefix = target_date[:7]
+
+        response = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_id": expense_category["id"],
+                "amount": 2100.0,
+                "comment": "Интернет дома",
+                "date": target_date,
+                "recurring": {
+                    "enabled": True,
+                    "template_name": "Домашний интернет без дубля",
+                    "day_of_month": target_day,
+                    "months_ahead": 6,
+                    "working_days_only": True,
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        templates = self.client.get("/api/v1/recurring-templates")
+        self.assertEqual(templates.status_code, 200)
+        template = next(item for item in templates.json() if item["name"] == "Домашний интернет без дубля")
+
+        planned_transactions = core.get_planned_transactions_by_template(template["id"])
+        self.assertTrue(planned_transactions)
+        self.assertTrue(all(not item["date"].startswith(target_month_prefix) for item in planned_transactions))
 
     def test_forecast_endpoint_returns_projected_balance(self):
         response = self.client.get("/api/v1/forecast/month-end")
