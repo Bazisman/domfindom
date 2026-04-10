@@ -288,3 +288,10 @@
 Последние проверки:
 - `python -m unittest tests.test_financial_logic tests.test_web_api` -> `OK` (`27` тестов)
 - `npm run build` -> `OK`
+
+## Промежуточное обновление 2026-04-10 — совместимость production
+
+- Найдена и исправлена причина падения backend на REG.RU Passenger: аннотация `tuple[str, str]` была несовместима с `Python 3.8`.
+- Исправление выпущено в `backend/api/routes/transactions.py` через замену на совместимый `Tuple[str, str]`.
+- Локально подтверждено: `python -m unittest tests.test_web_api` -> `OK`.
+- Фикс отправлен в GitHub и готов к обновлению на сервере через `git pull`.
