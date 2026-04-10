@@ -1,5 +1,5 @@
 import calendar
-from typing import List
+from typing import List, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -26,7 +26,7 @@ def _resolve_category_name(payload: TransactionCreateRequest) -> str:
     return category.name
 
 
-def _month_range(date_value: str) -> tuple[str, str]:
+def _month_range(date_value: str) -> Tuple[str, str]:
     year, month = map(int, date_value.split("-")[:2])
     last_day = calendar.monthrange(year, month)[1]
     return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
