@@ -2,3 +2,4 @@ fastapi>=0.116,<1.0
 uvicorn[standard]>=0.33,<0.34
 pydantic>=2.10,<2.11
 httpx>=0.28,<1.0
+a2wsgi>=1.10,<2.0
