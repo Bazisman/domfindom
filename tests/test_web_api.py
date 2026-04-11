@@ -11,6 +11,7 @@ import core
 from fastapi.testclient import TestClient
 
 from backend.auth.service import auth_service
+from backend.auth.mailer import auth_mailer
 from backend.config import settings
 from backend.main import app
 
@@ -242,6 +243,28 @@ class WebApiTestCase(unittest.TestCase):
             json={"email": email, "password": "ResetStrong123"},
         )
         self.assertEqual(new_login.status_code, 200)
+
+    def test_password_reset_unavailable_without_email_channel(self):
+        old_expose = settings.expose_reset_token_in_response
+        old_smtp_host = auth_mailer.smtp_host
+        old_smtp_from = auth_mailer.smtp_from
+        try:
+            settings.expose_reset_token_in_response = False
+            auth_mailer.smtp_host = ""
+            auth_mailer.smtp_from = ""
+            response = self.client.post(
+                "/api/v1/auth/password-reset/request",
+                json={"email": self._primary_email},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.json().get("message"),
+                "Восстановление через email временно недоступно. Обратитесь в поддержку.",
+            )
+        finally:
+            settings.expose_reset_token_in_response = old_expose
+            auth_mailer.smtp_host = old_smtp_host
+            auth_mailer.smtp_from = old_smtp_from
 
     def test_session_management_endpoints(self):
         sessions_response = self.client.get("/api/v1/auth/sessions")
