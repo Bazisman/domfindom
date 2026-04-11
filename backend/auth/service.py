@@ -4,7 +4,7 @@ import hmac
 import os
 import secrets
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -13,15 +13,15 @@ from backend.config import settings
 
 
 def _utcnow() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def _format_utc(dt: datetime) -> str:
-    return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _parse_utc(value: str) -> datetime:
-    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 
 
 class AuthService:
