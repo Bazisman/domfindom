@@ -183,6 +183,19 @@ body {
   display: block;
 }
 
+.stat-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.forecast-breakdown {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
 .list {
   display: grid;
   gap: 12px;

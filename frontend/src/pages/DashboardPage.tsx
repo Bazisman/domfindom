@@ -38,6 +38,14 @@ export function DashboardPage() {
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
 
   const visibleTransactions = dashboard.data?.recent_transactions ?? [];
+  const receivedIncome = dashboard.data?.balance.income ?? 0;
+  const pendingIncome = dashboard.data?.forecast.planned_income ?? 0;
+  const totalIncomePreview = receivedIncome + pendingIncome;
+
+  const executedExpense = dashboard.data?.balance.expense ?? 0;
+  const pendingExpense = dashboard.data?.forecast.combined_pending_expense ?? 0;
+  const totalExpensePreview = executedExpense + pendingExpense;
+
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
     [categories.data, quickCategoryId],
@@ -144,12 +152,18 @@ export function DashboardPage() {
           <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
           <div className="stats-row">
             <div>
-              <span>Доход за месяц</span>
-              <strong>{dashboard.data ? formatMoney(dashboard.data.balance.income) : "—"}</strong>
+              <span>Доход за месяц (всего)</span>
+              <strong>{dashboard.data ? formatMoney(totalIncomePreview) : "—"}</strong>
+              <p className="stat-note">
+                Получено: {formatMoney(receivedIncome)} · Не получено: {formatMoney(pendingIncome)}
+              </p>
             </div>
             <div>
-              <span>Расход за месяц</span>
-              <strong>{dashboard.data ? formatMoney(dashboard.data.balance.expense) : "—"}</strong>
+              <span>Расход за месяц (всего)</span>
+              <strong>{dashboard.data ? formatMoney(totalExpensePreview) : "—"}</strong>
+              <p className="stat-note">
+                Исполнено: {formatMoney(executedExpense)} · Запланировано: {formatMoney(pendingExpense)}
+              </p>
             </div>
           </div>
         </section>
@@ -160,6 +174,16 @@ export function DashboardPage() {
           <p className="muted">
             {dashboard.data ? `До ${dashboard.data.forecast.end_date}` : "Нужен backend на FastAPI"}
           </p>
+          <div className="forecast-breakdown">
+            <p className="stat-note">
+              Всего доходов: {formatMoney(totalIncomePreview)} (получено {formatMoney(receivedIncome)} + не
+              получено {formatMoney(pendingIncome)})
+            </p>
+            <p className="stat-note">
+              Всего расходов: {formatMoney(totalExpensePreview)} (исполнено {formatMoney(executedExpense)} +
+              запланировано {formatMoney(pendingExpense)})
+            </p>
+          </div>
         </section>
 
         <section className="panel panel-wide">
