@@ -18,16 +18,17 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tokenFromUrl = searchParams.get("reset_token");
+  const hasTokenFromUrl = Boolean(tokenFromUrl);
 
   useEffect(() => {
-    const tokenFromUrl = searchParams.get("reset_token");
     if (tokenFromUrl && tokenFromUrl !== resetToken) {
       setResetToken(tokenFromUrl);
       setMode("reset_confirm");
       setMessage("Ссылка для сброса получена. Укажите новый пароль.");
       setError(null);
     }
-  }, [searchParams, resetToken]);
+  }, [tokenFromUrl, resetToken]);
 
   const title = useMemo(() => {
     if (mode === "login") {
@@ -46,6 +47,23 @@ export function LoginPage() {
     event.preventDefault();
     setMessage(null);
     setError(null);
+    if (mode === "reset_confirm") {
+      if (!resetToken.trim()) {
+        setError("Токен сброса не найден. Откройте ссылку из письма заново.");
+        return;
+      }
+      if (newPassword.length < 8) {
+        setError("Новый пароль должен быть не короче 8 символов.");
+        return;
+      }
+      const hasUpper = /[A-Z]/.test(newPassword);
+      const hasLower = /[a-z]/.test(newPassword);
+      const hasDigit = /\d/.test(newPassword);
+      if (!(hasUpper && hasLower && hasDigit)) {
+        setError("Пароль должен содержать заглавные и строчные буквы, а также цифры.");
+        return;
+      }
+    }
     setLoading(true);
     try {
       if (mode === "login") {
@@ -124,16 +142,18 @@ export function LoginPage() {
           )}
           {mode === "reset_confirm" && (
             <>
-              <label>
-                Токен сброса
-                <input
-                  autoComplete="off"
-                  onChange={(event) => setResetToken(event.target.value)}
-                  required
-                  type="text"
-                  value={resetToken}
-                />
-              </label>
+              {!hasTokenFromUrl && (
+                <label>
+                  Токен сброса
+                  <input
+                    autoComplete="off"
+                    onChange={(event) => setResetToken(event.target.value)}
+                    required
+                    type="text"
+                    value={resetToken}
+                  />
+                </label>
+              )}
               <label>
                 Новый пароль
                 <input
@@ -145,6 +165,7 @@ export function LoginPage() {
                   value={newPassword}
                 />
               </label>
+              <p className="muted">Минимум 8 символов, заглавные и строчные буквы, цифры.</p>
             </>
           )}
           {error ? <div className="auth-error">{error}</div> : null}
