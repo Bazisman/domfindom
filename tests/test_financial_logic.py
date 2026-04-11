@@ -221,6 +221,14 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(spent, 2500.0)
         self.assertEqual(budget, 3000.0)
 
+    def test_adjust_to_workday_moves_weekend_dates(self):
+        # 2026-04-11 = суббота -> перенос на понедельник
+        self.assertEqual(core._adjust_to_workday("2026-04-11"), "2026-04-13")
+        # 2026-04-12 = воскресенье -> перенос на понедельник
+        self.assertEqual(core._adjust_to_workday("2026-04-12"), "2026-04-13")
+        # Рабочий день не должен изменяться
+        self.assertEqual(core._adjust_to_workday("2026-04-14"), "2026-04-14")
+
 
 if __name__ == "__main__":
     unittest.main()

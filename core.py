@@ -1884,19 +1884,16 @@ def _migrate_recurring_transactions():
 
 
 def _adjust_to_workday(date_str):
-    """Корректирует дату на ближайший рабочий день (понедельник-пятница)"""
-    from datetime import datetime
-    
-    date = datetime.strptime(date_str, '%Y-%m-%d')
-    weekday = date.weekday()
-    
-    # 5 = суббота, 6 = воскресенье
-    if weekday == 5:  # суббота
-        return date.strftime('%Y-%m-%d')
-    elif weekday == 6:  # воскресенье
-        return date.strftime('%Y-%m-%d')
-    
-    return date_str
+    """Переносит дату на ближайший следующий рабочий день (пн-пт)."""
+    from datetime import datetime, timedelta
+
+    date_value = datetime.strptime(date_str, '%Y-%m-%d')
+
+    # 5 = суббота, 6 = воскресенье -> переносим на следующий рабочий день
+    while date_value.weekday() >= 5:
+        date_value += timedelta(days=1)
+
+    return date_value.strftime('%Y-%m-%d')
 
 
 def create_recurring_template(template_type, name, amount, day_of_month, category_id=None, 
