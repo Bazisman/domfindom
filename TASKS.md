@@ -1,6 +1,6 @@
 # TASKS
 
-> Обновлено: 2026-04-08
+> Обновлено: 2026-04-11
 > Назначение: короткий рабочий список задач и следующего шага по проекту.
 
 ---
@@ -9,6 +9,7 @@
 
 - архитектурный переход к web-версии проекта
 - практический старт web-реализации через `backend/` и `frontend/`
+- внедрение авторизации и жёсткой изоляции данных по пользователям
 - стабилизация логики планирования
 - устранение двойного учёта сумм в прогнозах
 - выравнивание пользовательского смысла между:
@@ -19,15 +20,20 @@
 
 ## Следующий Шаг
 
-- после стартового каркаса web-версии выбрать ближайший технический приоритет:
-  - поднять dev-запуск `frontend` после появления `npm`
-  - расширить backend API для бюджетов и безопасных write-сценариев
-  - подготовить следующий web-экран после dashboard: капитал / счета
+- стартовать `Этап 1` из `docs/AUTH_IMPLEMENTATION_PLAN.md`:
+  - auth-таблицы и сессии
+  - `register/login/logout/me`
+  - базовые backend-тесты авторизации
 
 ---
 
 ## В Работе
 
+- [ ] Внедрить auth-контур backend (`register/login/logout/me`) по `docs/AUTH_IMPLEMENTATION_PLAN.md`
+- [ ] Добавить защищённый доступ к текущим API-ресурсам через cookie-сессию
+- [ ] Внедрить изоляцию данных по пользователям через per-user finance DB routing
+- [ ] Добавить frontend login-flow и route guard
+- [ ] Подготовить и проверить миграцию текущих production-данных в модель с пользователями
 - [ ] Поднять рабочий запуск `frontend` после установки Node.js/npm
   - Node.js/npm уже установлены
   - `npm install` в `frontend/` завершён успешно
@@ -44,6 +50,10 @@
 
 ## Высокий Приоритет
 
+- [ ] Реализовать авторизацию до расширения публичного доступа к приложению
+- [ ] Закрыть приватные API эндпоинты от неавторизованного доступа (`401`)
+- [ ] Зафиксировать и проверить data isolation: пользователь видит только свои данные
+- [ ] Настроить backup стратегии для `auth.db` и пользовательских БД
 - [ ] Начать подготовку backend-слоя к будущему API без ломки финансовой логики
 - [ ] Проверить, насколько текущий web-каркас покрывает первый MVP по данным и write-сценариям
 - [ ] Подготовить инфраструктуру для запуска `frontend/` (`Node.js` / `npm`)
@@ -194,3 +204,16 @@
 - [x] Убрать planned-дубль текущего месяца при создании повторяющейся операции из `Транзакций`.
 - [x] Перевести карточку `Автоотчисления` на авто-сохранение без отдельной кнопки.
 - [x] Исправить совместимость запуска backend с `Python 3.8` на REG.RU Passenger.
+
+## Update 2026-04-11 (Auth hardening)
+
+- [x] Implement auth endpoints (`register/login/logout/me`) with cookie sessions.
+- [x] Implement per-user data isolation via per-user SQLite routing.
+- [x] Protect private API routes with `require_user`.
+- [x] Implement frontend login flow and guarded app routes.
+- [x] Add password strength validation for registration.
+- [x] Add auth session cleanup and DB init performance guard (no per-request `init_db`).
+- [ ] Add login rate limiting and password reset flow.
+- [x] Add login rate limiting and auth audit events (backend).
+- [x] Add change-password endpoint and password reset flow.
+- [x] Add SMTP delivery for password reset requests.

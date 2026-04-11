@@ -573,11 +573,17 @@ export function AccountsPage() {
 
               <label className="field">
                 <span>Дата</span>
-                <input
-                  onChange={(event) => setTransferForm((current) => ({ ...current, date: event.target.value }))}
-                  type="date"
-                  value={transferForm.date}
-                />
+                <div className="date-shell">
+                  <input
+                    className="date-input"
+                    onClick={(event) => {
+                      (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                    }}
+                    onChange={(event) => setTransferForm((current) => ({ ...current, date: event.target.value }))}
+                    type="date"
+                    value={transferForm.date}
+                  />
+                </div>
               </label>
             </div>
 

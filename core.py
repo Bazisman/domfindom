@@ -4,11 +4,13 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
+from contextvars import ContextVar
 from utils.logger import app_logger
 import time
 
 
 DB_NAME = os.getenv("FINANCE_APP_DB_NAME", "finance.db")
+_DB_NAME_CONTEXT: ContextVar[str] = ContextVar("finance_db_name", default=DB_NAME)
 
 # ========== КЭШИРОВАНИЕ ==========
 # Простой кэш в памяти для часто запрашиваемых данных
@@ -48,9 +50,19 @@ def _invalidate_cache(key=None):
 
 def get_connection():
     """Создает и возвращает соединение с базой данных."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(_DB_NAME_CONTEXT.get())
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def push_db_name(db_name: str):
+    """Временно переключает активную БД в текущем контексте выполнения."""
+    return _DB_NAME_CONTEXT.set(db_name)
+
+
+def pop_db_name(token):
+    """Восстанавливает предыдущую активную БД после push_db_name()."""
+    _DB_NAME_CONTEXT.reset(token)
 
 
 def init_db():

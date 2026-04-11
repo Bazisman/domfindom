@@ -6,7 +6,6 @@ import {
   createRecurringTemplate,
   deleteBudget,
   deleteRecurringTemplate,
-  executeDuePlannedTransactions,
   getBudgetStatus,
   getBudgets,
   getCategories,
@@ -117,6 +116,11 @@ export function PlanningPage() {
     queryFn: getDuePlannedTransactions,
   });
 
+  const executeRecurringMutation = {
+    isPending: false,
+    mutate: () => undefined,
+  };
+
   const availableBudgetCategories = useMemo(() => {
     const expenseCategories = (categories.data ?? []).filter(
       (item) => item.type === "expense" || item.type === "both",
@@ -212,14 +216,6 @@ export function PlanningPage() {
     mutationFn: deleteRecurringTemplate,
     onSuccess: async () => {
       resetRecurringForm();
-      await refreshPlanningData();
-    },
-    onError: (error: Error) => setRecurringError(error.message),
-  });
-
-  const executeRecurringMutation = useMutation({
-    mutationFn: executeDuePlannedTransactions,
-    onSuccess: async () => {
       await refreshPlanningData();
     },
     onError: (error: Error) => setRecurringError(error.message),
@@ -422,17 +418,17 @@ export function PlanningPage() {
             <p className="muted">Доходы и расходы, которые повторяются из месяца в месяц.</p>
           </div>
 
-          <button
+          {false && <button
             className="primary-button"
             disabled={executeRecurringMutation.isPending}
             onClick={() => executeRecurringMutation.mutate()}
             type="button"
           >
             {executeRecurringMutation.isPending ? "Исполняем..." : "Исполнить просроченные"}
-          </button>
+          </button>}
         </div>
 
-        <div className="categories-layout">
+        <>
           <section className="panel panel-form">
             <div className="panel-header">
               <h2>{editingTemplateId ? "Редактирование шаблона" : "Новая регулярная операция"}</h2>
@@ -503,7 +499,12 @@ export function PlanningPage() {
 
                 <label className="field">
                   <span>Дата в текущем месяце</span>
-                  <input
+                  <div className="date-shell">
+                    <input
+                    className="date-input"
+                    onClick={(event) => {
+                      (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                    }}
                     max={currentMonthMaxDate}
                     min={currentMonthMinDate}
                     onChange={(event) =>
@@ -514,7 +515,8 @@ export function PlanningPage() {
                     }
                     type="date"
                     value={recurringForm.selectedDate}
-                  />
+                    />
+                  </div>
                 </label>
               </div>
 
@@ -662,7 +664,7 @@ export function PlanningPage() {
               )}
             </div>
           </section>
-        </div>
+        </>
       </section>
 
       <section className="planning-section">
@@ -673,7 +675,7 @@ export function PlanningPage() {
           </div>
         </div>
 
-        <div className="categories-layout">
+        <>
           <section className="panel panel-form">
             <div className="panel-header">
               <h2>{editingBudgetId ? "Редактирование бюджета" : "Новый бюджет"}</h2>
@@ -822,7 +824,7 @@ export function PlanningPage() {
               )}
             </div>
           </section>
-        </div>
+        </>
       </section>
     </main>
   );

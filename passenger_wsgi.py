@@ -22,6 +22,8 @@ if PROJECT_ROOT not in sys.path:
 
 DEFAULT_FRONTEND_DIST = "/var/www/u3480024/data/www/domfindom.ru"
 os.environ.setdefault("FINANCE_APP_DB_NAME", os.path.join(PROJECT_ROOT, "finance.db"))
+os.environ.setdefault("FINANCE_APP_AUTH_DB_NAME", os.path.join(PROJECT_ROOT, "auth.db"))
+os.environ.setdefault("FINANCE_APP_USERS_DATA_DIR", os.path.join(PROJECT_ROOT, "data", "users"))
 os.environ.setdefault(
     "FINANCE_APP_FRONTEND_DIST",
     DEFAULT_FRONTEND_DIST
@@ -32,6 +34,9 @@ os.environ.setdefault(
     "FINANCE_APP_CORS_ORIGINS",
     "http://domfindom.ru,https://domfindom.ru,http://www.domfindom.ru,https://www.domfindom.ru",
 )
+os.environ.setdefault("FINANCE_APP_SESSION_COOKIE_SECURE", "true")
+os.environ.setdefault("FINANCE_APP_ENV", "production")
+os.environ.setdefault("FINANCE_APP_EXPOSE_RESET_TOKEN_IN_RESPONSE", "false")
 
 import core
 from a2wsgi import ASGIMiddleware

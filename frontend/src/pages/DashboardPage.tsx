@@ -18,6 +18,17 @@ function getQueryErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function getForecastMonthLabel(endDate: string | undefined) {
+  if (!endDate) {
+    return "текущий месяц";
+  }
+  const date = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return "текущий месяц";
+  }
+  return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+
 export function DashboardPage() {
   const queryClient = useQueryClient();
 
@@ -47,6 +58,9 @@ export function DashboardPage() {
     (dashboard.data?.forecast.total_budgets ?? dashboard.data?.forecast.monthly_budget ?? 0) +
     (dashboard.data?.forecast.planned_expense ?? 0);
   const isExpenseOverPlan = executedExpense > plannedExpenseTotal;
+  const remainingIncome = Math.max(expectedIncomeTotal - receivedIncome, 0);
+  const remainingExpense = plannedExpenseTotal - executedExpense;
+  const forecastMonthLabel = getForecastMonthLabel(dashboard.data?.forecast.end_date);
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -126,25 +140,10 @@ export function DashboardPage() {
     <>
       <header className="hero">
         <div className="hero-copy">
-          <h1>Домашняя бухгалтерия в браузере</h1>
+          <h1>Домашняя бухгалтерия</h1>
           <p className="hero-text">
-            Главный экран проекта: баланс, транзакции, категории и прогноз конца месяца.
+            Короткий обзор месяца: текущий баланс, факт и план по доходам и расходам, быстрый ввод.
           </p>
-        </div>
-        <div className="hero-note">
-          <span className="note-label">API</span>
-          <strong>
-            {dashboard.isSuccess
-              ? "подключено"
-              : dashboard.isError
-                ? "ошибка подключения"
-                : "ожидание backend"}
-          </strong>
-          {dashboard.isError && (
-            <p className="empty">
-              {getQueryErrorMessage(dashboard.error, "Не удалось загрузить dashboard")}
-            </p>
-          )}
         </div>
       </header>
 
@@ -154,21 +153,27 @@ export function DashboardPage() {
           <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
           <div className="stats-row">
             <div>
-              <span>Доход получен за месяц</span>
-              <strong>{dashboard.data ? formatMoney(receivedIncome) : "—"}</strong>
+              <span>Доход за месяц (получено / план)</span>
+              <strong>
+                {dashboard.data
+                  ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
+                  : "—"}
+              </strong>
               <p className="stat-note">
-                Доход получен/ожидаемый: {formatMoney(receivedIncome)} /{" "}
-                {formatMoney(expectedIncomeTotal)}
+                Еще поступит: {formatMoney(remainingIncome)}
               </p>
             </div>
             <div>
-              <span>Расход из плана за месяц</span>
+              <span>Расход за месяц (потрачено / план)</span>
               <strong className={isExpenseOverPlan ? "money minus" : undefined}>
-                {dashboard.data ? formatMoney(executedExpense) : "—"}
+                {dashboard.data
+                  ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
+                  : "—"}
               </strong>
               <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
-                Израсходовано/запланировано: {formatMoney(executedExpense)} /{" "}
-                {formatMoney(plannedExpenseTotal)}
+                {remainingExpense >= 0
+                  ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
+                  : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
               </p>
             </div>
           </div>
@@ -177,49 +182,12 @@ export function DashboardPage() {
         <section className="panel">
           <p className="panel-label">Баланс на конец месяца</p>
           <h2>{dashboard.data ? formatMoney(dashboard.data.forecast.projected_balance) : "—"}</h2>
-          <p className="muted">
-            {dashboard.data ? `До ${dashboard.data.forecast.end_date}` : "Нужен backend на FastAPI"}
-          </p>
-          <div className="forecast-breakdown">
-            <p className="stat-note">
-              Ожидаемый доход всего: {formatMoney(expectedIncomeTotal)} (получено{" "}
-              {formatMoney(receivedIncome)} + не получено {formatMoney(pendingIncome)})
-            </p>
-            <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
-              Расход из плана: {formatMoney(executedExpense)} / {formatMoney(plannedExpenseTotal)}
-            </p>
-          </div>
+          <p className="muted">{dashboard.data ? `Прогноз на ${forecastMonthLabel}` : "Нужен backend на FastAPI"}</p>
         </section>
 
-        <section className="panel panel-wide">
+        <section className="panel panel-full">
           <div className="panel-header">
-            <h3>Последние транзакции</h3>
-          </div>
-          <div className="list">
-            {visibleTransactions.map((item) => (
-              <article className="list-item" key={item.id}>
-                <div>
-                  <strong>{item.category}</strong>
-                  <p>{item.comment || "Без комментария"}</p>
-                </div>
-                <div className={item.type === "income" ? "money plus" : "money minus"}>
-                  {formatMoney(item.amount)}
-                </div>
-              </article>
-            ))}
-            {!visibleTransactions.length && (
-              <p className="empty">
-                {dashboard.isError
-                  ? getQueryErrorMessage(dashboard.error, "Не удалось загрузить транзакции")
-                  : "Исполненные транзакции появятся после запуска backend API."}
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <h3>Категории</h3>
+            <h3>Быстрый ввод по категориям</h3>
           </div>
           <div className="chips">
             {categories.data?.map((category) => (
@@ -237,7 +205,7 @@ export function DashboardPage() {
               <p className="empty">
                 {categories.isError
                   ? getQueryErrorMessage(categories.error, "Не удалось загрузить категории")
-                  : "Категории будут загружаться из API."}
+                  : "Категории пока не добавлены."}
               </p>
             )}
           </div>
@@ -293,27 +261,27 @@ export function DashboardPage() {
           {quickSuccess && <p className="form-status form-status-success">{quickSuccess}</p>}
         </section>
 
-        <section className="panel">
+        <section className="panel panel-full">
           <div className="panel-header">
-            <h3>Бюджетные акценты</h3>
+            <h3>Последние транзакции</h3>
           </div>
           <div className="list">
-            {dashboard.data?.budget_highlights.map((item) => (
-              <article className="list-item" key={item.category_id}>
+            {visibleTransactions.map((item) => (
+              <article className="list-item" key={item.id}>
                 <div>
-                  <strong>{item.category_name}</strong>
-                  <p>{Math.round(item.percent)}% от лимита</p>
+                  <strong>{item.category}</strong>
+                  <p>{item.comment || "Без комментария"}</p>
                 </div>
-                <div className={item.over_budget ? "money minus" : "money"}>
-                  {formatMoney(item.remaining)}
+                <div className={item.type === "income" ? "money plus" : "money minus"}>
+                  {formatMoney(item.amount)}
                 </div>
               </article>
             ))}
-            {!dashboard.data?.budget_highlights.length && (
+            {!visibleTransactions.length && (
               <p className="empty">
                 {dashboard.isError
-                  ? getQueryErrorMessage(dashboard.error, "Не удалось загрузить бюджеты")
-                  : "Бюджеты будут показаны после запуска API."}
+                  ? getQueryErrorMessage(dashboard.error, "Не удалось загрузить транзакции")
+                  : "Пока нет исполненных транзакций за выбранный период."}
               </p>
             )}
           </div>

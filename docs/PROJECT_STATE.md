@@ -295,3 +295,27 @@
 - Исправление выпущено в `backend/api/routes/transactions.py` через замену на совместимый `Tuple[str, str]`.
 - Локально подтверждено: `python -m unittest tests.test_web_api` -> `OK`.
 - Фикс отправлен в GitHub и готов к обновлению на сервере через `git pull`.
+
+## Промежуточное обновление 2026-04-11 — план авторизации и персонализации
+
+- Проведён полный обзор актуальной документации и текущего web-кода (`backend/`, `frontend/`, `core.py`) перед стартом auth-этапа.
+- Подготовлен отдельный рабочий план `docs/AUTH_IMPLEMENTATION_PLAN.md` с конкретными этапами:
+  - backend auth (`register/login/logout/me`);
+  - cookie-сессии;
+  - изоляция данных пользователей;
+  - фронтенд login/guard;
+  - миграция текущих production-данных;
+  - hardening (rate limit, аудит, backup).
+- Для текущей архитектуры зафиксирована практичная целевая реализация этапа 1:
+  - отдельная БД идентификации (`auth.db`);
+  - отдельная финансовая БД на пользователя (per-user DB), чтобы не ломать резко `core.py` с single-user допущениями.
+- `TASKS.md` обновлён под приоритет авторизации как ближайшего следующего этапа перед расширением публичного доступа.
+
+## Interim Update 2026-04-11 (Auth implementation + hardening)
+
+- Auth architecture is implemented in code: dedicated `auth.db` + per-user finance DB.
+- API access control is implemented: private resources require authenticated user context.
+- Session model is cookie-based (`HttpOnly`, `SameSite=Lax`, configurable `Secure`).
+- Production hardening added: app now requires a non-default `FINANCE_APP_SESSION_SECRET` when `FINANCE_APP_ENV=production`.
+- Performance fix: per-user finance DB initialization now happens only on first creation, not on every request.
+- Reliability fix: auth service now has explicit connection shutdown and expired/revoked session cleanup.

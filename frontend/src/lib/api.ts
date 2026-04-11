@@ -228,6 +228,31 @@ export type RecurringTemplateUpdatePayload = {
   is_active?: boolean;
 };
 
+export type AuthUser = {
+  id: number;
+  email: string;
+  is_active: boolean;
+};
+
+export type AuthResponse = {
+  user: AuthUser;
+  message: string;
+};
+
+export type PasswordResetRequestResponse = {
+  message: string;
+  reset_token?: string;
+};
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export type DuePlannedTransaction = {
   id: number;
   type: "income" | "expense";
@@ -244,6 +269,7 @@ const API_BASE =
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },
@@ -251,10 +277,64 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`API error ${response.status}`);
+    let message = `API error ${response.status}`;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (payload?.detail) {
+        message = payload.detail;
+      }
+    } catch {
+      // noop
+    }
+    throw new ApiError(response.status, message);
   }
 
   return response.json() as Promise<T>;
+}
+
+export function register(payload: { email: string; password: string }) {
+  return request<AuthResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function login(payload: { email: string; password: string }) {
+  return request<AuthResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function logout() {
+  return request<{ message: string }>("/auth/logout", {
+    method: "POST",
+  });
+}
+
+export function getMe() {
+  return request<AuthUser>("/auth/me");
+}
+
+export function changePassword(payload: { current_password: string; new_password: string }) {
+  return request<{ message: string }>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function requestPasswordReset(payload: { email: string }) {
+  return request<PasswordResetRequestResponse>("/auth/password-reset/request", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function confirmPasswordReset(payload: { token: string; new_password: string }) {
+  return request<{ message: string }>("/auth/password-reset/confirm", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getDashboard() {

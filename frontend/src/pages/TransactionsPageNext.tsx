@@ -214,7 +214,17 @@ export function TransactionsPageNext() {
 
             <label className="field">
               <span>Дата</span>
-              <input onChange={(event) => setDate(event.target.value)} type="date" value={date} />
+              <div className="date-shell">
+                <input
+                  className="date-input"
+                  onClick={(event) => {
+                    (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+                  }}
+                  onChange={(event) => setDate(event.target.value)}
+                  type="date"
+                  value={date}
+                />
+              </div>
             </label>
           </div>
 

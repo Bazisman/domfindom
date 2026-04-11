@@ -15,6 +15,13 @@ class TransactionService:
         self._auto_percent = 10
         self._auto_enabled = True
         app_logger.debug("TransactionService РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅ")
+
+    def sync_due_planned_transactions(self) -> int:
+        """Автоматически исполняет просроченные плановые транзакции для web/API."""
+        count = self.execute_planned_transactions()
+        if count > 0:
+            app_logger.info(f"Автосинхронизация исполнила {count} просроченных плановых транзакций")
+        return count
     
     def set_auto_capital_settings(self, enabled: bool, percent: int):
         """Устанавливает настройки автоотчислений."""
