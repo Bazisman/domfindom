@@ -65,7 +65,7 @@ export function LoginPage() {
       }
     } catch (e) {
       if (e instanceof ApiError) {
-        if (e.message === "Invalid credentials") {
+        if (e.message === "Invalid credentials" || e.message === "Неверный email или пароль") {
           setError("Неверный email или пароль");
         } else {
           setError(e.message);

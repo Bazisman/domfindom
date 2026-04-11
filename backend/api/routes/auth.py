@@ -26,20 +26,20 @@ router = APIRouter()
 def _validate_email_like(value: str) -> str:
     normalized = value.strip().lower()
     if "@" not in normalized or "." not in normalized.split("@")[-1]:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid email")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный email")
     return normalized
 
 
 def _validate_password_strength(value: str) -> str:
     if len(value) < 8:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Password is too short")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Пароль слишком короткий")
     has_upper = any(char.isupper() for char in value)
     has_lower = any(char.islower() for char in value)
     has_digit = any(char.isdigit() for char in value)
     if not (has_upper and has_lower and has_digit):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Password must include upper/lowercase letters and digits",
+            detail="Пароль должен содержать заглавные и строчные буквы, а также цифры",
         )
     return value
 
@@ -91,7 +91,7 @@ def register(payload: RegisterRequest, request: Request, response: Response) -> 
             user_agent=client_agent,
             detail="user_exists",
         )
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already exists")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь уже существует")
 
     user = auth_service.create_user(email=email, password=password)
     token = auth_service.create_session(
@@ -108,7 +108,7 @@ def register(payload: RegisterRequest, request: Request, response: Response) -> 
         user_agent=client_agent,
     )
     _set_session_cookie(response, token)
-    return AuthResponse(user=AuthUserResponse(**user), message="Registered")
+    return AuthResponse(user=AuthUserResponse(**user), message="Регистрация выполнена")
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -127,7 +127,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> AuthRe
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed attempts. Try again later.",
+            detail="Слишком много неудачных попыток входа. Попробуйте позже.",
         )
 
     user = auth_service.authenticate(email=email, password=payload.password)
@@ -141,7 +141,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> AuthRe
             user_agent=client_agent,
             detail="invalid_credentials",
         )
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
 
     auth_service.record_login_attempt(email=email, ip=client_ip, success=True)
     token = auth_service.create_session(
@@ -158,7 +158,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> AuthRe
         user_agent=client_agent,
     )
     _set_session_cookie(response, token)
-    return AuthResponse(user=AuthUserResponse(**user), message="Logged in")
+    return AuthResponse(user=AuthUserResponse(**user), message="Вход выполнен")
 
 
 @router.post("/logout")
@@ -178,7 +178,7 @@ def logout(request: Request, response: Response) -> Dict[str, str]:
             user_agent=client_agent,
         )
     _clear_session_cookie(response)
-    return {"message": "Logged out"}
+    return {"message": "Вы вышли из аккаунта"}
 
 
 @router.get("/me", response_model=AuthUserResponse)
@@ -197,37 +197,37 @@ def list_sessions(request: Request, current_user=Depends(require_user)) -> Sessi
 def revoke_other_sessions(request: Request, current_user=Depends(require_user)) -> RevokeSessionsResponse:
     raw_token = request.cookies.get(settings.session_cookie_name, "")
     if not raw_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется авторизация")
     revoked_count = auth_service.revoke_other_user_sessions(int(current_user["id"]), raw_token)
-    return RevokeSessionsResponse(revoked_count=revoked_count, message="Other sessions revoked")
+    return RevokeSessionsResponse(revoked_count=revoked_count, message="Остальные сессии завершены")
 
 
 @router.delete("/sessions/{session_id}", response_model=RevokeSessionsResponse)
 def revoke_session_by_id(session_id: int, request: Request, response: Response, current_user=Depends(require_user)) -> RevokeSessionsResponse:
     if session_id <= 0:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid session id")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор сессии")
     raw_token = request.cookies.get(settings.session_cookie_name, "")
     active_sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token)
     target = next((item for item in active_sessions if int(item["id"]) == session_id), None)
     if not target:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сессия не найдена")
 
     revoked = auth_service.revoke_user_session_by_id(int(current_user["id"]), session_id)
     if not revoked:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сессия не найдена")
 
     if bool(target.get("is_current")):
         _clear_session_cookie(response)
-        return RevokeSessionsResponse(revoked_count=1, message="Current session revoked. Please log in again.")
+        return RevokeSessionsResponse(revoked_count=1, message="Текущая сессия завершена. Войдите снова.")
 
-    return RevokeSessionsResponse(revoked_count=1, message="Session revoked")
+    return RevokeSessionsResponse(revoked_count=1, message="Сессия завершена")
 
 
 @router.post("/change-password")
 def change_password(payload: ChangePasswordRequest, request: Request, response: Response, current_user=Depends(require_user)):
     _validate_password_strength(payload.new_password)
     if payload.current_password == payload.new_password:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="New password must be different")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Новый пароль должен отличаться от текущего")
 
     email = str(current_user["email"])
     client_ip = request.client.host if request.client else ""
@@ -243,11 +243,11 @@ def change_password(payload: ChangePasswordRequest, request: Request, response: 
             user_agent=client_agent,
             detail="invalid_current_password",
         )
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Текущий пароль указан неверно")
 
     updated = auth_service.update_user_password(int(current_user["id"]), payload.new_password)
     if not updated:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not update password")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось обновить пароль")
     auth_service.revoke_all_user_sessions(int(current_user["id"]))
     auth_service.log_auth_event(
         event_type="change_password",
@@ -258,7 +258,7 @@ def change_password(payload: ChangePasswordRequest, request: Request, response: 
         user_agent=client_agent,
     )
     _clear_session_cookie(response)
-    return {"message": "Password updated. Please log in again."}
+    return {"message": "Пароль обновлён. Войдите снова."}
 
 
 @router.post("/password-reset/request")
@@ -291,7 +291,7 @@ def request_password_reset(payload: PasswordResetRequestPayload, request: Reques
             else "user_not_found_or_inactive"
         ),
     )
-    body: Dict[str, str] = {"message": "If account exists, reset instructions were generated."}
+    body: Dict[str, str] = {"message": "Если аккаунт существует, инструкция по сбросу уже отправлена."}
     if token and settings.expose_reset_token_in_response:
         body["reset_token"] = token
     return body
@@ -311,7 +311,7 @@ def confirm_password_reset(payload: PasswordResetConfirmPayload, request: Reques
             user_agent=client_agent,
             detail="invalid_or_expired_token",
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired token")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Токен недействителен или истёк")
     auth_service.log_auth_event(
         event_type="password_reset_confirm",
         status="success",
@@ -320,4 +320,4 @@ def confirm_password_reset(payload: PasswordResetConfirmPayload, request: Reques
         ip=client_ip,
         user_agent=client_agent,
     )
-    return {"message": "Password reset successful. Please log in."}
+    return {"message": "Пароль успешно сброшен. Войдите в аккаунт."}

@@ -56,7 +56,7 @@ export function SecurityPage() {
       setSessionsMessage(response.message);
       await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       await sessionsQuery.refetch();
-      if (response.message.toLowerCase().includes("please log in again")) {
+      if (/(войдите снова|log in again)/i.test(response.message)) {
         navigate("/login", { replace: true });
       }
     },

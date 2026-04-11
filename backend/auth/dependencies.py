@@ -10,5 +10,5 @@ def optional_user(request: Request):
 def require_user(request: Request) -> Dict[str, object]:
     user = optional_user(request)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется авторизация")
     return user
