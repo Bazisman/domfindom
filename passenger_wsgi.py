@@ -39,9 +39,11 @@ os.environ.setdefault("FINANCE_APP_ENV", "production")
 os.environ.setdefault("FINANCE_APP_EXPOSE_RESET_TOKEN_IN_RESPONSE", "false")
 
 import core
+from backend.auth.service import auth_service
 from a2wsgi import ASGIMiddleware
 from backend.site_app import app
 
 
 core.init_db()
+auth_service.init_auth_db()
 application = ASGIMiddleware(app)
