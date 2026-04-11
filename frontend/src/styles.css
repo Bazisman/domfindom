@@ -231,6 +231,36 @@ body {
   background: rgba(255, 255, 255, 0.72);
 }
 
+.chip-action {
+  font: inherit;
+  cursor: pointer;
+  color: var(--text);
+  transition: transform 0.14s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.chip-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(29, 42, 35, 0.12);
+}
+
+.chip-action.active {
+  background: rgba(29, 42, 35, 0.9);
+  color: #fff;
+  border-color: rgba(29, 42, 35, 0.9) !important;
+}
+
+.quick-entry-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.quick-entry-type {
+  margin-bottom: 2px;
+}
+
 .empty {
   margin: 0;
 }

@@ -1,4 +1,5 @@
 import calendar
+from datetime import date as date_cls
 from typing import List, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -32,6 +33,10 @@ def _month_range(date_value: str) -> Tuple[str, str]:
     return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
 
 
+def _is_future_date(date_value: str) -> bool:
+    return date_value > date_cls.today().isoformat()
+
+
 @router.get("", response_model=List[TransactionResponse])
 def list_transactions(
     limit: int = Query(default=50, ge=1, le=500),
@@ -46,33 +51,44 @@ def list_transactions(
 def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateResponse:
     category_name = _resolve_category_name(payload)
     category = core.get_category_by_name(category_name)
+    is_future = _is_future_date(payload.date)
 
-    if payload.type == "income":
-        settings_enabled, settings_percent = transaction_service.get_auto_capital_settings()
-        default_capital_account = core.get_default_capital_account()
-        auto_capital_percent = payload.auto_capital_percent
-        capital_account_id = payload.capital_account_id
-
-        if auto_capital_percent is None:
-            auto_capital_percent = settings_percent if settings_enabled else 0
-        if capital_account_id is None and default_capital_account:
-            capital_account_id = default_capital_account["id"]
-
-        created_id = core.add_income_with_capital(
-            payload.amount,
+    if is_future:
+        created_id = core.add_planned_transaction(
+            payload.type,
             category_name,
+            payload.amount,
             payload.comment,
             payload.date,
-            auto_capital_percent,
-            capital_account_id,
+            template_id=None,
         )
     else:
-        created_id = core.add_expense(
-            payload.amount,
-            category_name,
-            payload.comment,
-            payload.date,
-        )
+        if payload.type == "income":
+            settings_enabled, settings_percent = transaction_service.get_auto_capital_settings()
+            default_capital_account = core.get_default_capital_account()
+            auto_capital_percent = payload.auto_capital_percent
+            capital_account_id = payload.capital_account_id
+
+            if auto_capital_percent is None:
+                auto_capital_percent = settings_percent if settings_enabled else 0
+            if capital_account_id is None and default_capital_account:
+                capital_account_id = default_capital_account["id"]
+
+            created_id = core.add_income_with_capital(
+                payload.amount,
+                category_name,
+                payload.comment,
+                payload.date,
+                auto_capital_percent,
+                capital_account_id,
+            )
+        else:
+            created_id = core.add_expense(
+                payload.amount,
+                category_name,
+                payload.comment,
+                payload.date,
+            )
 
     if payload.recurring and payload.recurring.enabled:
         template_name = payload.recurring.template_name.strip() or payload.comment.strip() or category_name
@@ -88,6 +104,8 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
         )
         month_start, month_end = _month_range(payload.date)
         core.delete_planned_transactions_in_period(template_id, month_start, month_end)
+        if is_future:
+            core.assign_template_to_planned_transaction(created_id, template_id)
 
     row = core.get_transaction_by_id(created_id)
     if not row:

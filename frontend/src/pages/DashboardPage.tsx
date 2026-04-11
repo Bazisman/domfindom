@@ -1,6 +1,7 @@
-﻿import { useQuery } from "@tanstack/react-query";
+﻿import { FormEvent, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { getCategories, getDashboard } from "../lib/api";
+import { createTransaction, getCategories, getDashboard } from "../lib/api";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -18,6 +19,8 @@ function getQueryErrorMessage(error: unknown, fallback: string) {
 }
 
 export function DashboardPage() {
+  const queryClient = useQueryClient();
+
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: getDashboard,
@@ -28,7 +31,86 @@ export function DashboardPage() {
     queryFn: getCategories,
   });
 
+  const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
+  const [quickAmount, setQuickAmount] = useState("");
+  const [quickType, setQuickType] = useState<"income" | "expense">("expense");
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
+
   const visibleTransactions = dashboard.data?.recent_transactions ?? [];
+  const selectedCategory = useMemo(
+    () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
+    [categories.data, quickCategoryId],
+  );
+
+  const quickEntryMutation = useMutation({
+    mutationFn: createTransaction,
+    onSuccess: async () => {
+      setQuickSuccess("Операция добавлена");
+      setQuickError(null);
+      setQuickAmount("");
+      setQuickCategoryId(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setQuickSuccess(null);
+      setQuickError(error.message);
+    },
+  });
+
+  function handleCategoryClick(categoryId: number) {
+    const clickedCategory = categories.data?.find((item) => item.id === categoryId);
+    const nextType = clickedCategory?.type === "income" ? "income" : "expense";
+    setQuickError(null);
+    setQuickSuccess(null);
+    setQuickAmount("");
+    setQuickType(nextType);
+    setQuickCategoryId((current) => (current === categoryId ? null : categoryId));
+  }
+
+  function handleCancelQuickEntry() {
+    setQuickCategoryId(null);
+    setQuickAmount("");
+    setQuickError(null);
+    setQuickSuccess(null);
+  }
+
+  function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setQuickError(null);
+    setQuickSuccess(null);
+
+    if (!selectedCategory) {
+      setQuickError("Выбери категорию.");
+      return;
+    }
+
+    const amount = Number(quickAmount.replace(",", "."));
+    if (!amount || amount <= 0) {
+      setQuickError("Укажи сумму больше нуля.");
+      return;
+    }
+
+    const transactionType =
+      selectedCategory.type === "both"
+        ? quickType
+        : selectedCategory.type === "income"
+          ? "income"
+          : "expense";
+    const today = new Date().toISOString().slice(0, 10);
+
+    quickEntryMutation.mutate({
+      type: transactionType,
+      category_id: selectedCategory.id,
+      amount,
+      comment: `Быстрый ввод: ${selectedCategory.name}`,
+      date: today,
+    });
+  }
 
   return (
     <>
@@ -112,9 +194,15 @@ export function DashboardPage() {
           </div>
           <div className="chips">
             {categories.data?.map((category) => (
-              <span className="chip" key={category.id} style={{ borderColor: category.color }}>
+              <button
+                className={quickCategoryId === category.id ? "chip chip-action active" : "chip chip-action"}
+                key={category.id}
+                onClick={() => handleCategoryClick(category.id)}
+                style={{ borderColor: category.color }}
+                type="button"
+              >
                 {category.name}
-              </span>
+              </button>
             ))}
             {!categories.data?.length && (
               <p className="empty">
@@ -124,6 +212,56 @@ export function DashboardPage() {
               </p>
             )}
           </div>
+
+          {selectedCategory && (
+            <form className="quick-entry-form" onSubmit={submitQuickEntry}>
+              {selectedCategory.type === "both" && (
+                <div className="toggle-row quick-entry-type">
+                  <button
+                    className={quickType === "expense" ? "toggle active" : "toggle"}
+                    onClick={() => setQuickType("expense")}
+                    type="button"
+                  >
+                    Расход
+                  </button>
+                  <button
+                    className={quickType === "income" ? "toggle active" : "toggle"}
+                    onClick={() => setQuickType("income")}
+                    type="button"
+                  >
+                    Доход
+                  </button>
+                </div>
+              )}
+
+              <label className="field">
+                <span>Сумма для {selectedCategory.name}</span>
+                <input
+                  autoFocus
+                  inputMode="decimal"
+                  onChange={(event) => setQuickAmount(event.target.value)}
+                  placeholder="0"
+                  value={quickAmount}
+                />
+              </label>
+              <div className="action-row">
+                <button className="primary-button" disabled={quickEntryMutation.isPending} type="submit">
+                  {quickEntryMutation.isPending ? "Вносим..." : "Внести"}
+                </button>
+                <button
+                  className="ghost-button"
+                  disabled={quickEntryMutation.isPending}
+                  onClick={handleCancelQuickEntry}
+                  type="button"
+                >
+                  Отмена
+                </button>
+              </div>
+              {quickError && <p className="form-error">{quickError}</p>}
+            </form>
+          )}
+
+          {quickSuccess && <p className="form-status form-status-success">{quickSuccess}</p>}
         </section>
 
         <section className="panel">

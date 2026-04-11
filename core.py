@@ -433,6 +433,46 @@ def add_expense(amount, category, comment, date):
             raise
 
 
+def add_planned_transaction(transaction_type, category, amount, comment, date, template_id=None):
+    """Добавляет неисполненную (planned) транзакцию без изменения баланса."""
+    app_logger.info(
+        f"Добавление planned-транзакции: type={transaction_type}, amount={amount}, date={date}, template_id={template_id}"
+    )
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+                INSERT INTO transactions (type, category, amount, comment, date, status, template_id, created_at)
+                VALUES (?, ?, ?, ?, ?, 'planned', ?, datetime('now'))
+            ''',
+            (transaction_type, category, amount, comment, date, template_id),
+        )
+        conn.commit()
+        transaction_id = cursor.lastrowid
+        _invalidate_cache()
+        return transaction_id
+
+
+def assign_template_to_planned_transaction(transaction_id, template_id):
+    """Привязывает planned-транзакцию к шаблону регулярной операции."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+                UPDATE transactions
+                SET template_id = ?
+                WHERE id = ? AND status = 'planned'
+            ''',
+            (template_id, transaction_id),
+        )
+        conn.commit()
+        updated = cursor.rowcount > 0
+        if updated:
+            _invalidate_cache()
+        return updated
+
+
 def delete_transaction(transaction_id):
     """
     Удаляет транзакцию и все связанные с ней операции.

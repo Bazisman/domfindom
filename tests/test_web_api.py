@@ -2,7 +2,7 @@ import sqlite3
 import unittest
 from contextlib import contextmanager
 import calendar
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import core
 from fastapi.testclient import TestClient
@@ -88,6 +88,30 @@ class WebApiTestCase(unittest.TestCase):
 
         self.assertTrue(any(item["comment"] == "Actual for dashboard" for item in recent_transactions))
         self.assertTrue(all(item["status"] != "planned" for item in recent_transactions))
+
+    def test_dashboard_auto_executes_overdue_planned_transactions(self):
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        due_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO transactions (type, category, amount, comment, date, status, template_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("income", income_category, 1500.0, "Auto due income", due_date, "planned", 501),
+            )
+
+        dashboard_response = self.client.get("/api/v1/dashboard")
+        self.assertEqual(dashboard_response.status_code, 200)
+
+        transactions_response = self.client.get("/api/v1/transactions?period=all")
+        self.assertEqual(transactions_response.status_code, 200)
+        transactions = transactions_response.json()
+
+        self.assertTrue(
+            any(item["comment"] == "Auto due income" and item["status"] == "actual" for item in transactions)
+        )
 
     def test_dashboard_balance_income_and_expense_use_current_month_only(self):
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
@@ -285,6 +309,7 @@ class WebApiTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["transaction"]["status"], "planned")
 
         templates = self.client.get("/api/v1/recurring-templates")
         self.assertEqual(templates.status_code, 200)
@@ -329,7 +354,58 @@ class WebApiTestCase(unittest.TestCase):
 
         planned_transactions = core.get_planned_transactions_by_template(template["id"])
         self.assertTrue(planned_transactions)
-        self.assertTrue(all(not item["date"].startswith(target_month_prefix) for item in planned_transactions))
+        same_month_items = [item for item in planned_transactions if item["date"].startswith(target_month_prefix)]
+        self.assertEqual(len(same_month_items), 1)
+        self.assertEqual(same_month_items[0]["date"], target_date)
+
+    def test_future_dated_recurring_income_is_created_as_planned_and_does_not_change_balance(self):
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]
+
+        now = datetime.now()
+        if now.day < 15:
+            target_year = now.year
+            target_month = now.month
+        elif now.month == 12:
+            target_year = now.year + 1
+            target_month = 1
+        else:
+            target_year = now.year
+            target_month = now.month + 1
+
+        target_day = min(15, calendar.monthrange(target_year, target_month)[1])
+        target_date = f"{target_year}-{target_month:02d}-{target_day:02d}"
+
+        before_accounts = self.client.get("/api/v1/accounts")
+        self.assertEqual(before_accounts.status_code, 200)
+        before_main_balance = next(item for item in before_accounts.json() if item["type"] == "main")["balance"]
+
+        response = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_id": income_category["id"],
+                "amount": 50000.0,
+                "comment": "Будущая зарплата",
+                "date": target_date,
+                "recurring": {
+                    "enabled": True,
+                    "template_name": "Зарплата тест",
+                    "day_of_month": target_day,
+                    "months_ahead": 6,
+                    "working_days_only": True,
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["transaction"]["status"], "planned")
+        self.assertEqual(payload["transaction"]["date"], target_date)
+
+        after_accounts = self.client.get("/api/v1/accounts")
+        self.assertEqual(after_accounts.status_code, 200)
+        after_main_balance = next(item for item in after_accounts.json() if item["type"] == "main")["balance"]
+        self.assertEqual(after_main_balance, before_main_balance)
 
     def test_forecast_endpoint_returns_projected_balance(self):
         response = self.client.get("/api/v1/forecast/month-end")
@@ -708,12 +784,17 @@ class WebApiTestCase(unittest.TestCase):
 
         due_before = self.client.get("/api/v1/recurring-templates/due")
         self.assertEqual(due_before.status_code, 200)
-        self.assertGreaterEqual(len(due_before.json()), 1)
-        self.assertTrue(any(item["id"] == due_transaction_id for item in due_before.json()))
+        self.assertEqual(len(due_before.json()), 0)
+
+        refreshed_transactions = self.client.get("/api/v1/transactions?period=all")
+        self.assertEqual(refreshed_transactions.status_code, 200)
+        self.assertTrue(
+            any(item["id"] == due_transaction_id and item["status"] == "actual" for item in refreshed_transactions.json())
+        )
 
         executed = self.client.post("/api/v1/recurring-templates/execute-due")
         self.assertEqual(executed.status_code, 200)
-        self.assertGreaterEqual(executed.json()["executed_count"], 1)
+        self.assertEqual(executed.json()["executed_count"], 0)
 
         due_after = self.client.get("/api/v1/recurring-templates/due")
         self.assertEqual(due_after.status_code, 200)
