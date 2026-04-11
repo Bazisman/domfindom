@@ -11,6 +11,9 @@ export type DashboardResponse = {
     planned_expense: number;
     executed_planned_income: number;
     executed_planned_expense: number;
+    monthly_budget: number;
+    total_budgets: number;
+    current_expenses: number;
     budget_remaining: number;
     combined_pending_expense: number;
     combined_executed_expense: number;

@@ -40,11 +40,13 @@ export function DashboardPage() {
   const visibleTransactions = dashboard.data?.recent_transactions ?? [];
   const receivedIncome = dashboard.data?.balance.income ?? 0;
   const pendingIncome = dashboard.data?.forecast.planned_income ?? 0;
-  const totalIncomePreview = receivedIncome + pendingIncome;
+  const expectedIncomeTotal = receivedIncome + pendingIncome;
 
   const executedExpense = dashboard.data?.balance.expense ?? 0;
-  const pendingExpense = dashboard.data?.forecast.combined_pending_expense ?? 0;
-  const totalExpensePreview = executedExpense + pendingExpense;
+  const plannedExpenseTotal =
+    (dashboard.data?.forecast.total_budgets ?? dashboard.data?.forecast.monthly_budget ?? 0) +
+    (dashboard.data?.forecast.planned_expense ?? 0);
+  const isExpenseOverPlan = executedExpense > plannedExpenseTotal;
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -152,17 +154,21 @@ export function DashboardPage() {
           <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
           <div className="stats-row">
             <div>
-              <span>Доход за месяц (всего)</span>
-              <strong>{dashboard.data ? formatMoney(totalIncomePreview) : "—"}</strong>
+              <span>Доход получен за месяц</span>
+              <strong>{dashboard.data ? formatMoney(receivedIncome) : "—"}</strong>
               <p className="stat-note">
-                Получено: {formatMoney(receivedIncome)} · Не получено: {formatMoney(pendingIncome)}
+                Доход получен/ожидаемый: {formatMoney(receivedIncome)} /{" "}
+                {formatMoney(expectedIncomeTotal)}
               </p>
             </div>
             <div>
-              <span>Расход за месяц (всего)</span>
-              <strong>{dashboard.data ? formatMoney(totalExpensePreview) : "—"}</strong>
-              <p className="stat-note">
-                Исполнено: {formatMoney(executedExpense)} · Запланировано: {formatMoney(pendingExpense)}
+              <span>Расход из плана за месяц</span>
+              <strong className={isExpenseOverPlan ? "money minus" : undefined}>
+                {dashboard.data ? formatMoney(executedExpense) : "—"}
+              </strong>
+              <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
+                Израсходовано/запланировано: {formatMoney(executedExpense)} /{" "}
+                {formatMoney(plannedExpenseTotal)}
               </p>
             </div>
           </div>
@@ -176,12 +182,11 @@ export function DashboardPage() {
           </p>
           <div className="forecast-breakdown">
             <p className="stat-note">
-              Всего доходов: {formatMoney(totalIncomePreview)} (получено {formatMoney(receivedIncome)} + не
-              получено {formatMoney(pendingIncome)})
+              Ожидаемый доход всего: {formatMoney(expectedIncomeTotal)} (получено{" "}
+              {formatMoney(receivedIncome)} + не получено {formatMoney(pendingIncome)})
             </p>
-            <p className="stat-note">
-              Всего расходов: {formatMoney(totalExpensePreview)} (исполнено {formatMoney(executedExpense)} +
-              запланировано {formatMoney(pendingExpense)})
+            <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
+              Расход из плана: {formatMoney(executedExpense)} / {formatMoney(plannedExpenseTotal)}
             </p>
           </div>
         </section>
