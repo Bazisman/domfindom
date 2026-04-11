@@ -304,6 +304,73 @@ class AuthService:
             conn.commit()
             return int(cursor.rowcount)
 
+    def revoke_other_user_sessions(self, user_id: int, current_raw_token: str) -> int:
+        current_token_hash = self._token_hash(current_raw_token)
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE sessions
+                SET revoked_at = datetime('now')
+                WHERE user_id = ?
+                  AND revoked_at IS NULL
+                  AND token_hash != ?
+                """,
+                (user_id, current_token_hash),
+            )
+            conn.commit()
+            return int(cursor.rowcount)
+
+    def revoke_user_session_by_id(self, user_id: int, session_id: int) -> bool:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE sessions
+                SET revoked_at = datetime('now')
+                WHERE id = ?
+                  AND user_id = ?
+                  AND revoked_at IS NULL
+                """,
+                (session_id, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def list_active_user_sessions(self, user_id: int, current_raw_token: str) -> list[Dict[str, object]]:
+        current_token_hash = self._token_hash(current_raw_token) if current_raw_token else ""
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, ip, user_agent, created_at, expires_at, token_hash
+                FROM sessions
+                WHERE user_id = ?
+                  AND revoked_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+
+        now = _utcnow()
+        sessions: list[Dict[str, object]] = []
+        for row in rows:
+            expires_at = _parse_utc(str(row["expires_at"]))
+            if expires_at < now:
+                continue
+            sessions.append(
+                {
+                    "id": int(row["id"]),
+                    "ip": str(row["ip"] or ""),
+                    "user_agent": str(row["user_agent"] or ""),
+                    "created_at": str(row["created_at"] or ""),
+                    "expires_at": str(row["expires_at"] or ""),
+                    "is_current": bool(current_token_hash and str(row["token_hash"]) == current_token_hash),
+                }
+            )
+        return sessions
+
     def cleanup_expired_sessions(self) -> int:
         with self._auth_connection() as conn:
             cursor = conn.cursor()

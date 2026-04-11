@@ -34,3 +34,21 @@ class PasswordResetConfirmPayload(BaseModel):
 class AuthResponse(BaseModel):
     user: AuthUserResponse
     message: str
+
+
+class SessionItemResponse(BaseModel):
+    id: int
+    ip: str
+    user_agent: str
+    created_at: str
+    expires_at: str
+    is_current: bool
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionItemResponse]
+
+
+class RevokeSessionsResponse(BaseModel):
+    revoked_count: int
+    message: str

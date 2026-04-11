@@ -244,6 +244,15 @@ export type PasswordResetRequestResponse = {
   reset_token?: string;
 };
 
+export type UserSession = {
+  id: number;
+  ip: string;
+  user_agent: string;
+  created_at: string;
+  expires_at: string;
+  is_current: boolean;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -353,6 +362,22 @@ export function confirmPasswordReset(payload: { token: string; new_password: str
   return request<{ message: string }>("/auth/password-reset/confirm", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getActiveSessions() {
+  return request<{ sessions: UserSession[] }>("/auth/sessions");
+}
+
+export function revokeOtherSessions() {
+  return request<{ revoked_count: number; message: string }>("/auth/sessions/revoke-others", {
+    method: "POST",
+  });
+}
+
+export function revokeSessionById(sessionId: number) {
+  return request<{ revoked_count: number; message: string }>(`/auth/sessions/${sessionId}`, {
+    method: "DELETE",
   });
 }
 

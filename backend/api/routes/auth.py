@@ -13,7 +13,10 @@ from backend.schemas.auth import (
     LoginRequest,
     PasswordResetConfirmPayload,
     PasswordResetRequestPayload,
+    RevokeSessionsResponse,
     RegisterRequest,
+    SessionItemResponse,
+    SessionListResponse,
 )
 
 
@@ -181,6 +184,43 @@ def logout(request: Request, response: Response) -> Dict[str, str]:
 @router.get("/me", response_model=AuthUserResponse)
 def me(current_user=Depends(require_user)) -> AuthUserResponse:
     return AuthUserResponse(**current_user)
+
+
+@router.get("/sessions", response_model=SessionListResponse)
+def list_sessions(request: Request, current_user=Depends(require_user)) -> SessionListResponse:
+    raw_token = request.cookies.get(settings.session_cookie_name, "")
+    sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token)
+    return SessionListResponse(sessions=[SessionItemResponse(**item) for item in sessions])
+
+
+@router.post("/sessions/revoke-others", response_model=RevokeSessionsResponse)
+def revoke_other_sessions(request: Request, current_user=Depends(require_user)) -> RevokeSessionsResponse:
+    raw_token = request.cookies.get(settings.session_cookie_name, "")
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    revoked_count = auth_service.revoke_other_user_sessions(int(current_user["id"]), raw_token)
+    return RevokeSessionsResponse(revoked_count=revoked_count, message="Other sessions revoked")
+
+
+@router.delete("/sessions/{session_id}", response_model=RevokeSessionsResponse)
+def revoke_session_by_id(session_id: int, request: Request, response: Response, current_user=Depends(require_user)) -> RevokeSessionsResponse:
+    if session_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid session id")
+    raw_token = request.cookies.get(settings.session_cookie_name, "")
+    active_sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token)
+    target = next((item for item in active_sessions if int(item["id"]) == session_id), None)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    revoked = auth_service.revoke_user_session_by_id(int(current_user["id"]), session_id)
+    if not revoked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if bool(target.get("is_current")):
+        _clear_session_cookie(response)
+        return RevokeSessionsResponse(revoked_count=1, message="Current session revoked. Please log in again.")
+
+    return RevokeSessionsResponse(revoked_count=1, message="Session revoked")
 
 
 @router.post("/change-password")

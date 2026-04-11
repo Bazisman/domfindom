@@ -243,6 +243,43 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(new_login.status_code, 200)
 
+    def test_session_management_endpoints(self):
+        sessions_response = self.client.get("/api/v1/auth/sessions")
+        self.assertEqual(sessions_response.status_code, 200)
+        sessions = sessions_response.json()["sessions"]
+        self.assertGreaterEqual(len(sessions), 1)
+        self.assertTrue(any(item["is_current"] for item in sessions))
+
+        current_session = next(item for item in sessions if item["is_current"])
+        revoke_current = self.client.delete(f"/api/v1/auth/sessions/{current_session['id']}")
+        self.assertEqual(revoke_current.status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/auth/me").status_code, 401)
+
+        relogin = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": self._primary_email, "password": "StrongPass123"},
+        )
+        self.assertEqual(relogin.status_code, 200)
+
+        second_client = TestClient(app)
+        second_login = second_client.post(
+            "/api/v1/auth/login",
+            json={"email": self._primary_email, "password": "StrongPass123"},
+        )
+        self.assertEqual(second_login.status_code, 200)
+
+        after_second = self.client.get("/api/v1/auth/sessions")
+        self.assertEqual(after_second.status_code, 200)
+        self.assertGreaterEqual(len(after_second.json()["sessions"]), 2)
+
+        revoke_others = self.client.post("/api/v1/auth/sessions/revoke-others")
+        self.assertEqual(revoke_others.status_code, 200)
+        self.assertGreaterEqual(revoke_others.json()["revoked_count"], 1)
+
+        self.assertEqual(second_client.get("/api/v1/auth/me").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/auth/me").status_code, 200)
+        second_client.close()
+
     def test_csrf_blocks_state_changes_without_header_when_enabled(self):
         settings.csrf_protection_enabled = True
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]

@@ -1,8 +1,8 @@
-﻿import { FormEvent, useState } from "react";
+﻿import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { changePassword } from "../lib/api";
+import { changePassword, getActiveSessions, revokeOtherSessions, revokeSessionById } from "../lib/api";
 
 export function SecurityPage() {
   const navigate = useNavigate();
@@ -12,6 +12,15 @@ export function SecurityPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [sessionsMessage, setSessionsMessage] = useState<string | null>(null);
+
+  const sessionsQuery = useQuery({
+    queryKey: ["auth", "sessions"],
+    queryFn: getActiveSessions,
+    refetchInterval: 30_000,
+  });
+
+  const sessions = useMemo(() => sessionsQuery.data?.sessions ?? [], [sessionsQuery.data]);
 
   const changePasswordMutation = useMutation({
     mutationFn: changePassword,
@@ -29,6 +38,43 @@ export function SecurityPage() {
       setError(mutationError.message);
     },
   });
+
+  const revokeOthersMutation = useMutation({
+    mutationFn: revokeOtherSessions,
+    onSuccess: async (response) => {
+      setSessionsMessage(response.message);
+      await sessionsQuery.refetch();
+    },
+    onError: (mutationError: Error) => {
+      setSessionsMessage(mutationError.message);
+    },
+  });
+
+  const revokeSessionMutation = useMutation({
+    mutationFn: revokeSessionById,
+    onSuccess: async (response) => {
+      setSessionsMessage(response.message);
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      await sessionsQuery.refetch();
+      if (response.message.toLowerCase().includes("please log in again")) {
+        navigate("/login", { replace: true });
+      }
+    },
+    onError: (mutationError: Error) => {
+      setSessionsMessage(mutationError.message);
+    },
+  });
+
+  function formatDate(value: string) {
+    const parsed = new Date(value.replace(" ", "T") + "Z");
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return new Intl.DateTimeFormat("ru-RU", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(parsed);
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,6 +148,51 @@ export function SecurityPage() {
             {changePasswordMutation.isPending ? "Обновляем..." : "Изменить пароль"}
           </button>
         </form>
+      </section>
+
+      <section className="panel panel-wide">
+        <div className="panel-header">
+          <h3>Активные сессии</h3>
+          <button
+            className="ghost-button"
+            disabled={revokeOthersMutation.isPending || sessions.length <= 1}
+            onClick={() => revokeOthersMutation.mutate()}
+            type="button"
+          >
+            {revokeOthersMutation.isPending ? "Завершаем..." : "Завершить все остальные"}
+          </button>
+        </div>
+
+        {sessionsMessage ? <p className="form-status">{sessionsMessage}</p> : null}
+        {sessionsQuery.isLoading ? <p className="muted">Загружаем сессии...</p> : null}
+        {sessionsQuery.isError ? <p className="form-error">Не удалось загрузить сессии.</p> : null}
+
+        {!sessionsQuery.isLoading && !sessionsQuery.isError && (
+          <div className="list">
+            {sessions.map((session) => (
+              <article className="list-item" key={session.id}>
+                <div>
+                  <strong>
+                    {session.is_current ? "Текущая сессия" : "Сессия"} #{session.id}
+                  </strong>
+                  <p>IP: {session.ip || "неизвестно"}</p>
+                  <p>Agent: {session.user_agent || "не указан"}</p>
+                  <p>Создана: {formatDate(session.created_at)}</p>
+                  <p>Истекает: {formatDate(session.expires_at)}</p>
+                </div>
+                <button
+                  className="ghost-button"
+                  disabled={revokeSessionMutation.isPending && revokeSessionMutation.variables === session.id}
+                  onClick={() => revokeSessionMutation.mutate(session.id)}
+                  type="button"
+                >
+                  {session.is_current ? "Выйти с этого устройства" : "Завершить"}
+                </button>
+              </article>
+            ))}
+            {sessions.length === 0 ? <p className="muted">Активных сессий не найдено.</p> : null}
+          </div>
+        )}
       </section>
     </main>
   );
