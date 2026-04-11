@@ -52,6 +52,15 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
     category_name = _resolve_category_name(payload)
     category = core.get_category_by_name(category_name)
     is_future = _is_future_date(payload.date)
+    recurring_payload = payload.recurring if payload.recurring and payload.recurring.enabled else None
+    planned_date = payload.date
+
+    if (
+        is_future
+        and recurring_payload
+        and recurring_payload.working_days_only
+    ):
+        planned_date = core._adjust_to_workday(payload.date)
 
     if is_future:
         created_id = core.add_planned_transaction(
@@ -59,7 +68,7 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
             category_name,
             payload.amount,
             payload.comment,
-            payload.date,
+            planned_date,
             template_id=None,
         )
     else:
@@ -90,19 +99,19 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
                 payload.date,
             )
 
-    if payload.recurring and payload.recurring.enabled:
-        template_name = payload.recurring.template_name.strip() or payload.comment.strip() or category_name
+    if recurring_payload:
+        template_name = recurring_payload.template_name.strip() or payload.comment.strip() or category_name
         template_id = core.create_recurring_template(
             template_type=payload.type,
             name=template_name,
             amount=payload.amount,
-            day_of_month=payload.recurring.day_of_month,
+            day_of_month=recurring_payload.day_of_month,
             category_id=category["id"] if category else payload.category_id,
             comment_template=payload.comment,
-            months_ahead=payload.recurring.months_ahead,
-            working_days_only=payload.recurring.working_days_only,
+            months_ahead=recurring_payload.months_ahead,
+            working_days_only=recurring_payload.working_days_only,
         )
-        month_start, month_end = _month_range(payload.date)
+        month_start, month_end = _month_range(planned_date if is_future else payload.date)
         core.delete_planned_transactions_in_period(template_id, month_start, month_end)
         if is_future:
             core.assign_template_to_planned_transaction(created_id, template_id)

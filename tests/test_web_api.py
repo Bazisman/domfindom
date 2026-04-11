@@ -407,6 +407,45 @@ class WebApiTestCase(unittest.TestCase):
         after_main_balance = next(item for item in after_accounts.json() if item["type"] == "main")["balance"]
         self.assertEqual(after_main_balance, before_main_balance)
 
+    def test_future_recurring_working_day_shifts_weekend_date(self):
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
+
+        now = datetime.now()
+        # Ищем ближайшую субботу в будущем
+        for offset in range(1, 15):
+            candidate = now + timedelta(days=offset)
+            if candidate.weekday() == 5:
+                saturday = candidate
+                break
+        else:
+            self.fail("Could not find upcoming Saturday for test")
+
+        expected_monday = saturday + timedelta(days=2)
+        target_date = saturday.strftime("%Y-%m-%d")
+
+        response = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_id": expense_category["id"],
+                "amount": 1500.0,
+                "comment": "Платёж выходного дня",
+                "date": target_date,
+                "recurring": {
+                    "enabled": True,
+                    "template_name": "Тест переноса рабочего дня",
+                    "day_of_month": saturday.day,
+                    "months_ahead": 3,
+                    "working_days_only": True,
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["transaction"]["status"], "planned")
+        self.assertEqual(payload["transaction"]["date"], expected_monday.strftime("%Y-%m-%d"))
+
     def test_forecast_endpoint_returns_projected_balance(self):
         response = self.client.get("/api/v1/forecast/month-end")
         payload = response.json()
