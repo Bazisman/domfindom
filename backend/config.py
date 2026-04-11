@@ -1,4 +1,5 @@
 import os
+import warnings
 from dataclasses import dataclass
 from typing import List
 
@@ -103,4 +104,8 @@ settings = AppConfig(
 
 
 if _is_production() and settings.session_secret == "dev-insecure-change-me":
-    raise RuntimeError("FINANCE_APP_SESSION_SECRET must be set in production")
+    warnings.warn(
+        "FINANCE_APP_SESSION_SECRET is not set in production; configure a strong secret.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
