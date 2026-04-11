@@ -267,12 +267,31 @@ export type DuePlannedTransaction = {
 const API_BASE =
   import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? "/api/v1";
 
+function getCookie(name: string): string {
+  if (typeof document === "undefined") {
+    return "";
+  }
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const headers = new Headers(init?.headers ?? {});
+  if (!headers.has("Content-Type") && init?.body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const csrfToken = getCookie("finance_csrf");
+    if (csrfToken) {
+      headers.set("X-CSRF-Token", csrfToken);
+    }
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers,
     ...init,
   });
 

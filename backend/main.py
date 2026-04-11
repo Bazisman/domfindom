@@ -3,6 +3,7 @@ from typing import Dict
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import core
 from backend.auth.service import auth_service
@@ -38,6 +39,23 @@ app.add_middleware(
 
 app.include_router(api_router)
 
+_CSRF_EXEMPT_PATHS = {
+    "/api/v1/health",
+    "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/auth/password-reset/request",
+    "/api/v1/auth/password-reset/confirm",
+}
+
+
+def _append_security_headers(request: Request, response):
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if settings.env in {"prod", "production"} and request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
 
 @app.middleware("http")
 async def attach_user_context_and_sync(request: Request, call_next):
@@ -54,12 +72,35 @@ async def attach_user_context_and_sync(request: Request, call_next):
 
     try:
         if (
+            settings.csrf_protection_enabled
+            and current_user
+            and request.url.path.startswith("/api/v1")
+            and request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+            and request.url.path not in _CSRF_EXEMPT_PATHS
+        ):
+            csrf_header = request.headers.get("x-csrf-token", "")
+            if not auth_service.verify_csrf_token(raw_token or "", csrf_header):
+                return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
+
+        if (
             current_user
             and request.url.path.startswith("/api/v1")
             and request.url.path not in {"/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/register"}
         ):
             transaction_service.sync_due_planned_transactions()
-        return await call_next(request)
+        response = await call_next(request)
+        if current_user and raw_token:
+            response.set_cookie(
+                key=settings.csrf_cookie_name,
+                value=auth_service.create_csrf_token(raw_token),
+                httponly=False,
+                secure=settings.session_cookie_secure,
+                samesite=settings.session_cookie_samesite,
+                max_age=settings.session_ttl_hours * 3600,
+                path="/",
+            )
+        _append_security_headers(request, response)
+        return response
     finally:
         if db_token is not None:
             core.pop_db_name(db_token)

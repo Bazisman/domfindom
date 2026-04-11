@@ -20,6 +20,28 @@ if sys.executable != VENV_PYTHON and os.path.exists(VENV_PYTHON):
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+
+def _load_env_file(env_file_path: str) -> None:
+    if not os.path.exists(env_file_path):
+        return
+    try:
+        with open(env_file_path, "r", encoding="utf-8") as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key:
+                    os.environ.setdefault(key, value)
+    except Exception:
+        # Keep startup resilient if .env contains malformed lines.
+        pass
+
+
+_load_env_file(os.path.join(PROJECT_ROOT, ".env"))
+
 DEFAULT_FRONTEND_DIST = "/var/www/u3480024/data/www/domfindom.ru"
 os.environ.setdefault("FINANCE_APP_DB_NAME", os.path.join(PROJECT_ROOT, "finance.db"))
 os.environ.setdefault("FINANCE_APP_AUTH_DB_NAME", os.path.join(PROJECT_ROOT, "auth.db"))

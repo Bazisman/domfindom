@@ -24,9 +24,11 @@ class WebApiTestCase(unittest.TestCase):
         self._old_login_rate_limit_attempts = settings.login_rate_limit_attempts
         self._old_login_rate_limit_window_minutes = settings.login_rate_limit_window_minutes
         self._old_expose_reset_token_in_response = settings.expose_reset_token_in_response
+        self._old_csrf_protection_enabled = settings.csrf_protection_enabled
         settings.login_rate_limit_attempts = 2
         settings.login_rate_limit_window_minutes = 15
         settings.expose_reset_token_in_response = True
+        settings.csrf_protection_enabled = False
         auth_service.close()
         auth_service.auth_db_name = ":memory:"
         auth_service.users_data_dir = os.path.join(os.getcwd(), "tests_user_data")
@@ -69,6 +71,7 @@ class WebApiTestCase(unittest.TestCase):
         settings.login_rate_limit_attempts = self._old_login_rate_limit_attempts
         settings.login_rate_limit_window_minutes = self._old_login_rate_limit_window_minutes
         settings.expose_reset_token_in_response = self._old_expose_reset_token_in_response
+        settings.csrf_protection_enabled = self._old_csrf_protection_enabled
         for conn in self._connections.values():
             conn.close()
         shutil.rmtree(os.path.join(os.getcwd(), "tests_user_data"), ignore_errors=True)
@@ -239,6 +242,36 @@ class WebApiTestCase(unittest.TestCase):
             json={"email": email, "password": "ResetStrong123"},
         )
         self.assertEqual(new_login.status_code, 200)
+
+    def test_csrf_blocks_state_changes_without_header_when_enabled(self):
+        settings.csrf_protection_enabled = True
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
+        without_header = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 100.0,
+                "comment": "csrf fail",
+                "date": "2026-04-08",
+            },
+        )
+        self.assertEqual(without_header.status_code, 403)
+
+        csrf_token = self.client.cookies.get(settings.csrf_cookie_name)
+        self.assertTrue(csrf_token)
+        with_header = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 200.0,
+                "comment": "csrf ok",
+                "date": "2026-04-08",
+            },
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        self.assertEqual(with_header.status_code, 201)
 
     def test_data_isolation_between_users(self):
         created = self.client.post(

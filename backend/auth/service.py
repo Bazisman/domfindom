@@ -219,6 +219,16 @@ class AuthService:
     def _token_hash(self, raw_token: str) -> str:
         return hmac.new(self.session_secret, raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
 
+    def create_csrf_token(self, raw_session_token: str) -> str:
+        payload = f"csrf:{raw_session_token}"
+        return hmac.new(self.session_secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def verify_csrf_token(self, raw_session_token: str, provided_token: str) -> bool:
+        if not raw_session_token or not provided_token:
+            return False
+        expected = self.create_csrf_token(raw_session_token)
+        return hmac.compare_digest(expected, provided_token)
+
     def create_session(self, user_id: int, ip: str = "", user_agent: str = "") -> str:
         raw_token = secrets.token_urlsafe(48)
         token_hash = self._token_hash(raw_token)

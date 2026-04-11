@@ -47,9 +47,14 @@ class AppConfig:
     auth_db_name: str
     users_data_dir: str
     session_cookie_name: str
+    csrf_cookie_name: str
     session_ttl_hours: int
     session_secret: str
     session_cookie_secure: bool
+    session_cookie_samesite: str
+    csrf_protection_enabled: bool
+    enforce_strict_session_secret: bool
+    allow_insecure_session_secret: bool
     login_rate_limit_attempts: int
     login_rate_limit_window_minutes: int
     expose_reset_token_in_response: bool
@@ -75,10 +80,21 @@ settings = AppConfig(
     auth_db_name=os.getenv("FINANCE_APP_AUTH_DB_NAME", "auth.db"),
     users_data_dir=os.getenv("FINANCE_APP_USERS_DATA_DIR", "data/users"),
     session_cookie_name=os.getenv("FINANCE_APP_SESSION_COOKIE_NAME", "finance_session"),
+    csrf_cookie_name=os.getenv("FINANCE_APP_CSRF_COOKIE_NAME", "finance_csrf"),
     session_ttl_hours=max(1, _parse_int(os.getenv("FINANCE_APP_SESSION_TTL_HOURS", "720"), 720)),
     session_secret=os.getenv("FINANCE_APP_SESSION_SECRET", "dev-insecure-change-me"),
     session_cookie_secure=_parse_bool(os.getenv("FINANCE_APP_SESSION_COOKIE_SECURE", "false")),
-    login_rate_limit_attempts=max(1, _parse_int(os.getenv("FINANCE_APP_LOGIN_RATE_LIMIT_ATTEMPTS", "10"), 10)),
+    session_cookie_samesite=os.getenv("FINANCE_APP_SESSION_COOKIE_SAMESITE", "lax").strip().lower() or "lax",
+    csrf_protection_enabled=_parse_bool(
+        os.getenv("FINANCE_APP_CSRF_PROTECTION_ENABLED", "true" if _is_production() else "false")
+    ),
+    enforce_strict_session_secret=_parse_bool(
+        os.getenv("FINANCE_APP_ENFORCE_STRICT_SESSION_SECRET", "true" if _is_production() else "false")
+    ),
+    allow_insecure_session_secret=_parse_bool(
+        os.getenv("FINANCE_APP_ALLOW_INSECURE_SESSION_SECRET", "false")
+    ),
+    login_rate_limit_attempts=max(1, _parse_int(os.getenv("FINANCE_APP_LOGIN_RATE_LIMIT_ATTEMPTS", "5"), 5)),
     login_rate_limit_window_minutes=max(
         1, _parse_int(os.getenv("FINANCE_APP_LOGIN_RATE_LIMIT_WINDOW_MINUTES", "15"), 15)
     ),
@@ -103,7 +119,15 @@ settings = AppConfig(
 )
 
 
+if settings.session_cookie_samesite not in {"lax", "strict", "none"}:
+    settings.session_cookie_samesite = "lax"
+
 if _is_production() and settings.session_secret == "dev-insecure-change-me":
+    if settings.enforce_strict_session_secret and not settings.allow_insecure_session_secret:
+        raise RuntimeError(
+            "FINANCE_APP_SESSION_SECRET must be configured in production. "
+            "Set a strong secret or temporarily set FINANCE_APP_ALLOW_INSECURE_SESSION_SECRET=true."
+        )
     warnings.warn(
         "FINANCE_APP_SESSION_SECRET is not set in production; configure a strong secret.",
         RuntimeWarning,
