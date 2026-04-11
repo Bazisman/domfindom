@@ -1,5 +1,6 @@
 import smtplib
 from email.message import EmailMessage
+from urllib.parse import quote
 
 from backend.config import settings
 
@@ -21,7 +22,7 @@ class AuthMailer:
 
     def _build_reset_url(self, token: str) -> str:
         template = self.reset_url_template or "{token}"
-        return template.replace("{token}", token)
+        return template.replace("{token}", quote(token, safe=""))
 
     def send_password_reset_email(self, to_email: str, token: str) -> None:
         if not self.is_configured():
@@ -29,13 +30,13 @@ class AuthMailer:
 
         reset_url = self._build_reset_url(token)
         message = EmailMessage()
-        message["Subject"] = self.reset_email_subject or "Password reset request"
+        message["Subject"] = self.reset_email_subject or "Восстановление пароля"
         message["From"] = self.smtp_from
         message["To"] = to_email
         message.set_content(
-            "A password reset was requested for your account.\n\n"
-            f"Open this link to continue:\n{reset_url}\n\n"
-            "If you did not request it, you can ignore this email."
+            "Для вашей учетной записи был запрошен сброс пароля.\n\n"
+            f"Откройте ссылку, чтобы продолжить:\n{reset_url}\n\n"
+            "Если вы не запрашивали сброс, просто проигнорируйте это письмо."
         )
 
         if self.smtp_use_ssl:

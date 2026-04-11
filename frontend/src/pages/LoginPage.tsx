@@ -1,5 +1,5 @@
-﻿import { FormEvent, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+﻿import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, confirmPasswordReset, login, register, requestPasswordReset } from "../lib/api";
@@ -8,6 +8,7 @@ type AuthMode = "login" | "register" | "reset_request" | "reset_confirm";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -17,6 +18,16 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const tokenFromUrl = searchParams.get("reset_token");
+    if (tokenFromUrl && tokenFromUrl !== resetToken) {
+      setResetToken(tokenFromUrl);
+      setMode("reset_confirm");
+      setMessage("Ссылка для сброса получена. Укажите новый пароль.");
+      setError(null);
+    }
+  }, [searchParams, resetToken]);
 
   const title = useMemo(() => {
     if (mode === "login") {
@@ -61,7 +72,9 @@ export function LoginPage() {
         setMode("login");
         setPassword("");
         setNewPassword("");
+        setResetToken("");
         setMessage("Пароль обновлен. Теперь можно войти.");
+        navigate("/login", { replace: true });
       }
     } catch (e) {
       if (e instanceof ApiError) {
@@ -112,7 +125,7 @@ export function LoginPage() {
           {mode === "reset_confirm" && (
             <>
               <label>
-                Reset token
+                Токен сброса
                 <input
                   autoComplete="off"
                   onChange={(event) => setResetToken(event.target.value)}
@@ -180,6 +193,8 @@ export function LoginPage() {
                 setMessage(null);
                 setError(null);
                 setMode("login");
+                setResetToken("");
+                navigate("/login", { replace: true });
               }}
               type="button"
             >

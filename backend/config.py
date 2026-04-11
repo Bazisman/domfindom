@@ -114,7 +114,7 @@ settings = AppConfig(
     ).strip(),
     password_reset_email_subject=os.getenv(
         "FINANCE_APP_PASSWORD_RESET_EMAIL_SUBJECT",
-        "Password reset request",
+        "Восстановление пароля",
     ).strip(),
 )
 
