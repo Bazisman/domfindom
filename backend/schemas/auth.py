@@ -1,3 +1,5 @@
+from typing import List
+
 from pydantic import BaseModel, Field
 
 
@@ -46,7 +48,7 @@ class SessionItemResponse(BaseModel):
 
 
 class SessionListResponse(BaseModel):
-    sessions: list[SessionItemResponse]
+    sessions: List[SessionItemResponse]
 
 
 class RevokeSessionsResponse(BaseModel):

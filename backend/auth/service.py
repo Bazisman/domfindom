@@ -6,7 +6,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import core
 from backend.config import settings
@@ -337,7 +337,7 @@ class AuthService:
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_active_user_sessions(self, user_id: int, current_raw_token: str) -> list[Dict[str, object]]:
+    def list_active_user_sessions(self, user_id: int, current_raw_token: str) -> List[Dict[str, object]]:
         current_token_hash = self._token_hash(current_raw_token) if current_raw_token else ""
         with self._auth_connection() as conn:
             cursor = conn.cursor()
@@ -354,7 +354,7 @@ class AuthService:
             rows = cursor.fetchall()
 
         now = _utcnow()
-        sessions: list[Dict[str, object]] = []
+        sessions: List[Dict[str, object]] = []
         for row in rows:
             expires_at = _parse_utc(str(row["expires_at"]))
             if expires_at < now:
