@@ -38,12 +38,14 @@ export function LoginPage() {
     setLoading(true);
     try {
       if (mode === "login") {
-        await login({ email, password });
-        await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        const response = await login({ email, password });
+        queryClient.setQueryData(["auth", "me"], response.user);
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         navigate("/", { replace: true });
       } else if (mode === "register") {
-        await register({ email, password });
-        await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        const response = await register({ email, password });
+        queryClient.setQueryData(["auth", "me"], response.user);
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         navigate("/", { replace: true });
       } else if (mode === "reset_request") {
         const response = await requestPasswordReset({ email });
