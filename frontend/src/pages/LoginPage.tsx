@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+п»їimport { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -20,15 +20,15 @@ export function LoginPage() {
 
   const title = useMemo(() => {
     if (mode === "login") {
-      return "Вход";
+      return "Р’С…РѕРґ";
     }
     if (mode === "register") {
-      return "Регистрация";
+      return "Р РµРіРёСЃС‚СЂР°С†РёСЏ";
     }
     if (mode === "reset_request") {
-      return "Восстановление пароля";
+      return "Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїР°СЂРѕР»СЏ";
     }
-    return "Подтверждение нового пароля";
+    return "РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РЅРѕРІРѕРіРѕ РїР°СЂРѕР»СЏ";
   }, [mode]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -50,7 +50,7 @@ export function LoginPage() {
         if (response.reset_token) {
           setResetToken(response.reset_token);
           setMode("reset_confirm");
-          setMessage("Токен сброса создан. Укажите новый пароль.");
+          setMessage("РўРѕРєРµРЅ СЃР±СЂРѕСЃР° СЃРѕР·РґР°РЅ. РЈРєР°Р¶РёС‚Рµ РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ.");
         } else {
           setMessage(response.message);
         }
@@ -59,13 +59,13 @@ export function LoginPage() {
         setMode("login");
         setPassword("");
         setNewPassword("");
-        setMessage("Пароль обновлен. Теперь можно войти.");
+        setMessage("РџР°СЂРѕР»СЊ РѕР±РЅРѕРІР»РµРЅ. РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РІРѕР№С‚Рё.");
       }
     } catch (e) {
       if (e instanceof ApiError) {
         setError(e.message);
       } else {
-        setError("Не удалось выполнить запрос");
+        setError("РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ Р·Р°РїСЂРѕСЃ");
       }
     } finally {
       setLoading(false);
@@ -76,7 +76,7 @@ export function LoginPage() {
     <main className="auth-page">
       <section className="auth-card">
         <h1>{title}</h1>
-        <p className="auth-subtitle">Личный защищенный доступ к вашим финансам</p>
+        <p className="auth-subtitle">Р›РёС‡РЅС‹Р№ Р·Р°С‰РёС‰РµРЅРЅС‹Р№ РґРѕСЃС‚СѓРї Рє РІР°С€РёРј С„РёРЅР°РЅСЃР°Рј</p>
         <form className="auth-form" onSubmit={onSubmit}>
           {(mode === "login" || mode === "register" || mode === "reset_request") && (
             <label>
@@ -92,7 +92,7 @@ export function LoginPage() {
           )}
           {(mode === "login" || mode === "register") && (
             <label>
-              Пароль
+              РџР°СЂРѕР»СЊ
               <input
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
                 minLength={8}
@@ -116,7 +116,7 @@ export function LoginPage() {
                 />
               </label>
               <label>
-                Новый пароль
+                РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ
                 <input
                   autoComplete="new-password"
                   minLength={8}
@@ -132,14 +132,14 @@ export function LoginPage() {
           {message ? <div className="auth-message">{message}</div> : null}
           <button className="btn btn-primary" disabled={loading} type="submit">
             {loading
-              ? "Подождите..."
+              ? "РџРѕРґРѕР¶РґРёС‚Рµ..."
               : mode === "login"
-                ? "Войти"
+                ? "Р’РѕР№С‚Рё"
                 : mode === "register"
-                  ? "Создать аккаунт"
+                  ? "РЎРѕР·РґР°С‚СЊ Р°РєРєР°СѓРЅС‚"
                   : mode === "reset_request"
-                    ? "Запросить сброс"
-                    : "Сохранить новый пароль"}
+                    ? "Р—Р°РїСЂРѕСЃРёС‚СЊ СЃР±СЂРѕСЃ"
+                    : "РЎРѕС…СЂР°РЅРёС‚СЊ РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ"}
           </button>
         </form>
         <div className="auth-links">
@@ -152,7 +152,7 @@ export function LoginPage() {
             }}
             type="button"
           >
-            {mode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
+            {mode === "login" ? "РќРµС‚ Р°РєРєР°СѓРЅС‚Р°? Р—Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°С‚СЊСЃСЏ" : "РЈР¶Рµ РµСЃС‚СЊ Р°РєРєР°СѓРЅС‚? Р’РѕР№С‚Рё"}
           </button>
           {mode !== "reset_request" && mode !== "reset_confirm" && (
             <button
@@ -164,7 +164,7 @@ export function LoginPage() {
               }}
               type="button"
             >
-              Забыли пароль?
+              Р—Р°Р±С‹Р»Рё РїР°СЂРѕР»СЊ?
             </button>
           )}
           {(mode === "reset_request" || mode === "reset_confirm") && (
@@ -177,7 +177,7 @@ export function LoginPage() {
               }}
               type="button"
             >
-              Вернуться ко входу
+              Р’РµСЂРЅСѓС‚СЊСЃСЏ РєРѕ РІС…РѕРґСѓ
             </button>
           )}
         </div>

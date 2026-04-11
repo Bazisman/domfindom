@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+п»їimport { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -36,15 +36,15 @@ export function SecurityPage() {
     setMessage(null);
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError("Заполните все поля.");
+      setError("Р—Р°РїРѕР»РЅРёС‚Рµ РІСЃРµ РїРѕР»СЏ.");
       return;
     }
     if (newPassword.length < 8) {
-      setError("Новый пароль должен быть не короче 8 символов.");
+      setError("РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РЅРµ РєРѕСЂРѕС‡Рµ 8 СЃРёРјРІРѕР»РѕРІ.");
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("Подтверждение пароля не совпадает.");
+      setError("РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РїР°СЂРѕР»СЏ РЅРµ СЃРѕРІРїР°РґР°РµС‚.");
       return;
     }
 
@@ -58,13 +58,13 @@ export function SecurityPage() {
     <main className="grid">
       <section className="panel panel-form panel-wide">
         <div className="panel-header">
-          <h2>Безопасность</h2>
-          <span>Смена пароля аккаунта</span>
+          <h2>Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ</h2>
+          <span>РЎРјРµРЅР° РїР°СЂРѕР»СЏ Р°РєРєР°СѓРЅС‚Р°</span>
         </div>
 
         <form className="transaction-form" onSubmit={onSubmit}>
           <label className="field">
-            <span>Текущий пароль</span>
+            <span>РўРµРєСѓС‰РёР№ РїР°СЂРѕР»СЊ</span>
             <input
               autoComplete="current-password"
               onChange={(event) => setCurrentPassword(event.target.value)}
@@ -74,7 +74,7 @@ export function SecurityPage() {
           </label>
 
           <label className="field">
-            <span>Новый пароль</span>
+            <span>РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ</span>
             <input
               autoComplete="new-password"
               minLength={8}
@@ -85,7 +85,7 @@ export function SecurityPage() {
           </label>
 
           <label className="field">
-            <span>Подтверждение нового пароля</span>
+            <span>РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РЅРѕРІРѕРіРѕ РїР°СЂРѕР»СЏ</span>
             <input
               autoComplete="new-password"
               minLength={8}
@@ -99,7 +99,7 @@ export function SecurityPage() {
           {message ? <p className="form-status form-status-success">{message}</p> : null}
 
           <button className="primary-button" disabled={changePasswordMutation.isPending} type="submit">
-            {changePasswordMutation.isPending ? "Обновляем..." : "Изменить пароль"}
+            {changePasswordMutation.isPending ? "РћР±РЅРѕРІР»СЏРµРј..." : "РР·РјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ"}
           </button>
         </form>
       </section>

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+п»їimport { useEffect, useRef } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -53,28 +53,28 @@ export default function AppShellNext() {
       <nav className="topbar">
         <div className="topbar-links" ref={topbarLinksRef}>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} end to="/">
-            Главная
+            Р“Р»Р°РІРЅР°СЏ
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/transactions">
-            Транзакции
+            РўСЂР°РЅР·Р°РєС†РёРё
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/categories">
-            Категории
+            РљР°С‚РµРіРѕСЂРёРё
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/planning">
-            Планирование
+            РџР»Р°РЅРёСЂРѕРІР°РЅРёРµ
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/accounts">
-            Счета
+            РЎС‡РµС‚Р°
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/security">
-            Безопасность
+            Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ
           </NavLink>
         </div>
         <div className="topbar-user">
           <span>{currentUser?.email ?? ""}</span>
           <button className="btn btn-ghost" onClick={onLogout} type="button">
-            Выйти
+            Р’С‹Р№С‚Рё
           </button>
         </div>
       </nav>
