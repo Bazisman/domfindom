@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  getAccountPreferences,
   createTransaction,
   getCategories,
   getDashboard,
@@ -60,6 +61,12 @@ export function DashboardPage() {
     queryFn: getCategories,
   });
 
+  const preferencesQuery = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
+    retry: false,
+  });
+
   const familiesQuery = useQuery({
     queryKey: ["families", "me"],
     queryFn: getMyFamilies,
@@ -67,6 +74,7 @@ export function DashboardPage() {
   });
 
   const selectedFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
+  const useFamilyFeed = selectedFamilyId !== null && preferencesQuery.data?.workspace_mode === "family";
 
   const familyTransactionsQuery = useQuery({
     queryKey: ["families", selectedFamilyId, "transactions", "dashboard"],
@@ -76,7 +84,7 @@ export function DashboardPage() {
         limit: 10,
         includePlanned: false,
       }),
-    enabled: selectedFamilyId !== null,
+    enabled: useFamilyFeed,
     retry: false,
   });
 
@@ -87,7 +95,7 @@ export function DashboardPage() {
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
 
   const visibleTransactions = useMemo(() => {
-    if (selectedFamilyId !== null) {
+    if (useFamilyFeed) {
       return (familyTransactionsQuery.data?.transactions ?? []).map(
         (item): RecentFeedItem => ({
           id: item.id,
@@ -109,7 +117,7 @@ export function DashboardPage() {
         comment: item.comment,
       }),
     );
-  }, [selectedFamilyId, familyTransactionsQuery.data?.transactions, dashboard.data?.recent_transactions]);
+  }, [useFamilyFeed, familyTransactionsQuery.data?.transactions, dashboard.data?.recent_transactions]);
 
   const receivedIncome = dashboard.data?.balance.income ?? 0;
   const pendingIncome = dashboard.data?.forecast.planned_income ?? 0;
@@ -351,6 +359,7 @@ export function DashboardPage() {
         <section className="panel panel-full">
           <div className="panel-header">
             <h3>Последние транзакции</h3>
+            {useFamilyFeed ? <span>Совместные операции семьи</span> : null}
           </div>
           <div className="list">
             {visibleTransactions.map((item) => (
@@ -369,9 +378,9 @@ export function DashboardPage() {
             ))}
             {!visibleTransactions.length && (
               <p className="empty">
-                {(selectedFamilyId !== null ? familyTransactionsQuery.isError : dashboard.isError)
+                {(useFamilyFeed ? familyTransactionsQuery.isError : dashboard.isError)
                   ? getQueryErrorMessage(
-                      selectedFamilyId !== null ? familyTransactionsQuery.error : dashboard.error,
+                      useFamilyFeed ? familyTransactionsQuery.error : dashboard.error,
                       "Не удалось загрузить транзакции",
                     )
                   : "Пока нет исполненных транзакций за выбранный период."}
