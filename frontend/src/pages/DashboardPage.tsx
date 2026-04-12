@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { createTransaction, getCategories, getDashboard } from "../lib/api";
@@ -31,6 +31,8 @@ function getForecastMonthLabel(endDate: string | undefined) {
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
+  const quickEntryFormRef = useRef<HTMLFormElement | null>(null);
+  const quickAmountInputRef = useRef<HTMLInputElement | null>(null);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -102,6 +104,29 @@ export function DashboardPage() {
     setQuickError(null);
     setQuickSuccess(null);
   }
+
+  useEffect(() => {
+    if (!selectedCategory) {
+      return;
+    }
+
+    const scrollAndFocus = () => {
+      quickEntryFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      quickAmountInputRef.current?.focus({ preventScroll: true });
+      quickAmountInputRef.current?.select();
+    };
+
+    const rafId = window.requestAnimationFrame(scrollAndFocus);
+    const timeoutId = window.setTimeout(scrollAndFocus, 160);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [selectedCategory?.id]);
 
   function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -211,7 +236,7 @@ export function DashboardPage() {
           </div>
 
           {selectedCategory && (
-            <form className="quick-entry-form" onSubmit={submitQuickEntry}>
+            <form className="quick-entry-form" onSubmit={submitQuickEntry} ref={quickEntryFormRef}>
               {selectedCategory.type === "both" && (
                 <div className="toggle-row quick-entry-type">
                   <button
@@ -238,6 +263,7 @@ export function DashboardPage() {
                   inputMode="decimal"
                   onChange={(event) => setQuickAmount(event.target.value)}
                   placeholder="0"
+                  ref={quickAmountInputRef}
                   value={quickAmount}
                 />
               </label>
