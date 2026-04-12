@@ -1,7 +1,23 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createTransaction, getCategories, getDashboard } from "../lib/api";
+import {
+  createTransaction,
+  getCategories,
+  getDashboard,
+  getFamilyTransactions,
+  getMyFamilies,
+} from "../lib/api";
+
+type RecentFeedItem = {
+  id: number;
+  type: "income" | "expense";
+  category: string;
+  amount: number;
+  comment: string;
+  owner_email?: string;
+  owner_user_id?: number;
+};
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -44,13 +60,57 @@ export function DashboardPage() {
     queryFn: getCategories,
   });
 
+  const familiesQuery = useQuery({
+    queryKey: ["families", "me"],
+    queryFn: getMyFamilies,
+    retry: false,
+  });
+
+  const selectedFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
+
+  const familyTransactionsQuery = useQuery({
+    queryKey: ["families", selectedFamilyId, "transactions", "dashboard"],
+    queryFn: () =>
+      getFamilyTransactions({
+        familyId: selectedFamilyId as number,
+        limit: 10,
+        includePlanned: false,
+      }),
+    enabled: selectedFamilyId !== null,
+    retry: false,
+  });
+
   const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
   const [quickAmount, setQuickAmount] = useState("");
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
 
-  const visibleTransactions = dashboard.data?.recent_transactions ?? [];
+  const visibleTransactions = useMemo(() => {
+    if (selectedFamilyId !== null) {
+      return (familyTransactionsQuery.data?.transactions ?? []).map(
+        (item): RecentFeedItem => ({
+          id: item.id,
+          type: item.type,
+          category: item.category,
+          amount: item.amount,
+          comment: item.comment,
+          owner_email: item.owner_email,
+          owner_user_id: item.owner_user_id,
+        }),
+      );
+    }
+    return (dashboard.data?.recent_transactions ?? []).map(
+      (item): RecentFeedItem => ({
+        id: item.id,
+        type: item.type,
+        category: item.category,
+        amount: item.amount,
+        comment: item.comment,
+      }),
+    );
+  }, [selectedFamilyId, familyTransactionsQuery.data?.transactions, dashboard.data?.recent_transactions]);
+
   const receivedIncome = dashboard.data?.balance.income ?? 0;
   const pendingIncome = dashboard.data?.forecast.planned_income ?? 0;
   const expectedIncomeTotal = receivedIncome + pendingIncome;
@@ -80,6 +140,7 @@ export function DashboardPage() {
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions", "dashboard"] }),
       ]);
     },
     onError: (error: Error) => {
@@ -293,20 +354,26 @@ export function DashboardPage() {
           </div>
           <div className="list">
             {visibleTransactions.map((item) => (
-              <article className="list-item" key={item.id}>
+              <article className="list-item" key={`${item.owner_user_id ?? "self"}-${item.id}`}>
                 <div>
                   <strong>{item.category}</strong>
                   <p>{item.comment || "Без комментария"}</p>
                 </div>
-                <div className={item.type === "income" ? "money plus" : "money minus"}>
-                  {formatMoney(item.amount)}
+                <div className="family-page-actions">
+                  {item.owner_email ? <span className="status-chip">{item.owner_email}</span> : null}
+                  <div className={item.type === "income" ? "money plus" : "money minus"}>
+                    {formatMoney(item.amount)}
+                  </div>
                 </div>
               </article>
             ))}
             {!visibleTransactions.length && (
               <p className="empty">
-                {dashboard.isError
-                  ? getQueryErrorMessage(dashboard.error, "Не удалось загрузить транзакции")
+                {(selectedFamilyId !== null ? familyTransactionsQuery.isError : dashboard.isError)
+                  ? getQueryErrorMessage(
+                      selectedFamilyId !== null ? familyTransactionsQuery.error : dashboard.error,
+                      "Не удалось загрузить транзакции",
+                    )
                   : "Пока нет исполненных транзакций за выбранный период."}
               </p>
             )}
