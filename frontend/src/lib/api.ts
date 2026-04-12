@@ -273,6 +273,29 @@ export type AccountActivityEvent = {
   created_at: string;
 };
 
+export type FamilyRole = "owner" | "admin" | "accountant" | "member" | "viewer";
+export type FamilyInviteRole = "admin" | "accountant" | "member" | "viewer";
+
+export type FamilyItem = {
+  id: number;
+  name: string;
+  role: FamilyRole;
+  status: string;
+  created_at: string;
+};
+
+export type FamilyMemberItem = {
+  user_id: number;
+  email: string;
+  role: FamilyRole;
+  status: string;
+  joined_at: string;
+};
+
+export type FamilyActionResponse = {
+  message: string;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -444,6 +467,56 @@ export function getAccountActivity(limit = 15) {
   const search = new URLSearchParams();
   search.set("limit", String(limit));
   return request<{ events: AccountActivityEvent[] }>(`/account/activity?${search.toString()}`);
+}
+
+export function getMyFamilies() {
+  return request<{ families: FamilyItem[] }>("/families/me");
+}
+
+export function createFamily(payload: { name: string }) {
+  return request<FamilyItem>("/families", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getFamilyMembers(familyId: number) {
+  return request<{ members: FamilyMemberItem[] }>(`/families/${familyId}/members`);
+}
+
+export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {
+  return request<{ message: string; family_id: number; email: string; role: FamilyInviteRole; expires_at: string; invite_token?: string }>(
+    `/families/${payload.family_id}/invites`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        email: payload.email,
+        role: payload.role,
+      }),
+    },
+  );
+}
+
+export function acceptFamilyInvite(payload: { token: string }) {
+  return request<{ message: string; family_id: number; family_name: string; role: FamilyRole }>("/families/invites/accept", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateFamilyMemberRole(payload: { family_id: number; user_id: number; role: FamilyInviteRole }) {
+  return request<FamilyActionResponse>(`/families/${payload.family_id}/members/${payload.user_id}/role`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      role: payload.role,
+    }),
+  });
+}
+
+export function removeFamilyMember(payload: { family_id: number; user_id: number }) {
+  return request<FamilyActionResponse>(`/families/${payload.family_id}/members/${payload.user_id}`, {
+    method: "DELETE",
+  });
 }
 
 export function getDashboard() {

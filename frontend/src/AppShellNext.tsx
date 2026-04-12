@@ -3,13 +3,20 @@ import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "reac
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  acceptFamilyInvite,
+  createFamily,
+  createFamilyInvite,
   getAccountBackupInfo,
   getAccountPreferences,
+  getFamilyMembers,
+  getMyFamilies,
   getMe,
   logout,
+  removeFamilyMember,
   resetAllAccountData,
   restoreAccountBackup,
   saveAccountBackup,
+  updateFamilyMemberRole,
   updateAccountPreferences,
 } from "./lib/api";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -21,6 +28,7 @@ import { TransactionsPageNext } from "./pages/TransactionsPageNext";
 
 type BusyAction = "" | "save" | "restore" | "reset" | "logout";
 type ConfirmAction = "logout" | "restore" | "reset" | null;
+type FamilyBusyAction = "" | "create" | "invite" | "join" | "member_update" | "member_remove";
 
 function formatBackupTimestamp(value: string): string {
   if (!value) {
@@ -50,6 +58,13 @@ export default function AppShellNext() {
   const [busyAction, setBusyAction] = useState<BusyAction>("");
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [resetConfirmText, setResetConfirmText] = useState("");
+  const [familyBusyAction, setFamilyBusyAction] = useState<FamilyBusyAction>("");
+  const [familyBusyUserId, setFamilyBusyUserId] = useState<number | null>(null);
+  const [familyName, setFamilyName] = useState("");
+  const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
+  const [inviteToken, setInviteToken] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "accountant" | "member" | "viewer">("member");
 
   const { data: currentUser } = useQuery({
     queryKey: ["auth", "me"],
@@ -66,6 +81,19 @@ export default function AppShellNext() {
   const backupInfoQuery = useQuery({
     queryKey: ["account", "backup"],
     queryFn: getAccountBackupInfo,
+    retry: false,
+  });
+
+  const familiesQuery = useQuery({
+    queryKey: ["families", "me"],
+    queryFn: getMyFamilies,
+    retry: false,
+  });
+
+  const familyMembersQuery = useQuery({
+    queryKey: ["families", selectedFamilyId, "members"],
+    queryFn: () => getFamilyMembers(selectedFamilyId as number),
+    enabled: selectedFamilyId !== null,
     retry: false,
   });
 
@@ -150,6 +178,20 @@ export default function AppShellNext() {
     setResetConfirmText("");
   }, [location.pathname]);
 
+  useEffect(() => {
+    const firstFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
+    if (selectedFamilyId === null && firstFamilyId !== null) {
+      setSelectedFamilyId(firstFamilyId);
+      return;
+    }
+    if (selectedFamilyId !== null) {
+      const exists = (familiesQuery.data?.families ?? []).some((item) => item.id === selectedFamilyId);
+      if (!exists) {
+        setSelectedFamilyId(firstFamilyId);
+      }
+    }
+  }, [familiesQuery.data?.families, selectedFamilyId]);
+
   async function onThemeChange(nextTheme: "light" | "dark" | "system") {
     setThemeMode(nextTheme);
     setAccountError("");
@@ -173,6 +215,134 @@ export default function AppShellNext() {
       setAccountError(error instanceof Error ? error.message : "Не удалось сохранить резервную копию.");
     } finally {
       setBusyAction("");
+    }
+  }
+
+  async function onCreateFamily() {
+    const trimmed = familyName.trim();
+    if (!trimmed) {
+      setAccountError("Введите название семьи.");
+      return;
+    }
+    setFamilyBusyAction("create");
+    setAccountError("");
+    setAccountMessage("");
+    try {
+      const created = await createFamily({ name: trimmed });
+      setFamilyName("");
+      setSelectedFamilyId(created.id);
+      setAccountMessage(`Семейный бюджет "${created.name}" создан.`);
+      await queryClient.invalidateQueries({ queryKey: ["families", "me"] });
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "Не удалось создать семейный бюджет.");
+    } finally {
+      setFamilyBusyAction("");
+    }
+  }
+
+  async function onInviteToFamily() {
+    if (selectedFamilyId === null) {
+      setAccountError("Сначала выберите семейный бюджет.");
+      return;
+    }
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      setAccountError("Введите email участника.");
+      return;
+    }
+    setFamilyBusyAction("invite");
+    setAccountError("");
+    setAccountMessage("");
+    try {
+      const response = await createFamilyInvite({
+        family_id: selectedFamilyId,
+        email,
+        role: inviteRole,
+      });
+      setInviteEmail("");
+      setAccountMessage(response.message);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["families", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
+      ]);
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "Не удалось отправить приглашение.");
+    } finally {
+      setFamilyBusyAction("");
+    }
+  }
+
+  async function onAcceptFamilyInvite() {
+    const token = inviteToken.trim();
+    if (!token) {
+      setAccountError("Введите токен приглашения.");
+      return;
+    }
+    setFamilyBusyAction("join");
+    setAccountError("");
+    setAccountMessage("");
+    try {
+      const response = await acceptFamilyInvite({ token });
+      setInviteToken("");
+      setAccountMessage(response.message);
+      setSelectedFamilyId(response.family_id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["families", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", response.family_id, "members"] }),
+      ]);
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "Не удалось подключиться к семейному бюджету.");
+    } finally {
+      setFamilyBusyAction("");
+    }
+  }
+
+  async function onUpdateMemberRole(memberUserId: number, role: "admin" | "accountant" | "member" | "viewer") {
+    if (selectedFamilyId === null) {
+      setAccountError("Сначала выберите семейный бюджет.");
+      return;
+    }
+    setFamilyBusyAction("member_update");
+    setFamilyBusyUserId(memberUserId);
+    setAccountError("");
+    setAccountMessage("");
+    try {
+      const response = await updateFamilyMemberRole({
+        family_id: selectedFamilyId,
+        user_id: memberUserId,
+        role,
+      });
+      setAccountMessage(response.message);
+      await queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] });
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "Не удалось обновить роль участника.");
+    } finally {
+      setFamilyBusyAction("");
+      setFamilyBusyUserId(null);
+    }
+  }
+
+  async function onRemoveMember(memberUserId: number) {
+    if (selectedFamilyId === null) {
+      setAccountError("Сначала выберите семейный бюджет.");
+      return;
+    }
+    setFamilyBusyAction("member_remove");
+    setFamilyBusyUserId(memberUserId);
+    setAccountError("");
+    setAccountMessage("");
+    try {
+      const response = await removeFamilyMember({
+        family_id: selectedFamilyId,
+        user_id: memberUserId,
+      });
+      setAccountMessage(response.message);
+      await queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] });
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : "Не удалось исключить участника.");
+    } finally {
+      setFamilyBusyAction("");
+      setFamilyBusyUserId(null);
     }
   }
 
@@ -265,6 +435,8 @@ export default function AppShellNext() {
   const userEmail = currentUser?.email ?? "";
   const displayName = userEmail ? userEmail.split("@")[0] : "Профиль";
   const initials = displayName.slice(0, 2).toUpperCase();
+  const selectedFamily = (familiesQuery.data?.families ?? []).find((item) => item.id === selectedFamilyId) ?? null;
+  const canManageFamilyMembers = selectedFamily?.role === "owner" || selectedFamily?.role === "admin";
 
   const confirmTitle = useMemo(() => {
     if (confirmAction === "logout") {
@@ -368,6 +540,138 @@ export default function AppShellNext() {
               <NavLink className="account-action" onClick={() => setIsAccountMenuOpen(false)} to="/security">
                 Настройки и безопасность
               </NavLink>
+            </div>
+
+            <div className="account-dropdown-section">
+              <p className="account-dropdown-title">Семейный бюджет</p>
+              <label className="account-field">
+                <span>Вступить по токену приглашения</span>
+                <input
+                  autoComplete="off"
+                  disabled={familyBusyAction !== ""}
+                  onChange={(event) => setInviteToken(event.target.value)}
+                  placeholder="Вставьте токен приглашения"
+                  value={inviteToken}
+                />
+              </label>
+              <button className="account-action" disabled={familyBusyAction !== ""} onClick={() => void onAcceptFamilyInvite()} type="button">
+                {familyBusyAction === "join" ? "Подключаем..." : "Подключиться к семье"}
+              </button>
+
+              {(familiesQuery.data?.families ?? []).length === 0 ? (
+                <>
+                  <label className="account-field">
+                    <span>Название семьи</span>
+                    <input
+                      disabled={familyBusyAction !== ""}
+                      maxLength={120}
+                      onChange={(event) => setFamilyName(event.target.value)}
+                      placeholder="Например, Семья Петровых"
+                      value={familyName}
+                    />
+                  </label>
+                  <button className="account-action" disabled={familyBusyAction !== ""} onClick={() => void onCreateFamily()} type="button">
+                    {familyBusyAction === "create" ? "Создаем..." : "Создать семейный бюджет"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <label className="account-field">
+                    <span>Выбранная семья</span>
+                    <select
+                      disabled={familyBusyAction !== ""}
+                      onChange={(event) => setSelectedFamilyId(Number(event.target.value))}
+                      value={selectedFamilyId ?? ""}
+                    >
+                      {(familiesQuery.data?.families ?? []).map((family) => (
+                        <option key={family.id} value={family.id}>
+                          {family.name} ({family.role})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="account-field">
+                    <span>Email участника</span>
+                    <input
+                      autoComplete="off"
+                      disabled={familyBusyAction !== "" || !canManageFamilyMembers}
+                      onChange={(event) => setInviteEmail(event.target.value)}
+                      placeholder="user@example.com"
+                      value={inviteEmail}
+                    />
+                  </label>
+                  <label className="account-field">
+                    <span>Роль</span>
+                    <select
+                      disabled={familyBusyAction !== "" || !canManageFamilyMembers}
+                      onChange={(event) => setInviteRole(event.target.value as "admin" | "accountant" | "member" | "viewer")}
+                      value={inviteRole}
+                    >
+                      <option value="member">Участник</option>
+                      <option value="viewer">Только просмотр</option>
+                      <option value="accountant">Бухгалтер</option>
+                      <option value="admin">Администратор</option>
+                    </select>
+                  </label>
+                  <button
+                    className="account-action"
+                    disabled={familyBusyAction !== "" || !canManageFamilyMembers}
+                    onClick={() => void onInviteToFamily()}
+                    type="button"
+                  >
+                    {familyBusyAction === "invite" ? "Отправляем..." : "Пригласить в семью"}
+                  </button>
+                  {selectedFamilyId !== null ? (
+                    <>
+                      <p className="account-meta">Участников: {(familyMembersQuery.data?.members ?? []).length}</p>
+                      {!canManageFamilyMembers ? <p className="account-meta">У вас роль только для участия без управления составом.</p> : null}
+                      <div className="family-members-list">
+                        {(familyMembersQuery.data?.members ?? []).map((member) => {
+                          const isSelf = member.user_id === currentUser?.id;
+                          const canManageThisMember =
+                            canManageFamilyMembers &&
+                            !isSelf &&
+                            member.role !== "owner" &&
+                            !(selectedFamily?.role === "admin" && member.role === "admin");
+                          return (
+                            <div className="family-member-item" key={member.user_id}>
+                              <div className="family-member-main">
+                                <strong>{member.email}</strong>
+                                <span>{member.role}</span>
+                              </div>
+                              <div className="family-member-controls">
+                                <select
+                                  disabled={!canManageThisMember || familyBusyAction !== ""}
+                                  onChange={(event) =>
+                                    void onUpdateMemberRole(
+                                      member.user_id,
+                                      event.target.value as "admin" | "accountant" | "member" | "viewer",
+                                    )
+                                  }
+                                  value={member.role === "owner" ? "member" : member.role}
+                                >
+                                  <option value="member">Участник</option>
+                                  <option value="viewer">Просмотр</option>
+                                  <option value="accountant">Бухгалтер</option>
+                                  <option value="admin">Админ</option>
+                                </select>
+                                <button
+                                  className="account-action danger"
+                                  disabled={!canManageThisMember || familyBusyAction !== ""}
+                                  onClick={() => void onRemoveMember(member.user_id)}
+                                  type="button"
+                                >
+                                  {familyBusyAction === "member_remove" && familyBusyUserId === member.user_id ? "Исключаем..." : "Исключить"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+                </>
+              )}
             </div>
 
             <div className="account-dropdown-section">

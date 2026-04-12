@@ -1498,6 +1498,85 @@ body {
   gap: 8px;
 }
 
+.account-field {
+  display: grid;
+  gap: 6px;
+}
+
+.account-field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.account-field input,
+.account-field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text);
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.account-field input::placeholder {
+  color: var(--muted);
+}
+
+.family-members-list {
+  display: grid;
+  gap: 8px;
+}
+
+.family-member-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.family-member-main {
+  display: grid;
+  gap: 2px;
+}
+
+.family-member-main strong {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.family-member-main span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.family-member-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.family-member-controls select {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.family-member-controls .account-action {
+  width: auto;
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 8px 10px;
+}
+
 .account-dropdown-title {
   margin: 0;
   color: var(--muted);
@@ -1639,6 +1718,22 @@ body {
 }
 
 [data-theme="dark"] .confirm-field input {
+  background: rgba(20, 28, 34, 0.9);
+  border-color: rgba(230, 237, 243, 0.2);
+}
+
+[data-theme="dark"] .account-field input,
+[data-theme="dark"] .account-field select {
+  background: rgba(20, 28, 34, 0.9);
+  border-color: rgba(230, 237, 243, 0.2);
+}
+
+[data-theme="dark"] .family-member-item {
+  background: rgba(20, 28, 34, 0.62);
+  border-color: rgba(230, 237, 243, 0.2);
+}
+
+[data-theme="dark"] .family-member-controls select {
   background: rgba(20, 28, 34, 0.9);
   border-color: rgba(230, 237, 243, 0.2);
 }

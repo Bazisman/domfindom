@@ -441,6 +441,87 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(second_transactions.status_code, 200)
         self.assertFalse(any(item["comment"] == "Only user A" for item in second_transactions.json()))
 
+    def test_family_budget_invite_accept_and_membership_flow(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья Ивановых"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"family-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": second_email,
+                "password": "AnotherPass123",
+            },
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+        invite_payload = invite_response.json()
+        self.assertIn("invite_token", invite_payload)
+        invite_token = str(invite_payload["invite_token"])
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite_token},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+        self.assertEqual(accept_response.json()["family_id"], family_id)
+
+        my_families_owner = self.client.get("/api/v1/families/me")
+        self.assertEqual(my_families_owner.status_code, 200)
+        self.assertTrue(any(item["id"] == family_id for item in my_families_owner.json()["families"]))
+
+        my_families_member = second_client.get("/api/v1/families/me")
+        self.assertEqual(my_families_member.status_code, 200)
+        self.assertTrue(any(item["id"] == family_id for item in my_families_member.json()["families"]))
+
+        members_response = self.client.get(f"/api/v1/families/{family_id}/members")
+        self.assertEqual(members_response.status_code, 200)
+        members = members_response.json()["members"]
+        members_by_email = {item["email"]: item for item in members}
+        self.assertIn(self._primary_email, members_by_email)
+        self.assertIn(second_email, members_by_email)
+        self.assertEqual(members_by_email[self._primary_email]["role"], "owner")
+        self.assertEqual(members_by_email[second_email]["role"], "member")
+
+        duplicate_invite = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(duplicate_invite.status_code, 409)
+
+        promote_to_accountant = self.client.patch(
+            f"/api/v1/families/{family_id}/members/{second_register.json()['user']['id']}/role",
+            json={"role": "accountant"},
+        )
+        self.assertEqual(promote_to_accountant.status_code, 200)
+
+        members_after_update = self.client.get(f"/api/v1/families/{family_id}/members")
+        self.assertEqual(members_after_update.status_code, 200)
+        members_after_update_by_email = {item["email"]: item for item in members_after_update.json()["members"]}
+        self.assertEqual(members_after_update_by_email[second_email]["role"], "accountant")
+
+        third_email = f"family-{uuid4().hex[:8]}@example.com"
+
+        non_admin_cannot_invite = second_client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": third_email, "role": "viewer"},
+        )
+        self.assertEqual(non_admin_cannot_invite.status_code, 403)
+
+        remove_member = self.client.delete(f"/api/v1/families/{family_id}/members/{second_register.json()['user']['id']}")
+        self.assertEqual(remove_member.status_code, 200)
+
+        second_after_remove = second_client.get(f"/api/v1/families/{family_id}/members")
+        self.assertEqual(second_after_remove.status_code, 404)
+        second_client.close()
+
     def test_dashboard_endpoint_returns_core_sections(self):
         response = self.client.get("/api/v1/dashboard")
         payload = response.json()

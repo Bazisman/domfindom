@@ -1,0 +1,68 @@
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
+
+FamilyRole = Literal["owner", "admin", "accountant", "member", "viewer"]
+InviteRole = Literal["admin", "accountant", "member", "viewer"]
+
+
+class FamilyCreatePayload(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+
+class FamilyItemResponse(BaseModel):
+    id: int
+    name: str
+    role: FamilyRole
+    status: str
+    created_at: str
+
+
+class FamilyListResponse(BaseModel):
+    families: List[FamilyItemResponse]
+
+
+class FamilyMemberItemResponse(BaseModel):
+    user_id: int
+    email: str
+    role: FamilyRole
+    status: str
+    joined_at: str
+
+
+class FamilyMemberListResponse(BaseModel):
+    members: List[FamilyMemberItemResponse]
+
+
+class FamilyInviteCreatePayload(BaseModel):
+    email: str = Field(min_length=5, max_length=255)
+    role: InviteRole = "member"
+
+
+class FamilyInviteCreateResponse(BaseModel):
+    message: str
+    family_id: int
+    email: str
+    role: InviteRole
+    expires_at: str
+    invite_token: Optional[str] = None
+
+
+class FamilyInviteAcceptPayload(BaseModel):
+    token: str = Field(min_length=16, max_length=512)
+
+
+class FamilyInviteAcceptResponse(BaseModel):
+    message: str
+    family_id: int
+    family_name: str
+    role: FamilyRole
+
+
+class FamilyMemberRoleUpdatePayload(BaseModel):
+    role: InviteRole
+
+
+class FamilyActionResponse(BaseModel):
+    message: str

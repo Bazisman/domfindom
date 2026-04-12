@@ -155,6 +155,61 @@ class AuthService:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS families (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    owner_user_id INTEGER NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    archived_at TEXT,
+                    FOREIGN KEY (owner_user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_families_owner ON families(owner_user_id)")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_memberships (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    invited_by_user_id INTEGER,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (invited_by_user_id) REFERENCES users(id),
+                    UNIQUE(family_id, user_id)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_memberships_family ON family_memberships(family_id, status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_memberships_user ON family_memberships(user_id, status)")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_invites (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    email TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    invited_by_user_id INTEGER NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    accepted_at TEXT,
+                    revoked_at TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (invited_by_user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_invites_family ON family_invites(family_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_invites_email ON family_invites(email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_invites_expires ON family_invites(expires_at)")
             conn.commit()
         self.cleanup_expired_sessions()
 
@@ -666,6 +721,306 @@ class AuthService:
             )
             conn.commit()
         return {"theme_mode": normalized_theme}
+
+    def create_family(self, owner_user_id: int, name: str) -> Dict[str, object]:
+        clean_name = (name or "").strip()
+        if len(clean_name) < 2:
+            raise ValueError("Family name is too short")
+
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO families (name, owner_user_id, created_at, updated_at)
+                VALUES (?, ?, datetime('now'), datetime('now'))
+                """,
+                (clean_name, owner_user_id),
+            )
+            family_id = int(cursor.lastrowid)
+            cursor.execute(
+                """
+                INSERT INTO family_memberships (family_id, user_id, role, status, created_at, updated_at)
+                VALUES (?, ?, 'owner', 'active', datetime('now'), datetime('now'))
+                """,
+                (family_id, owner_user_id),
+            )
+            conn.commit()
+
+        return {
+            "id": family_id,
+            "name": clean_name,
+            "role": "owner",
+            "status": "active",
+            "created_at": _format_utc(_utcnow()),
+        }
+
+    def list_user_families(self, user_id: int) -> List[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT f.id, f.name, fm.role, fm.status, f.created_at
+                FROM family_memberships fm
+                JOIN families f ON f.id = fm.family_id
+                WHERE fm.user_id = ?
+                  AND fm.status = 'active'
+                  AND f.archived_at IS NULL
+                ORDER BY f.created_at DESC, f.id DESC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": str(row["name"] or ""),
+                "role": str(row["role"] or "member"),
+                "status": str(row["status"] or "active"),
+                "created_at": str(row["created_at"] or ""),
+            }
+            for row in rows
+        ]
+
+    def get_family_membership(self, family_id: int, user_id: int) -> Optional[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fm.family_id, fm.user_id, fm.role, fm.status, fm.created_at, f.name
+                FROM family_memberships fm
+                JOIN families f ON f.id = fm.family_id
+                WHERE fm.family_id = ?
+                  AND fm.user_id = ?
+                  AND fm.status = 'active'
+                  AND f.archived_at IS NULL
+                LIMIT 1
+                """,
+                (family_id, user_id),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "family_id": int(row["family_id"]),
+            "user_id": int(row["user_id"]),
+            "role": str(row["role"] or "member"),
+            "status": str(row["status"] or "active"),
+            "joined_at": str(row["created_at"] or ""),
+            "family_name": str(row["name"] or ""),
+        }
+
+    def list_family_members(self, family_id: int) -> List[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fm.user_id, u.email, fm.role, fm.status, fm.created_at
+                FROM family_memberships fm
+                JOIN users u ON u.id = fm.user_id
+                WHERE fm.family_id = ?
+                  AND fm.status = 'active'
+                ORDER BY
+                  CASE fm.role
+                    WHEN 'owner' THEN 1
+                    WHEN 'admin' THEN 2
+                    WHEN 'accountant' THEN 3
+                    WHEN 'member' THEN 4
+                    ELSE 5
+                  END,
+                  fm.created_at ASC
+                """,
+                (family_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "user_id": int(row["user_id"]),
+                "email": str(row["email"] or ""),
+                "role": str(row["role"] or "member"),
+                "status": str(row["status"] or "active"),
+                "joined_at": str(row["created_at"] or ""),
+            }
+            for row in rows
+        ]
+
+    def update_family_member_role(self, family_id: int, user_id: int, role: str) -> bool:
+        normalized_role = role if role in {"admin", "accountant", "member", "viewer"} else "member"
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT role
+                FROM family_memberships
+                WHERE family_id = ?
+                  AND user_id = ?
+                  AND status = 'active'
+                LIMIT 1
+                """,
+                (family_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            if str(row["role"] or "") == "owner":
+                raise ValueError("owner_role_locked")
+            cursor.execute(
+                """
+                UPDATE family_memberships
+                SET role = ?, updated_at = datetime('now')
+                WHERE family_id = ?
+                  AND user_id = ?
+                  AND status = 'active'
+                """,
+                (normalized_role, family_id, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def remove_family_member(self, family_id: int, user_id: int) -> bool:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT role
+                FROM family_memberships
+                WHERE family_id = ?
+                  AND user_id = ?
+                  AND status = 'active'
+                LIMIT 1
+                """,
+                (family_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            if str(row["role"] or "") == "owner":
+                raise ValueError("owner_cannot_be_removed")
+            cursor.execute(
+                """
+                UPDATE family_memberships
+                SET status = 'revoked', updated_at = datetime('now')
+                WHERE family_id = ?
+                  AND user_id = ?
+                  AND status = 'active'
+                """,
+                (family_id, user_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def create_family_invite(
+        self,
+        family_id: int,
+        invited_by_user_id: int,
+        email: str,
+        role: str = "member",
+    ) -> Dict[str, str]:
+        normalized_email = self._normalize_email(email)
+        invite_role = role if role in {"admin", "accountant", "member", "viewer"} else "member"
+
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id
+                FROM family_memberships
+                WHERE family_id = ?
+                  AND user_id = (SELECT id FROM users WHERE email = ? LIMIT 1)
+                  AND status = 'active'
+                LIMIT 1
+                """,
+                (family_id, normalized_email),
+            )
+            existing_member = cursor.fetchone()
+            if existing_member:
+                raise ValueError("user_already_member")
+
+            cursor.execute(
+                """
+                UPDATE family_invites
+                SET revoked_at = datetime('now')
+                WHERE family_id = ?
+                  AND email = ?
+                  AND accepted_at IS NULL
+                  AND revoked_at IS NULL
+                  AND expires_at >= datetime('now')
+                """,
+                (family_id, normalized_email),
+            )
+
+            raw_token = secrets.token_urlsafe(36)
+            token_hash = self._token_hash(raw_token)
+            expires_at = _format_utc(_utcnow() + timedelta(hours=72))
+            cursor.execute(
+                """
+                INSERT INTO family_invites (family_id, email, role, token_hash, invited_by_user_id, expires_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (family_id, normalized_email, invite_role, token_hash, invited_by_user_id, expires_at),
+            )
+            conn.commit()
+
+        return {"token": raw_token, "expires_at": expires_at}
+
+    def accept_family_invite(self, token: str, user_id: int) -> Optional[Dict[str, object]]:
+        token_hash = self._token_hash(token)
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return None
+        user_email = str(user["email"] or "").lower()
+
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fi.id, fi.family_id, fi.email, fi.role, fi.expires_at, fi.accepted_at, fi.revoked_at, f.name
+                FROM family_invites fi
+                JOIN families f ON f.id = fi.family_id
+                WHERE fi.token_hash = ?
+                LIMIT 1
+                """,
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            if row["accepted_at"] or row["revoked_at"]:
+                return None
+            if _parse_utc(str(row["expires_at"])) < _utcnow():
+                return None
+            if str(row["email"] or "").lower() != user_email:
+                return None
+
+            family_id = int(row["family_id"])
+            role = str(row["role"] or "member")
+            family_name = str(row["name"] or "")
+
+            cursor.execute(
+                """
+                INSERT INTO family_memberships (family_id, user_id, role, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'active', datetime('now'), datetime('now'))
+                ON CONFLICT(family_id, user_id) DO UPDATE SET
+                    role = excluded.role,
+                    status = 'active',
+                    updated_at = datetime('now')
+                """,
+                (family_id, user_id, role),
+            )
+            cursor.execute(
+                """
+                UPDATE family_invites
+                SET accepted_at = datetime('now')
+                WHERE id = ?
+                """,
+                (int(row["id"]),),
+            )
+            conn.commit()
+
+        return {
+            "family_id": family_id,
+            "family_name": family_name,
+            "role": role,
+        }
 
     def _drop_all_user_tables(self) -> None:
         with core.get_connection() as conn:
