@@ -303,6 +303,66 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/auth/me").status_code, 200)
         second_client.close()
 
+    def test_account_preferences_can_be_read_and_updated(self):
+        initial = self.client.get("/api/v1/account/preferences")
+        self.assertEqual(initial.status_code, 200)
+        self.assertEqual(initial.json()["theme_mode"], "system")
+
+        updated = self.client.put("/api/v1/account/preferences", json={"theme_mode": "dark"})
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()["theme_mode"], "dark")
+
+        fetched = self.client.get("/api/v1/account/preferences")
+        self.assertEqual(fetched.status_code, 200)
+        self.assertEqual(fetched.json()["theme_mode"], "dark")
+
+    def test_backup_restore_and_reset_all_flow(self):
+        created = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": "РџСЂРѕРґСѓРєС‚С‹",
+                "amount": 111.0,
+                "comment": "before backup",
+                "date": "2026-04-08",
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+
+        saved = self.client.post("/api/v1/account/backup/save")
+        self.assertEqual(saved.status_code, 200)
+
+        created_after = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": "РџСЂРѕРґСѓРєС‚С‹",
+                "amount": 222.0,
+                "comment": "after backup",
+                "date": "2026-04-09",
+            },
+        )
+        self.assertEqual(created_after.status_code, 201)
+
+        restored = self.client.post("/api/v1/account/backup/restore")
+        self.assertEqual(restored.status_code, 200)
+
+        transactions_after_restore = self.client.get("/api/v1/transactions?limit=100&period=all")
+        self.assertEqual(transactions_after_restore.status_code, 200)
+        comments = [item.get("comment") for item in transactions_after_restore.json()]
+        self.assertIn("before backup", comments)
+        self.assertNotIn("after backup", comments)
+
+        invalid_reset = self.client.post("/api/v1/account/reset-all", json={"confirm_text": "NOPE"})
+        self.assertEqual(invalid_reset.status_code, 422)
+
+        valid_reset = self.client.post("/api/v1/account/reset-all", json={"confirm_text": "СБРОС"})
+        self.assertEqual(valid_reset.status_code, 200)
+
+        transactions_after_reset = self.client.get("/api/v1/transactions?limit=100&period=all")
+        self.assertEqual(transactions_after_reset.status_code, 200)
+        self.assertEqual(transactions_after_reset.json(), [])
+
     def test_csrf_blocks_state_changes_without_header_when_enabled(self):
         settings.csrf_protection_enabled = True
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]

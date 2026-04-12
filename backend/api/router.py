@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from backend.auth.dependencies import require_user
-from backend.api.routes import accounts, budgets, categories, dashboard, forecast, health, recurring, settings, transactions, transfers
+from backend.api.routes import account, accounts, budgets, categories, dashboard, forecast, health, recurring, settings, transactions, transfers
 from backend.api.routes import auth
 
 
@@ -17,3 +17,4 @@ api_router.include_router(budgets.router, prefix="/budgets", tags=["budgets"], d
 api_router.include_router(forecast.router, prefix="/forecast", tags=["forecast"], dependencies=[Depends(require_user)])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"], dependencies=[Depends(require_user)])
 api_router.include_router(recurring.router, prefix="/recurring-templates", tags=["recurring"], dependencies=[Depends(require_user)])
+api_router.include_router(account.router, prefix="/account", tags=["account"], dependencies=[Depends(require_user)])

@@ -253,6 +253,17 @@ export type UserSession = {
   is_current: boolean;
 };
 
+export type AccountPreferences = {
+  theme_mode: "light" | "dark" | "system";
+};
+
+export type AccountBackupInfo = {
+  has_backup: boolean;
+  created_at: string;
+  updated_at: string;
+  checksum: string;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -378,6 +389,43 @@ export function revokeOtherSessions() {
 export function revokeSessionById(sessionId: number) {
   return request<{ revoked_count: number; message: string }>(`/auth/sessions/${sessionId}`, {
     method: "DELETE",
+  });
+}
+
+export function getAccountPreferences() {
+  return request<AccountPreferences>("/account/preferences");
+}
+
+export function updateAccountPreferences(payload: AccountPreferences) {
+  return request<AccountPreferences>("/account/preferences", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAccountBackupInfo() {
+  return request<AccountBackupInfo>("/account/backup");
+}
+
+export function saveAccountBackup() {
+  return request<{ message: string; created_at: string; updated_at: string; checksum: string }>(
+    "/account/backup/save",
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function restoreAccountBackup() {
+  return request<{ message: string }>("/account/backup/restore", {
+    method: "POST",
+  });
+}
+
+export function resetAllAccountData(payload: { confirm_text: string }) {
+  return request<{ message: string }>("/account/reset-all", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

@@ -4,6 +4,7 @@ import hmac
 import os
 import secrets
 import sqlite3
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -130,6 +131,28 @@ class AuthService:
                 """
                 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at
                 ON password_reset_tokens(expires_at)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    user_id INTEGER PRIMARY KEY,
+                    theme_mode TEXT NOT NULL DEFAULT 'system',
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_backup_slot (
+                    user_id INTEGER PRIMARY KEY,
+                    backup_blob TEXT NOT NULL,
+                    checksum TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
                 """
             )
             conn.commit()
@@ -575,6 +598,175 @@ class AuthService:
         finally:
             core.pop_db_name(token)
         return db_path
+
+    def get_user_preferences(self, user_id: int) -> Dict[str, str]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT theme_mode
+                FROM user_preferences
+                WHERE user_id = ?
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return {"theme_mode": "system"}
+        theme_mode = str(row["theme_mode"] or "system")
+        if theme_mode not in {"light", "dark", "system"}:
+            theme_mode = "system"
+        return {"theme_mode": theme_mode}
+
+    def update_user_preferences(self, user_id: int, theme_mode: str) -> Dict[str, str]:
+        normalized_theme = theme_mode if theme_mode in {"light", "dark", "system"} else "system"
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO user_preferences (user_id, theme_mode, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(user_id) DO UPDATE SET
+                    theme_mode = excluded.theme_mode,
+                    updated_at = datetime('now')
+                """,
+                (user_id, normalized_theme),
+            )
+            conn.commit()
+        return {"theme_mode": normalized_theme}
+
+    def _drop_all_user_tables(self) -> None:
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            cursor.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                """
+            )
+            table_names = [str(row["name"]) for row in cursor.fetchall()]
+            for table_name in table_names:
+                safe_name = table_name.replace('"', '""')
+                cursor.execute(f'DROP TABLE IF EXISTS "{safe_name}"')
+            cursor.execute("PRAGMA foreign_keys = ON")
+            conn.commit()
+
+    def _dump_current_user_db_sql(self, user_id: int) -> str:
+        db_path = self.ensure_user_finance_db(user_id)
+        token = core.push_db_name(db_path)
+        try:
+            with core.get_connection() as conn:
+                dump_lines = list(conn.iterdump())
+            return "\n".join(dump_lines)
+        finally:
+            core.pop_db_name(token)
+
+    def save_user_backup_slot(self, user_id: int) -> Dict[str, str]:
+        dump_sql = self._dump_current_user_db_sql(user_id)
+        compressed = zlib.compress(dump_sql.encode("utf-8"), level=9)
+        backup_blob = base64.b64encode(compressed).decode("ascii")
+        checksum = hashlib.sha256(dump_sql.encode("utf-8")).hexdigest()
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO user_backup_slot (user_id, backup_blob, checksum, created_at, updated_at)
+                VALUES (?, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(user_id) DO UPDATE SET
+                    backup_blob = excluded.backup_blob,
+                    checksum = excluded.checksum,
+                    updated_at = datetime('now')
+                """,
+                (user_id, backup_blob, checksum),
+            )
+            conn.commit()
+            cursor.execute(
+                """
+                SELECT created_at, updated_at, checksum
+                FROM user_backup_slot
+                WHERE user_id = ?
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        return {
+            "created_at": str(row["created_at"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+            "checksum": str(row["checksum"] or ""),
+        }
+
+    def get_user_backup_slot_info(self, user_id: int) -> Dict[str, object]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT created_at, updated_at, checksum
+                FROM user_backup_slot
+                WHERE user_id = ?
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return {"has_backup": False, "created_at": "", "updated_at": "", "checksum": ""}
+        return {
+            "has_backup": True,
+            "created_at": str(row["created_at"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+            "checksum": str(row["checksum"] or ""),
+        }
+
+    def restore_user_backup_slot(self, user_id: int) -> bool:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT backup_blob, checksum
+                FROM user_backup_slot
+                WHERE user_id = ?
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return False
+        try:
+            compressed = base64.b64decode(str(row["backup_blob"]).encode("ascii"))
+            dump_sql = zlib.decompress(compressed).decode("utf-8")
+        except Exception:
+            return False
+        checksum = hashlib.sha256(dump_sql.encode("utf-8")).hexdigest()
+        if checksum != str(row["checksum"]):
+            return False
+
+        db_path = self.ensure_user_finance_db(user_id)
+        token = core.push_db_name(db_path)
+        try:
+            self._drop_all_user_tables()
+            with core.get_connection() as conn:
+                conn.executescript(dump_sql)
+                conn.commit()
+            core.init_db()
+            core._invalidate_cache()
+        finally:
+            core.pop_db_name(token)
+        return True
+
+    def reset_user_finance_data(self, user_id: int) -> None:
+        db_path = self.ensure_user_finance_db(user_id)
+        token = core.push_db_name(db_path)
+        try:
+            self._drop_all_user_tables()
+            core.init_db()
+            core._invalidate_cache()
+        finally:
+            core.pop_db_name(token)
 
 
 auth_service = AuthService(
