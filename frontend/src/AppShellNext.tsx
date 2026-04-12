@@ -434,7 +434,7 @@ export default function AppShellNext() {
           <button
             aria-expanded={isNotificationsOpen}
             aria-haspopup="menu"
-            className="notification-trigger"
+            className={`notification-trigger${isNotificationsOpen ? " open" : ""}${hasPendingInvites ? " has-unread" : ""}`}
             onClick={() => {
               setIsNotificationsOpen((prev) => !prev);
               setIsAccountMenuOpen(false);
@@ -442,7 +442,18 @@ export default function AppShellNext() {
             title="Уведомления"
             type="button"
           >
-            <span className="notification-icon">🔔</span>
+            <span className="notification-icon" aria-hidden="true">
+              <svg fill="none" height="18" viewBox="0 0 24 24" width="18">
+                <path
+                  d="M6 9.5a6 6 0 1 1 12 0v4.2l1.4 2.5a1 1 0 0 1-.88 1.5H5.48a1 1 0 0 1-.88-1.5L6 13.7V9.5Z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+                <path d="M9.5 18.5a2.5 2.5 0 0 0 5 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+              </svg>
+            </span>
             {hasPendingInvites ? <span className="notification-badge">{pendingInvites.length}</span> : null}
           </button>
 
