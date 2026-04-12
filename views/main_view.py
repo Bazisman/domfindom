@@ -1,4 +1,4 @@
-﻿# views/main_view.py
+# views/main_view.py
 import customtkinter as ctk
 from views.transactions_view import TransactionsView
 from views.reports_view import ReportsView

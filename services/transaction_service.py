@@ -1,4 +1,4 @@
-﻿# services/transaction_service.py
+# services/transaction_service.py
 import core
 from models import Transaction, Balance, Transfer
 from typing import List, Optional, Callable, Any
