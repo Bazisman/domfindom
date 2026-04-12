@@ -375,6 +375,13 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(transactions_after_reset.status_code, 200)
         self.assertEqual(transactions_after_reset.json(), [])
 
+        activity = self.client.get("/api/v1/account/activity?limit=20")
+        self.assertEqual(activity.status_code, 200)
+        events = activity.json()["events"]
+        self.assertTrue(any(item["event_type"] == "backup_save" and item["status"] == "success" for item in events))
+        self.assertTrue(any(item["event_type"] == "backup_restore" and item["status"] == "success" for item in events))
+        self.assertTrue(any(item["event_type"] == "reset_all_data" and item["status"] == "success" for item in events))
+
     def test_csrf_blocks_state_changes_without_header_when_enabled(self):
         settings.csrf_protection_enabled = True
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]

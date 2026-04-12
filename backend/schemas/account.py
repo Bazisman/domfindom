@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import List, Literal
 
 from pydantic import BaseModel
 
@@ -38,3 +38,16 @@ class ResetAllPayload(BaseModel):
 
 class ResetAllResponse(BaseModel):
     message: str
+
+
+class AccountActivityItemResponse(BaseModel):
+    event_type: str
+    status: str
+    detail: str
+    ip: str
+    user_agent: str
+    created_at: str
+
+
+class AccountActivityResponse(BaseModel):
+    events: List[AccountActivityItemResponse]

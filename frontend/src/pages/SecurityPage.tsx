@@ -2,7 +2,13 @@ import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { changePassword, getActiveSessions, revokeOtherSessions, revokeSessionById } from "../lib/api";
+import {
+  changePassword,
+  getAccountActivity,
+  getActiveSessions,
+  revokeOtherSessions,
+  revokeSessionById,
+} from "../lib/api";
 
 export function SecurityPage() {
   const navigate = useNavigate();
@@ -17,6 +23,11 @@ export function SecurityPage() {
   const sessionsQuery = useQuery({
     queryKey: ["auth", "sessions"],
     queryFn: getActiveSessions,
+    refetchInterval: 30_000,
+  });
+  const activityQuery = useQuery({
+    queryKey: ["auth", "activity"],
+    queryFn: () => getAccountActivity(25),
     refetchInterval: 30_000,
   });
 
@@ -74,6 +85,28 @@ export function SecurityPage() {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(parsed);
+  }
+
+  function formatEventType(type: string) {
+    const labels: Record<string, string> = {
+      register: "Регистрация",
+      login: "Вход",
+      logout: "Выход",
+      change_password: "Смена пароля",
+      password_reset_request: "Запрос сброса пароля",
+      password_reset_confirm: "Подтверждение сброса пароля",
+      backup_save: "Сохранение резервной копии",
+      backup_restore: "Восстановление из резервной копии",
+      reset_all_data: "Сброс всех данных",
+    };
+    return labels[type] ?? type;
+  }
+
+  function formatEventStatus(status: string) {
+    if (status === "success") return "Успешно";
+    if (status === "fail") return "Ошибка";
+    if (status === "blocked") return "Заблокировано";
+    return status;
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -191,6 +224,40 @@ export function SecurityPage() {
               </article>
             ))}
             {sessions.length === 0 ? <p className="muted">Активных сессий не найдено.</p> : null}
+          </div>
+        )}
+      </section>
+
+      <section className="panel panel-wide">
+        <div className="panel-header">
+          <h3>Журнал действий</h3>
+          <span>Последние события безопасности и данных</span>
+        </div>
+
+        {activityQuery.isLoading ? <p className="muted">Загружаем журнал...</p> : null}
+        {activityQuery.isError ? <p className="form-error">Не удалось загрузить журнал действий.</p> : null}
+
+        {!activityQuery.isLoading && !activityQuery.isError && (
+          <div className="list">
+            {(activityQuery.data?.events ?? []).map((event, index) => (
+              <article className="list-item" key={`${event.created_at}-${event.event_type}-${index}`}>
+                <div>
+                  <strong>{formatEventType(event.event_type)}</strong>
+                  <p>
+                    Статус:{" "}
+                    <span className={event.status === "success" ? "money plus" : "money minus"}>
+                      {formatEventStatus(event.status)}
+                    </span>
+                  </p>
+                  <p>Время: {formatDate(event.created_at)}</p>
+                  <p>IP: {event.ip || "неизвестно"}</p>
+                  {event.detail ? <p>Детали: {event.detail}</p> : null}
+                </div>
+              </article>
+            ))}
+            {(activityQuery.data?.events ?? []).length === 0 ? (
+              <p className="muted">Событий пока нет.</p>
+            ) : null}
           </div>
         )}
       </section>

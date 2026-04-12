@@ -582,6 +582,34 @@ class AuthService:
             )
             conn.commit()
 
+    def list_user_auth_events(self, user_id: int, limit: int = 20) -> List[Dict[str, str]]:
+        safe_limit = max(1, min(limit, 100))
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT event_type, status, detail, ip, user_agent, created_at
+                FROM auth_events
+                WHERE user_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (user_id, safe_limit),
+            )
+            rows = cursor.fetchall()
+
+        return [
+            {
+                "event_type": str(row["event_type"] or ""),
+                "status": str(row["status"] or ""),
+                "detail": str(row["detail"] or ""),
+                "ip": str(row["ip"] or ""),
+                "user_agent": str(row["user_agent"] or ""),
+                "created_at": str(row["created_at"] or ""),
+            }
+            for row in rows
+        ]
+
     def get_user_db_path(self, user_id: int) -> str:
         base_dir = Path(self.users_data_dir)
         return str((base_dir / str(user_id) / "finance.db").resolve())

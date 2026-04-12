@@ -264,6 +264,15 @@ export type AccountBackupInfo = {
   checksum: string;
 };
 
+export type AccountActivityEvent = {
+  event_type: string;
+  status: "success" | "fail" | "blocked" | string;
+  detail: string;
+  ip: string;
+  user_agent: string;
+  created_at: string;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -427,6 +436,12 @@ export function resetAllAccountData(payload: { confirm_text: string }) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getAccountActivity(limit = 20) {
+  const search = new URLSearchParams();
+  search.set("limit", String(limit));
+  return request<{ events: AccountActivityEvent[] }>(`/account/activity?${search.toString()}`);
 }
 
 export function getDashboard() {
