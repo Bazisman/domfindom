@@ -68,7 +68,7 @@ def save_backup(request: Request, current_user=Depends(require_user)) -> BackupS
         ip=client_ip,
         user_agent=client_agent,
     )
-    return BackupSaveResponse(message="Р В Р ВµР В·Р ВµРЎР‚Р Р†Р Р…Р В°РЎРЏ Р С”Р С•Р С—Р С‘РЎРЏ РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р ВµР Р…Р В°.", **result)
+    return BackupSaveResponse(message="Резервная копия сохранена.", **result)
 
 
 @router.post("/backup/restore", response_model=BackupRestoreResponse)
@@ -91,7 +91,7 @@ def restore_backup(request: Request, current_user=Depends(require_user)) -> Back
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р Т‘Р В°Р Р…Р Р…РЎвЂ№Р Вµ. Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚РЎРЉРЎвЂљР Вµ Р Р…Р В°Р В»Р С‘РЎвЂЎР С‘Р Вµ РЎР‚Р ВµР В·Р ВµРЎР‚Р Р†Р Р…Р С•Р в„– Р С”Р С•Р С—Р С‘Р С‘.",
+            detail="Не удалось восстановить данные. Проверьте наличие резервной копии.",
         )
 
     auth_service.log_auth_event(
@@ -102,16 +102,16 @@ def restore_backup(request: Request, current_user=Depends(require_user)) -> Back
         ip=client_ip,
         user_agent=client_agent,
     )
-    return BackupRestoreResponse(message="Р вЂќР В°Р Р…Р Р…РЎвЂ№Р Вµ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…РЎвЂ№ Р С‘Р В· РЎР‚Р ВµР В·Р ВµРЎР‚Р Р†Р Р…Р С•Р в„– Р С”Р С•Р С—Р С‘Р С‘.")
+    return BackupRestoreResponse(message="Данные восстановлены из резервной копии.")
 
 
 @router.post("/reset-all", response_model=ResetAllResponse)
 def reset_all(payload: ResetAllPayload, request: Request, current_user=Depends(require_user)) -> ResetAllResponse:
     confirm_token = payload.confirm_text.strip().upper()
-    if confirm_token not in {"СБРОС", "РЎР‘Р РћРЎ"}:
+    if confirm_token != "СБРОС":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Р вЂ™Р Р†Р ВµР Т‘Р С‘РЎвЂљР Вµ РЎРѓР В»Р С•Р Р†Р С• Р РЋР вЂР В Р С›Р РЋ Р Т‘Р В»РЎРЏ Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘РЎРЏ.",
+            detail="Введите слово СБРОС для подтверждения.",
         )
 
     user_id = int(current_user["id"])
@@ -128,4 +128,4 @@ def reset_all(payload: ResetAllPayload, request: Request, current_user=Depends(r
         ip=client_ip,
         user_agent=client_agent,
     )
-    return ResetAllResponse(message="Р вЂќР В°Р Р…Р Р…РЎвЂ№Р Вµ Р С•РЎвЂЎР С‘РЎвЂ°Р ВµР Р…РЎвЂ№. Р СљР С•Р В¶Р Р…Р С• Р Р…Р В°РЎвЂЎР В°РЎвЂљРЎРЉ Р В·Р В°Р Р…Р С•Р Р†Р С•.")
+    return ResetAllResponse(message="Данные очищены. Можно начать заново.")
