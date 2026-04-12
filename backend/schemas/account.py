@@ -1,17 +1,20 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
 
 ThemeMode = Literal["light", "dark", "system"]
+WorkspaceMode = Literal["personal", "family"]
 
 
 class AccountPreferencesResponse(BaseModel):
     theme_mode: ThemeMode
+    workspace_mode: WorkspaceMode
 
 
 class AccountPreferencesUpdatePayload(BaseModel):
-    theme_mode: ThemeMode
+    theme_mode: Optional[ThemeMode] = None
+    workspace_mode: Optional[WorkspaceMode] = None
 
 
 class BackupSlotInfoResponse(BaseModel):

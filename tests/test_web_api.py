@@ -522,6 +522,64 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(second_after_remove.status_code, 404)
         second_client.close()
 
+    def test_family_pending_invites_accept_and_decline(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья Тест"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"pending-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+        self.assertEqual(second_client.post("/api/v1/auth/logout").status_code, 200)
+        self.assertEqual(
+            second_client.post("/api/v1/auth/login", json={"email": second_email, "password": "AnotherPass123"}).status_code,
+            200,
+        )
+
+        invite = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "viewer"},
+        )
+        self.assertEqual(invite.status_code, 200)
+
+        pending = second_client.get("/api/v1/families/invites/pending")
+        self.assertEqual(pending.status_code, 200)
+        invites = pending.json()["invites"]
+        self.assertGreaterEqual(len(invites), 1)
+        invite_id = int(invites[0]["invite_id"])
+
+        accept = second_client.post(f"/api/v1/families/invites/{invite_id}/accept")
+        self.assertEqual(accept.status_code, 200)
+        self.assertEqual(int(accept.json()["family_id"]), family_id)
+
+        third_client = TestClient(app)
+        third_email = f"pending-{uuid4().hex[:8]}@example.com"
+        third_register = third_client.post(
+            "/api/v1/auth/register",
+            json={"email": third_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(third_register.status_code, 201)
+        decline_invite = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": third_email, "role": "member"},
+        )
+        self.assertEqual(decline_invite.status_code, 200)
+        pending_third = third_client.get("/api/v1/families/invites/pending")
+        self.assertEqual(pending_third.status_code, 200)
+        third_invite_id = int(pending_third.json()["invites"][0]["invite_id"])
+        decline = third_client.post(f"/api/v1/families/invites/{third_invite_id}/decline")
+        self.assertEqual(decline.status_code, 200)
+        pending_third_after = third_client.get("/api/v1/families/invites/pending")
+        self.assertEqual(pending_third_after.status_code, 200)
+        self.assertEqual(len(pending_third_after.json()["invites"]), 0)
+
+        second_client.close()
+        third_client.close()
+
     def test_dashboard_endpoint_returns_core_sections(self):
         response = self.client.get("/api/v1/dashboard")
         payload = response.json()

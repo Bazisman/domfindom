@@ -66,3 +66,17 @@ class FamilyMemberRoleUpdatePayload(BaseModel):
 
 class FamilyActionResponse(BaseModel):
     message: str
+
+
+class FamilyPendingInviteItemResponse(BaseModel):
+    invite_id: int
+    family_id: int
+    family_name: str
+    role: InviteRole
+    invited_by_email: str
+    expires_at: str
+    created_at: str
+
+
+class FamilyPendingInviteListResponse(BaseModel):
+    invites: List[FamilyPendingInviteItemResponse]

@@ -29,7 +29,11 @@ def update_preferences(
     payload: AccountPreferencesUpdatePayload,
     current_user=Depends(require_user),
 ) -> AccountPreferencesResponse:
-    result = auth_service.update_user_preferences(int(current_user["id"]), payload.theme_mode)
+    result = auth_service.update_user_preferences(
+        int(current_user["id"]),
+        payload.theme_mode or "",
+        payload.workspace_mode or "",
+    )
     return AccountPreferencesResponse(**result)
 
 

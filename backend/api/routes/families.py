@@ -14,6 +14,8 @@ from backend.schemas.families import (
     FamilyMemberItemResponse,
     FamilyMemberListResponse,
     FamilyMemberRoleUpdatePayload,
+    FamilyPendingInviteItemResponse,
+    FamilyPendingInviteListResponse,
 )
 
 
@@ -130,6 +132,37 @@ def accept_family_invite(payload: FamilyInviteAcceptPayload, current_user=Depend
         family_name=str(accepted["family_name"]),
         role=str(accepted["role"]),
     )
+
+
+@router.get("/invites/pending", response_model=FamilyPendingInviteListResponse)
+def list_pending_family_invites(current_user=Depends(require_user)) -> FamilyPendingInviteListResponse:
+    invites = auth_service.list_pending_family_invites(int(current_user["id"]))
+    return FamilyPendingInviteListResponse(invites=[FamilyPendingInviteItemResponse(**item) for item in invites])
+
+
+@router.post("/invites/{invite_id}/accept", response_model=FamilyInviteAcceptResponse)
+def accept_family_invite_by_id(invite_id: int, current_user=Depends(require_user)) -> FamilyInviteAcceptResponse:
+    if invite_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор приглашения")
+    accepted = auth_service.accept_family_invite_by_id(invite_id=invite_id, user_id=int(current_user["id"]))
+    if not accepted:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Приглашение недействительно или истекло")
+    return FamilyInviteAcceptResponse(
+        message="Вы подключены к семейному бюджету.",
+        family_id=int(accepted["family_id"]),
+        family_name=str(accepted["family_name"]),
+        role=str(accepted["role"]),
+    )
+
+
+@router.post("/invites/{invite_id}/decline", response_model=FamilyActionResponse)
+def decline_family_invite_by_id(invite_id: int, current_user=Depends(require_user)) -> FamilyActionResponse:
+    if invite_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор приглашения")
+    declined = auth_service.decline_family_invite_by_id(invite_id=invite_id, user_id=int(current_user["id"]))
+    if not declined:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Приглашение недействительно или уже обработано")
+    return FamilyActionResponse(message="Приглашение отклонено.")
 
 
 @router.patch("/{family_id}/members/{member_user_id}/role", response_model=FamilyActionResponse)

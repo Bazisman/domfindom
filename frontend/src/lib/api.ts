@@ -255,6 +255,7 @@ export type UserSession = {
 
 export type AccountPreferences = {
   theme_mode: "light" | "dark" | "system";
+  workspace_mode: "personal" | "family";
 };
 
 export type AccountBackupInfo = {
@@ -294,6 +295,16 @@ export type FamilyMemberItem = {
 
 export type FamilyActionResponse = {
   message: string;
+};
+
+export type FamilyPendingInvite = {
+  invite_id: number;
+  family_id: number;
+  family_name: string;
+  role: FamilyInviteRole;
+  invited_by_email: string;
+  expires_at: string;
+  created_at: string;
 };
 
 export class ApiError extends Error {
@@ -430,7 +441,7 @@ export function getAccountPreferences() {
   return request<AccountPreferences>("/account/preferences");
 }
 
-export function updateAccountPreferences(payload: AccountPreferences) {
+export function updateAccountPreferences(payload: Partial<AccountPreferences>) {
   return request<AccountPreferences>("/account/preferences", {
     method: "PUT",
     body: JSON.stringify(payload),
@@ -501,6 +512,22 @@ export function acceptFamilyInvite(payload: { token: string }) {
   return request<{ message: string; family_id: number; family_name: string; role: FamilyRole }>("/families/invites/accept", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getPendingFamilyInvites() {
+  return request<{ invites: FamilyPendingInvite[] }>("/families/invites/pending");
+}
+
+export function acceptFamilyInviteById(inviteId: number) {
+  return request<{ message: string; family_id: number; family_name: string; role: FamilyRole }>(`/families/invites/${inviteId}/accept`, {
+    method: "POST",
+  });
+}
+
+export function declineFamilyInviteById(inviteId: number) {
+  return request<FamilyActionResponse>(`/families/invites/${inviteId}/decline`, {
+    method: "POST",
   });
 }
 

@@ -138,11 +138,21 @@ class AuthService:
                 CREATE TABLE IF NOT EXISTS user_preferences (
                     user_id INTEGER PRIMARY KEY,
                     theme_mode TEXT NOT NULL DEFAULT 'system',
+                    workspace_mode TEXT NOT NULL DEFAULT 'personal',
                     updated_at TEXT DEFAULT (datetime('now')),
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 )
                 """
             )
+            cursor.execute("PRAGMA table_info(user_preferences)")
+            preference_columns = {str(row["name"]) for row in cursor.fetchall()}
+            if "workspace_mode" not in preference_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE user_preferences
+                    ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'personal'
+                    """
+                )
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_backup_slot (
@@ -690,7 +700,7 @@ class AuthService:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT theme_mode
+                SELECT theme_mode, workspace_mode
                 FROM user_preferences
                 WHERE user_id = ?
                 LIMIT 1
@@ -699,28 +709,36 @@ class AuthService:
             )
             row = cursor.fetchone()
         if not row:
-            return {"theme_mode": "system"}
+            return {"theme_mode": "system", "workspace_mode": "personal"}
         theme_mode = str(row["theme_mode"] or "system")
         if theme_mode not in {"light", "dark", "system"}:
             theme_mode = "system"
-        return {"theme_mode": theme_mode}
+        workspace_mode = str(row["workspace_mode"] or "personal")
+        if workspace_mode not in {"personal", "family"}:
+            workspace_mode = "personal"
+        return {"theme_mode": theme_mode, "workspace_mode": workspace_mode}
 
-    def update_user_preferences(self, user_id: int, theme_mode: str) -> Dict[str, str]:
-        normalized_theme = theme_mode if theme_mode in {"light", "dark", "system"} else "system"
+    def update_user_preferences(self, user_id: int, theme_mode: str = "", workspace_mode: str = "") -> Dict[str, str]:
+        current = self.get_user_preferences(user_id)
+        normalized_theme = theme_mode if theme_mode in {"light", "dark", "system"} else str(current.get("theme_mode", "system"))
+        normalized_workspace = (
+            workspace_mode if workspace_mode in {"personal", "family"} else str(current.get("workspace_mode", "personal"))
+        )
         with self._auth_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO user_preferences (user_id, theme_mode, updated_at)
-                VALUES (?, ?, datetime('now'))
+                INSERT INTO user_preferences (user_id, theme_mode, workspace_mode, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
                 ON CONFLICT(user_id) DO UPDATE SET
                     theme_mode = excluded.theme_mode,
+                    workspace_mode = excluded.workspace_mode,
                     updated_at = datetime('now')
                 """,
-                (user_id, normalized_theme),
+                (user_id, normalized_theme, normalized_workspace),
             )
             conn.commit()
-        return {"theme_mode": normalized_theme}
+        return {"theme_mode": normalized_theme, "workspace_mode": normalized_workspace}
 
     def create_family(self, owner_user_id: int, name: str) -> Dict[str, object]:
         clean_name = (name or "").strip()
@@ -961,6 +979,128 @@ class AuthService:
             conn.commit()
 
         return {"token": raw_token, "expires_at": expires_at}
+
+    def list_pending_family_invites(self, user_id: int) -> List[Dict[str, object]]:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return []
+        user_email = str(user["email"] or "").lower()
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fi.id,
+                       fi.family_id,
+                       f.name AS family_name,
+                       fi.role,
+                       fi.expires_at,
+                       fi.created_at,
+                       inviter.email AS invited_by_email
+                FROM family_invites fi
+                JOIN families f ON f.id = fi.family_id
+                JOIN users inviter ON inviter.id = fi.invited_by_user_id
+                WHERE fi.email = ?
+                  AND fi.accepted_at IS NULL
+                  AND fi.revoked_at IS NULL
+                  AND fi.expires_at >= datetime('now')
+                  AND f.archived_at IS NULL
+                ORDER BY fi.created_at DESC, fi.id DESC
+                """,
+                (user_email,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "invite_id": int(row["id"]),
+                "family_id": int(row["family_id"]),
+                "family_name": str(row["family_name"] or ""),
+                "role": str(row["role"] or "member"),
+                "invited_by_email": str(row["invited_by_email"] or ""),
+                "expires_at": str(row["expires_at"] or ""),
+                "created_at": str(row["created_at"] or ""),
+            }
+            for row in rows
+        ]
+
+    def accept_family_invite_by_id(self, invite_id: int, user_id: int) -> Optional[Dict[str, object]]:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return None
+        user_email = str(user["email"] or "").lower()
+
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fi.id, fi.family_id, fi.email, fi.role, fi.expires_at, fi.accepted_at, fi.revoked_at, f.name
+                FROM family_invites fi
+                JOIN families f ON f.id = fi.family_id
+                WHERE fi.id = ?
+                LIMIT 1
+                """,
+                (invite_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            if row["accepted_at"] or row["revoked_at"]:
+                return None
+            if _parse_utc(str(row["expires_at"])) < _utcnow():
+                return None
+            if str(row["email"] or "").lower() != user_email:
+                return None
+
+            family_id = int(row["family_id"])
+            role = str(row["role"] or "member")
+            family_name = str(row["name"] or "")
+
+            cursor.execute(
+                """
+                INSERT INTO family_memberships (family_id, user_id, role, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'active', datetime('now'), datetime('now'))
+                ON CONFLICT(family_id, user_id) DO UPDATE SET
+                    role = excluded.role,
+                    status = 'active',
+                    updated_at = datetime('now')
+                """,
+                (family_id, user_id, role),
+            )
+            cursor.execute(
+                """
+                UPDATE family_invites
+                SET accepted_at = datetime('now')
+                WHERE id = ?
+                """,
+                (invite_id,),
+            )
+            conn.commit()
+        return {
+            "family_id": family_id,
+            "family_name": family_name,
+            "role": role,
+        }
+
+    def decline_family_invite_by_id(self, invite_id: int, user_id: int) -> bool:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            return False
+        user_email = str(user["email"] or "").lower()
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE family_invites
+                SET revoked_at = datetime('now')
+                WHERE id = ?
+                  AND email = ?
+                  AND accepted_at IS NULL
+                  AND revoked_at IS NULL
+                  AND expires_at >= datetime('now')
+                """,
+                (invite_id, user_email),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
 
     def accept_family_invite(self, token: str, user_id: int) -> Optional[Dict[str, object]]:
         token_hash = self._token_hash(token)

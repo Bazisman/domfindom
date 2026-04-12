@@ -1577,6 +1577,28 @@ body {
   padding: 8px 10px;
 }
 
+.family-page-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.family-page-actions select {
+  min-width: 160px;
+}
+
+@media (max-width: 720px) {
+  .family-page-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .family-page-actions select,
+  .family-page-actions .ghost-button {
+    width: 100%;
+  }
+}
+
 .account-dropdown-title {
   margin: 0;
   color: var(--muted);
