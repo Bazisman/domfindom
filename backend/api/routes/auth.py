@@ -1,3 +1,4 @@
+import sqlite3
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -93,7 +94,19 @@ def register(payload: RegisterRequest, request: Request, response: Response) -> 
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь уже существует")
 
-    user = auth_service.create_user(email=email, password=password)
+    try:
+        user = auth_service.create_user(email=email, password=password)
+    except sqlite3.IntegrityError:
+        # Race-safe guard: parallel register requests for the same email can collide on UNIQUE(email).
+        auth_service.log_auth_event(
+            event_type="register",
+            status="fail",
+            email=email,
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="user_exists_race",
+        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь уже существует")
     token = auth_service.create_session(
         user_id=int(user["id"]),
         ip=client_ip,

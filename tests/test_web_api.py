@@ -5,6 +5,7 @@ import calendar
 import os
 import shutil
 from datetime import datetime, timedelta
+from unittest import mock
 from uuid import uuid4
 
 import core
@@ -120,6 +121,17 @@ class WebApiTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 422)
+
+    def test_register_maps_integrity_error_to_conflict(self):
+        with mock.patch.object(auth_service, "create_user", side_effect=sqlite3.IntegrityError("UNIQUE constraint")):
+            response = self.client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": f"race-{uuid4().hex[:8]}@example.com",
+                    "password": "StrongPass123",
+                },
+            )
+        self.assertEqual(response.status_code, 409)
 
     def test_login_rate_limit_blocks_after_failed_attempts(self):
         self.assertEqual(self.client.post("/api/v1/auth/logout").status_code, 200)
