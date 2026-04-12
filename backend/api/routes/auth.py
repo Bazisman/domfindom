@@ -294,7 +294,7 @@ def request_password_reset(payload: PasswordResetRequestPayload, request: Reques
     if not auth_mailer.is_configured() and not settings.expose_reset_token_in_response:
         return {"message": "Восстановление через email временно недоступно. Обратитесь в поддержку."}
 
-    body: Dict[str, str] = {"message": "Если аккаунт существует, инструкция по сбросу уже отправлена."}
+    body: Dict[str, str] = {"message": "Ссылка на сброс пароля отправлена на почту."}
     if token and settings.expose_reset_token_in_response:
         body["reset_token"] = token
     return body
