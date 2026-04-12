@@ -330,6 +330,14 @@ export type FamilyDashboardResponse = {
   }>;
 };
 
+export type FamilyTransactionListResponse = {
+  family_id: number;
+  family_name: string;
+  owner_user_id: number | null;
+  limit: number;
+  transactions: FamilyDashboardResponse["recent_transactions"];
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -520,6 +528,21 @@ export function getFamilyMembers(familyId: number) {
 
 export function getFamilyDashboard(familyId: number) {
   return request<FamilyDashboardResponse>(`/families/${familyId}/dashboard`);
+}
+
+export function getFamilyTransactions(params: {
+  familyId: number;
+  ownerUserId?: number;
+  limit?: number;
+  includePlanned?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params.ownerUserId !== undefined && params.ownerUserId > 0) {
+    search.set("owner_user_id", String(params.ownerUserId));
+  }
+  search.set("limit", String(params.limit ?? 80));
+  search.set("include_planned", params.includePlanned ? "true" : "false");
+  return request<FamilyTransactionListResponse>(`/families/${params.familyId}/transactions?${search.toString()}`);
 }
 
 export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {

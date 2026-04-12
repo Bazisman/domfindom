@@ -5,6 +5,7 @@ import {
   createFamily,
   createFamilyInvite,
   getFamilyDashboard,
+  getFamilyTransactions,
   getFamilyMembers,
   getMe,
   getMyFamilies,
@@ -40,6 +41,7 @@ export function FamilyPage() {
   const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "viewer">("member");
+  const [transactionsScope, setTransactionsScope] = useState<"all" | "mine" | `user:${number}`>("all");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -75,6 +77,30 @@ export function FamilyPage() {
     retry: false,
   });
 
+  const scopedOwnerUserId = useMemo(() => {
+    if (transactionsScope === "mine") {
+      return meQuery.data?.id ?? 0;
+    }
+    if (transactionsScope.startsWith("user:")) {
+      const parsed = Number(transactionsScope.slice(5));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }, [transactionsScope, meQuery.data?.id]);
+
+  const familyTransactionsQuery = useQuery({
+    queryKey: ["families", selectedFamilyId, "transactions", scopedOwnerUserId],
+    queryFn: () =>
+      getFamilyTransactions({
+        familyId: selectedFamilyId as number,
+        ownerUserId: scopedOwnerUserId > 0 ? scopedOwnerUserId : undefined,
+        limit: 80,
+        includePlanned: false,
+      }),
+    enabled: selectedFamilyId !== null,
+    retry: false,
+  });
+
   useEffect(() => {
     const firstFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
     if (selectedFamilyId === null && firstFamilyId !== null) {
@@ -88,6 +114,10 @@ export function FamilyPage() {
       }
     }
   }, [familiesQuery.data?.families, selectedFamilyId]);
+
+  useEffect(() => {
+    setTransactionsScope("all");
+  }, [selectedFamilyId]);
 
   const createFamilyMutation = useMutation({
     mutationFn: createFamily,
@@ -333,6 +363,50 @@ export function FamilyPage() {
             ))}
             {!familyDashboardQuery.isLoading && (familyDashboardQuery.data?.recent_transactions ?? []).length === 0 ? (
               <p className="muted">Пока нет операций участников.</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {selectedFamilyId !== null ? (
+        <section className="panel panel-wide">
+          <div className="panel-header">
+            <h3>Семейная лента операций</h3>
+            <select
+              className="period-select"
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "all" || value === "mine" || value.startsWith("user:")) {
+                  setTransactionsScope(value as "all" | "mine" | `user:${number}`);
+                }
+              }}
+              value={transactionsScope}
+            >
+              <option value="all">Все участники</option>
+              <option value="mine">Только мои</option>
+              {(familyMembersQuery.data?.members ?? []).map((member) => (
+                <option key={member.user_id} value={`user:${member.user_id}`}>
+                  {member.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="list">
+            {(familyTransactionsQuery.data?.transactions ?? []).map((item) => (
+              <article className="list-item" key={`${item.owner_user_id}-${item.id}`}>
+                <div>
+                  <strong>{item.category}</strong>
+                  <p>{item.comment || "Без комментария"}</p>
+                </div>
+                <div className="family-page-actions">
+                  <span className="status-chip">{item.owner_email}</span>
+                  <strong className={item.type === "income" ? "money plus" : "money minus"}>{formatMoney(item.amount)}</strong>
+                </div>
+              </article>
+            ))}
+            {!familyTransactionsQuery.isLoading && (familyTransactionsQuery.data?.transactions ?? []).length === 0 ? (
+              <p className="muted">По выбранному фильтру операций нет.</p>
             ) : null}
           </div>
         </section>

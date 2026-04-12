@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 import core
 from backend.auth.dependencies import require_user
@@ -22,6 +22,7 @@ from backend.schemas.families import (
     FamilyDashboardBalanceResponse,
     FamilyDashboardResponse,
     FamilyDashboardTransactionResponse,
+    FamilyTransactionListResponse,
     FamilyPendingInviteItemResponse,
     FamilyPendingInviteListResponse,
 )
@@ -105,6 +106,53 @@ def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboa
     )
 
 
+def _collect_family_transactions(
+    family_id: int,
+    family_name: str,
+    owner_user_id: int = 0,
+    limit: int = 50,
+    include_planned: bool = False,
+) -> FamilyTransactionListResponse:
+    members = auth_service.list_family_members(family_id)
+    safe_limit = max(1, min(limit, 200))
+    member_map: Dict[int, str] = {int(item["user_id"]): str(item["email"] or "") for item in members}
+
+    if owner_user_id > 0 and owner_user_id not in member_map:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник семьи не найден")
+
+    target_user_ids: List[int] = [owner_user_id] if owner_user_id > 0 else list(member_map.keys())
+    items: List[Dict[str, object]] = []
+
+    for user_id in target_user_ids:
+        user_db_path = auth_service.ensure_user_finance_db(user_id)
+        db_token = core.push_db_name(user_db_path)
+        try:
+            rows = transaction_service.get_transactions(limit=300, period="all", offset=0)
+            for row in rows:
+                if not include_planned and row.status == "planned":
+                    continue
+                mapped = row_to_transaction_response(row)
+                items.append(
+                    {
+                        **mapped,
+                        "owner_user_id": user_id,
+                        "owner_email": member_map.get(user_id, ""),
+                    }
+                )
+        finally:
+            core.pop_db_name(db_token)
+
+    items.sort(key=lambda item: (str(item["date"]), int(item["id"])), reverse=True)
+
+    return FamilyTransactionListResponse(
+        family_id=family_id,
+        family_name=family_name,
+        owner_user_id=owner_user_id if owner_user_id > 0 else None,
+        limit=safe_limit,
+        transactions=[FamilyDashboardTransactionResponse(**item) for item in items[:safe_limit]],
+    )
+
+
 def _validate_member_management_rules(
     actor_user_id: int,
     actor_role: str,
@@ -150,6 +198,28 @@ def get_family_dashboard(family_id: int, current_user=Depends(require_user)) -> 
     membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
     family_name = str(membership.get("family_name") or "Семья")
     return _collect_family_dashboard(family_id=family_id, family_name=family_name)
+
+
+@router.get("/{family_id}/transactions", response_model=FamilyTransactionListResponse)
+def list_family_transactions(
+    family_id: int,
+    owner_user_id: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    include_planned: bool = Query(default=False),
+    current_user=Depends(require_user),
+) -> FamilyTransactionListResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
+    family_name = str(membership.get("family_name") or "Семья")
+    return _collect_family_transactions(
+        family_id=family_id,
+        family_name=family_name,
+        owner_user_id=owner_user_id,
+        limit=limit,
+        include_planned=include_planned,
+    )
 
 
 @router.post("/{family_id}/invites", response_model=FamilyInviteCreateResponse)

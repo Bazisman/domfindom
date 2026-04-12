@@ -107,3 +107,11 @@ class FamilyDashboardResponse(BaseModel):
     members_count: int
     balance: FamilyDashboardBalanceResponse
     recent_transactions: List[FamilyDashboardTransactionResponse]
+
+
+class FamilyTransactionListResponse(BaseModel):
+    family_id: int
+    family_name: str
+    owner_user_id: Optional[int] = None
+    limit: int
+    transactions: List[FamilyDashboardTransactionResponse]
