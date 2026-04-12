@@ -211,7 +211,7 @@ export default function AppShellNext() {
       await updateAccountPreferences({ theme_mode: nextTheme, workspace_mode: workspaceMode });
       await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ С‚РµРјСѓ.");
+      setAccountError(error instanceof Error ? error.message : "Не удалось сохранить тему.");
     }
   }
 
@@ -226,7 +226,7 @@ export default function AppShellNext() {
         setAccountMessage("РЎРЅР°С‡Р°Р»Р° РїСЂРёРјРёС‚Рµ РїСЂРёРіР»Р°С€РµРЅРёРµ РІ СЃРµРјСЊСЋ РёР»Рё СЃРѕР·РґР°Р№С‚Рµ СЃРµРјРµР№РЅС‹Р№ Р±СЋРґР¶РµС‚.");
       }
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµР¶РёРј.");
+      setAccountError(error instanceof Error ? error.message : "Не удалось сохранить режим.");
     }
   }
 
@@ -246,7 +246,7 @@ export default function AppShellNext() {
         queryClient.invalidateQueries({ queryKey: ["account", "preferences"] }),
       ]);
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРЅСЏС‚СЊ РїСЂРёРіР»Р°С€РµРЅРёРµ.");
+      setAccountError(error instanceof Error ? error.message : "Не удалось принять приглашение.");
     } finally {
       setInviteAction("");
       setInviteBusyId(null);
@@ -263,7 +263,7 @@ export default function AppShellNext() {
       setAccountMessage(response.message);
       await queryClient.invalidateQueries({ queryKey: ["families", "invites", "pending"] });
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєР»РѕРЅРёС‚СЊ РїСЂРёРіР»Р°С€РµРЅРёРµ.");
+      setAccountError(error instanceof Error ? error.message : "Не удалось отклонить приглашение.");
     } finally {
       setInviteAction("");
       setInviteBusyId(null);
@@ -279,7 +279,7 @@ export default function AppShellNext() {
       setAccountMessage(response.message);
       await queryClient.invalidateQueries({ queryKey: ["account", "backup"] });
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµР·РµСЂРІРЅСѓСЋ РєРѕРїРёСЋ.");
+      setAccountError(error instanceof Error ? error.message : "Не удалось сохранить резервную копию.");
     } finally {
       setBusyAction("");
     }
@@ -333,7 +333,7 @@ export default function AppShellNext() {
           queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
         ]);
       } catch (error) {
-        setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ.");
+        setAccountError(error instanceof Error ? error.message : "Не удалось восстановить данные.");
       } finally {
         setBusyAction("");
         setConfirmAction(null);
@@ -362,7 +362,7 @@ export default function AppShellNext() {
           queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
         ]);
       } catch (error) {
-        setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‡РёСЃС‚РёС‚СЊ РґР°РЅРЅС‹Рµ.");
+        setAccountError(error instanceof Error ? error.message : "Не удалось очистить данные.");
       } finally {
         setBusyAction("");
         setConfirmAction(null);
@@ -372,7 +372,7 @@ export default function AppShellNext() {
   }
 
   const userEmail = currentUser?.email ?? "";
-  const displayName = userEmail ? userEmail.split("@")[0] : "РџСЂРѕС„РёР»СЊ";
+  const displayName = userEmail ? userEmail.split("@")[0] : "Профиль";
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const confirmTitle = useMemo(() => {
@@ -390,7 +390,7 @@ export default function AppShellNext() {
 
   const confirmText = useMemo(() => {
     if (confirmAction === "logout") {
-      return "Р’С‹ РґРµР№СЃС‚РІРёС‚РµР»СЊРЅРѕ С…РѕС‚РёС‚Рµ РІС‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°?";
+      return "Вы действительно хотите выйти из аккаунта?";
     }
     if (confirmAction === "restore") {
       return "РўРµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ Р±СѓРґСѓС‚ Р·Р°РјРµРЅРµРЅС‹ РїРѕСЃР»РµРґРЅРµР№ СЂРµР·РµСЂРІРЅРѕР№ РєРѕРїРёРµР№.";
@@ -465,7 +465,7 @@ export default function AppShellNext() {
           <div className={isNotificationsOpen ? "notifications-dropdown open" : "notifications-dropdown"} role="menu">
             <div className="account-dropdown-head">
               <strong>РЈРІРµРґРѕРјР»РµРЅРёСЏ</strong>
-              <span>{pendingInvitesCount > 0 ? `РќРѕРІС‹С… РїСЂРёРіР»Р°С€РµРЅРёР№: ${pendingInvitesCount}` : "РќРѕРІС‹С… РїСЂРёРіР»Р°С€РµРЅРёР№ РЅРµС‚"}</span>
+              <span>{pendingInvitesCount > 0 ? `Новых приглашений: ${pendingInvitesCount}` : "Новых приглашений нет"}</span>
             </div>
             {pendingInvitesCount === 0 ? (
               <p className="account-meta">РЎРµР№С‡Р°СЃ Р·РґРµСЃСЊ РїСѓСЃС‚Рѕ.</p>
@@ -485,7 +485,7 @@ export default function AppShellNext() {
                         onClick={() => void onAcceptInvite(invite.invite_id)}
                         type="button"
                       >
-                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "РџСЂРёРЅРёРјР°РµРј..." : "РџСЂРёРЅСЏС‚СЊ"}
+                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "Принимаем..." : "Принять"}
                       </button>
                       <button
                         className="account-action danger"
@@ -493,7 +493,7 @@ export default function AppShellNext() {
                         onClick={() => void onDeclineInvite(invite.invite_id)}
                         type="button"
                       >
-                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "РћС‚РєР»РѕРЅСЏРµРј..." : "РћС‚РєР»РѕРЅРёС‚СЊ"}
+                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "Отклоняем..." : "Отклонить"}
                       </button>
                     </div>
                   </div>
@@ -578,7 +578,7 @@ export default function AppShellNext() {
                         onClick={() => void onAcceptInvite(invite.invite_id)}
                         type="button"
                       >
-                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "РџСЂРёРЅРёРјР°РµРј..." : "РџСЂРёРЅСЏС‚СЊ"}
+                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "Принимаем..." : "Принять"}
                       </button>
                       <button
                         className="account-action danger"
@@ -586,7 +586,7 @@ export default function AppShellNext() {
                         onClick={() => void onDeclineInvite(invite.invite_id)}
                         type="button"
                       >
-                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "РћС‚РєР»РѕРЅСЏРµРј..." : "РћС‚РєР»РѕРЅРёС‚СЊ"}
+                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "Отклоняем..." : "Отклонить"}
                       </button>
                     </div>
                   </div>
@@ -604,7 +604,7 @@ export default function AppShellNext() {
             <div className="account-dropdown-section">
               <p className="account-dropdown-title">РњРѕРё РґР°РЅРЅС‹Рµ</p>
               <button className="account-action" disabled={busyAction !== ""} onClick={() => void onSaveBackup()} type="button">
-                {busyAction === "save" ? "РЎРѕС…СЂР°РЅСЏРµРј..." : "РЎРѕС…СЂР°РЅРёС‚СЊ РґР°РЅРЅС‹Рµ (1 СЃР»РѕС‚)"}
+                {busyAction === "save" ? "Сохраняем..." : "Сохранить данные (1 слот)"}
               </button>
               <button
                 className="account-action"
@@ -625,7 +625,7 @@ export default function AppShellNext() {
               <p className="account-meta">Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ РµС‰С‘ РЅРµ СЃРѕР·РґР°РЅР°.</p>
             )}
 
-            {busyAction !== "" ? <p className="account-meta">Р’С‹РїРѕР»РЅСЏРµРј РѕРїРµСЂР°С†РёСЋ...</p> : null}
+            {busyAction !== "" ? <p className="account-meta">Выполняем операцию...</p> : null}
             {accountMessage ? <p className="account-feedback success">{accountMessage}</p> : null}
             {accountError ? <p className="account-feedback error">{accountError}</p> : null}
 
@@ -664,7 +664,7 @@ export default function AppShellNext() {
                 onClick={() => void runConfirmedAction()}
                 type="button"
               >
-                {busyAction !== "" ? "РџРѕРґРѕР¶РґРёС‚Рµ..." : confirmButtonLabel}
+                {busyAction !== "" ? "Подождите..." : confirmButtonLabel}
               </button>
             </div>
           </div>
