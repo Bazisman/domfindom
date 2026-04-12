@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
@@ -40,7 +40,10 @@ def get_backup_info(current_user=Depends(require_user)) -> BackupSlotInfoRespons
 
 
 @router.get("/activity", response_model=AccountActivityResponse)
-def get_account_activity(limit: int = 20, current_user=Depends(require_user)) -> AccountActivityResponse:
+def get_account_activity(
+    limit: int = Query(default=15, ge=1, le=50),
+    current_user=Depends(require_user),
+) -> AccountActivityResponse:
     events = auth_service.list_user_auth_events(int(current_user["id"]), limit=limit)
     return AccountActivityResponse(events=[AccountActivityItemResponse(**item) for item in events])
 

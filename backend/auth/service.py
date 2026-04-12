@@ -360,7 +360,8 @@ class AuthService:
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_active_user_sessions(self, user_id: int, current_raw_token: str) -> List[Dict[str, object]]:
+    def list_active_user_sessions(self, user_id: int, current_raw_token: str, limit: int = 8) -> List[Dict[str, object]]:
+        safe_limit = max(1, min(limit, 50))
         current_token_hash = self._token_hash(current_raw_token) if current_raw_token else ""
         with self._auth_connection() as conn:
             cursor = conn.cursor()
@@ -392,6 +393,8 @@ class AuthService:
                     "is_current": bool(current_token_hash and str(row["token_hash"]) == current_token_hash),
                 }
             )
+            if len(sessions) >= safe_limit:
+                break
         return sessions
 
     def cleanup_expired_sessions(self) -> int:

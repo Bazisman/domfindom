@@ -1,7 +1,7 @@
 import sqlite3
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from backend.auth.dependencies import require_user
 from backend.auth.mailer import auth_mailer
@@ -200,9 +200,13 @@ def me(current_user=Depends(require_user)) -> AuthUserResponse:
 
 
 @router.get("/sessions", response_model=SessionListResponse)
-def list_sessions(request: Request, current_user=Depends(require_user)) -> SessionListResponse:
+def list_sessions(
+    request: Request,
+    limit: int = Query(default=8, ge=1, le=50),
+    current_user=Depends(require_user),
+) -> SessionListResponse:
     raw_token = request.cookies.get(settings.session_cookie_name, "")
-    sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token)
+    sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token, limit=limit)
     return SessionListResponse(sessions=[SessionItemResponse(**item) for item in sessions])
 
 
@@ -220,7 +224,7 @@ def revoke_session_by_id(session_id: int, request: Request, response: Response, 
     if session_id <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор сессии")
     raw_token = request.cookies.get(settings.session_cookie_name, "")
-    active_sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token)
+    active_sessions = auth_service.list_active_user_sessions(int(current_user["id"]), raw_token, limit=50)
     target = next((item for item in active_sessions if int(item["id"]) == session_id), None)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сессия не найдена")

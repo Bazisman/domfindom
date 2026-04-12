@@ -10,6 +10,9 @@ import {
   revokeSessionById,
 } from "../lib/api";
 
+const SESSIONS_LIMIT = 8;
+const ACTIVITY_LIMIT = 15;
+
 export function SecurityPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -22,12 +25,12 @@ export function SecurityPage() {
 
   const sessionsQuery = useQuery({
     queryKey: ["auth", "sessions"],
-    queryFn: getActiveSessions,
+    queryFn: () => getActiveSessions(SESSIONS_LIMIT),
     refetchInterval: 30_000,
   });
   const activityQuery = useQuery({
     queryKey: ["auth", "activity"],
-    queryFn: () => getAccountActivity(25),
+    queryFn: () => getAccountActivity(ACTIVITY_LIMIT),
     refetchInterval: 30_000,
   });
 

@@ -385,8 +385,10 @@ export function confirmPasswordReset(payload: { token: string; new_password: str
   });
 }
 
-export function getActiveSessions() {
-  return request<{ sessions: UserSession[] }>("/auth/sessions");
+export function getActiveSessions(limit = 8) {
+  const search = new URLSearchParams();
+  search.set("limit", String(limit));
+  return request<{ sessions: UserSession[] }>(`/auth/sessions?${search.toString()}`);
 }
 
 export function revokeOtherSessions() {
@@ -438,7 +440,7 @@ export function resetAllAccountData(payload: { confirm_text: string }) {
   });
 }
 
-export function getAccountActivity(limit = 20) {
+export function getAccountActivity(limit = 15) {
   const search = new URLSearchParams();
   search.set("limit", String(limit));
   return request<{ events: AccountActivityEvent[] }>(`/account/activity?${search.toString()}`);
