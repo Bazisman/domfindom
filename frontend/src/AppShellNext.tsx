@@ -94,6 +94,8 @@ export default function AppShellNext() {
 
   const hasFamily = (familiesQuery.data?.families ?? []).length > 0;
   const showFamilyTab = workspaceMode === "family" && hasFamily;
+  const canOpenFamilyPage = hasFamily;
+  const familyContextLoading = preferencesQuery.isLoading || familiesQuery.isLoading;
   const pendingInvites = pendingInvitesQuery.data?.invites ?? [];
   const hasPendingInvites = pendingInvites.length > 0;
 
@@ -187,10 +189,13 @@ export default function AppShellNext() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!showFamilyTab && location.pathname === "/family") {
+    if (familyContextLoading) {
+      return;
+    }
+    if (!canOpenFamilyPage && location.pathname.startsWith("/family")) {
       navigate("/", { replace: true });
     }
-  }, [showFamilyTab, location.pathname, navigate]);
+  }, [familyContextLoading, canOpenFamilyPage, location.pathname, navigate]);
 
   async function onThemeChange(nextTheme: "light" | "dark" | "system") {
     setThemeMode(nextTheme);
@@ -640,7 +645,18 @@ export default function AppShellNext() {
         <Route element={<CategoriesPage />} path="/categories" />
         <Route element={<PlanningPage />} path="/planning" />
         <Route element={<AccountsPage />} path="/accounts" />
-        <Route element={showFamilyTab ? <FamilyPage /> : <Navigate replace to="/" />} path="/family" />
+        <Route
+          element={
+            familyContextLoading ? (
+              <div className="auth-loading">Загружаем семейный раздел...</div>
+            ) : canOpenFamilyPage ? (
+              <FamilyPage />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/family"
+        />
         <Route element={<SecurityPage />} path="/security" />
         <Route element={<Navigate replace to="/planning" />} path="/budgets" />
         <Route element={<Navigate replace to="/planning" />} path="/recurring" />

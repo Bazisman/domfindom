@@ -61,15 +61,15 @@ export function DashboardPage() {
     queryFn: getCategories,
   });
 
-  const preferencesQuery = useQuery({
-    queryKey: ["account", "preferences"],
-    queryFn: getAccountPreferences,
-    retry: false,
-  });
-
   const familiesQuery = useQuery({
     queryKey: ["families", "me"],
     queryFn: getMyFamilies,
+    retry: false,
+  });
+
+  const preferencesQuery = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
     retry: false,
   });
 
@@ -359,7 +359,7 @@ export function DashboardPage() {
         <section className="panel panel-full">
           <div className="panel-header">
             <h3>Последние транзакции</h3>
-            {useFamilyFeed ? <span>Совместные операции семьи</span> : null}
+            {selectedFamilyId !== null ? <span>{useFamilyFeed ? "Совместные операции семьи" : "Личные операции"}</span> : null}
           </div>
           <div className="list">
             {visibleTransactions.map((item) => (

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "python ../tools/check_encoding.py --root .. && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

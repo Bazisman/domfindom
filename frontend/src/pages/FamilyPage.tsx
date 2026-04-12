@@ -57,23 +57,26 @@ export function FamilyPage() {
     retry: false,
   });
 
+  const fallbackFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
+  const familyId = selectedFamilyId ?? fallbackFamilyId;
+
   const selectedFamily = useMemo(
-    () => (familiesQuery.data?.families ?? []).find((item) => item.id === selectedFamilyId) ?? null,
-    [familiesQuery.data?.families, selectedFamilyId],
+    () => (familiesQuery.data?.families ?? []).find((item) => item.id === familyId) ?? null,
+    [familiesQuery.data?.families, familyId],
   );
   const canManageFamilyMembers = selectedFamily?.role === "owner";
 
   const familyMembersQuery = useQuery({
-    queryKey: ["families", selectedFamilyId, "members"],
-    queryFn: () => getFamilyMembers(selectedFamilyId as number),
-    enabled: selectedFamilyId !== null,
+    queryKey: ["families", familyId, "members"],
+    queryFn: () => getFamilyMembers(familyId as number),
+    enabled: familyId !== null,
     retry: false,
   });
 
   const familyDashboardQuery = useQuery({
-    queryKey: ["families", selectedFamilyId, "dashboard"],
-    queryFn: () => getFamilyDashboard(selectedFamilyId as number),
-    enabled: selectedFamilyId !== null,
+    queryKey: ["families", familyId, "dashboard"],
+    queryFn: () => getFamilyDashboard(familyId as number),
+    enabled: familyId !== null,
     retry: false,
   });
 
@@ -89,35 +92,30 @@ export function FamilyPage() {
   }, [transactionsScope, meQuery.data?.id]);
 
   const familyTransactionsQuery = useQuery({
-    queryKey: ["families", selectedFamilyId, "transactions", scopedOwnerUserId],
+    queryKey: ["families", familyId, "transactions", scopedOwnerUserId],
     queryFn: () =>
       getFamilyTransactions({
-        familyId: selectedFamilyId as number,
+        familyId: familyId as number,
         ownerUserId: scopedOwnerUserId > 0 ? scopedOwnerUserId : undefined,
         limit: 80,
         includePlanned: false,
       }),
-    enabled: selectedFamilyId !== null,
+    enabled: familyId !== null,
     retry: false,
   });
 
   useEffect(() => {
-    const firstFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
-    if (selectedFamilyId === null && firstFamilyId !== null) {
-      setSelectedFamilyId(firstFamilyId);
-      return;
-    }
     if (selectedFamilyId !== null) {
       const exists = (familiesQuery.data?.families ?? []).some((item) => item.id === selectedFamilyId);
       if (!exists) {
-        setSelectedFamilyId(firstFamilyId);
+        setSelectedFamilyId(fallbackFamilyId);
       }
     }
-  }, [familiesQuery.data?.families, selectedFamilyId]);
+  }, [familiesQuery.data?.families, selectedFamilyId, fallbackFamilyId]);
 
   useEffect(() => {
     setTransactionsScope("all");
-  }, [selectedFamilyId]);
+  }, [familyId]);
 
   const createFamilyMutation = useMutation({
     mutationFn: createFamily,
@@ -143,10 +141,10 @@ export function FamilyPage() {
       setInviteEmail("");
       setMessage(response.message);
       setError("");
-      if (selectedFamilyId !== null) {
+      if (familyId !== null) {
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
-          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", familyId, "members"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] }),
         ]);
       }
     },
@@ -164,10 +162,10 @@ export function FamilyPage() {
     onSuccess: async (response) => {
       setMessage(response.message);
       setError("");
-      if (selectedFamilyId !== null) {
+      if (familyId !== null) {
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
-          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", familyId, "members"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] }),
         ]);
       }
     },
@@ -186,10 +184,10 @@ export function FamilyPage() {
     onSuccess: async (response) => {
       setMessage(response.message);
       setError("");
-      if (selectedFamilyId !== null) {
+      if (familyId !== null) {
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
-          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", familyId, "members"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] }),
         ]);
       }
     },
@@ -215,7 +213,7 @@ export function FamilyPage() {
   }
 
   function onInviteToFamily() {
-    if (selectedFamilyId === null) {
+    if (familyId === null) {
       setError("Сначала выберите семейный бюджет.");
       setMessage("");
       return;
@@ -227,25 +225,25 @@ export function FamilyPage() {
       return;
     }
     setBusyAction("invite");
-    inviteMutation.mutate({ family_id: selectedFamilyId, email, role: inviteRole });
+    inviteMutation.mutate({ family_id: familyId, email, role: inviteRole });
   }
 
   function onUpdateMemberRole(memberUserId: number, role: "member" | "viewer") {
-    if (selectedFamilyId === null) {
+    if (familyId === null) {
       return;
     }
     setBusyAction("member_update");
     setBusyUserId(memberUserId);
-    updateMemberMutation.mutate({ family_id: selectedFamilyId, user_id: memberUserId, role });
+    updateMemberMutation.mutate({ family_id: familyId, user_id: memberUserId, role });
   }
 
   function onRemoveMember(memberUserId: number) {
-    if (selectedFamilyId === null) {
+    if (familyId === null) {
       return;
     }
     setBusyAction("member_remove");
     setBusyUserId(memberUserId);
-    removeMemberMutation.mutate({ family_id: selectedFamilyId, user_id: memberUserId });
+    removeMemberMutation.mutate({ family_id: familyId, user_id: memberUserId });
   }
 
   return (
@@ -279,7 +277,7 @@ export function FamilyPage() {
               <select
                 disabled={busyAction !== ""}
                 onChange={(event) => setSelectedFamilyId(Number(event.target.value))}
-                value={selectedFamilyId ?? ""}
+                value={familyId ?? ""}
               >
                 {(familiesQuery.data?.families ?? []).map((family) => (
                   <option key={family.id} value={family.id}>
@@ -319,7 +317,7 @@ export function FamilyPage() {
         {error ? <p className="form-error">{error}</p> : null}
       </section>
 
-      {selectedFamilyId !== null ? (
+      {familyId !== null ? (
         <section className="panel panel-wide">
           <div className="panel-header">
             <h3>Сводка семьи</h3>
@@ -346,29 +344,10 @@ export function FamilyPage() {
               </div>
             </article>
           </div>
-
-          <div className="list">
-            <h4>Последние операции участников</h4>
-            {(familyDashboardQuery.data?.recent_transactions ?? []).map((item) => (
-              <article className="list-item" key={`${item.owner_user_id}-${item.id}`}>
-                <div>
-                  <strong>{item.category}</strong>
-                  <p>{item.comment || "Без комментария"}</p>
-                </div>
-                <div className="family-page-actions">
-                  <span className="status-chip">{item.owner_email}</span>
-                  <strong className={item.type === "income" ? "money plus" : "money minus"}>{formatMoney(item.amount)}</strong>
-                </div>
-              </article>
-            ))}
-            {!familyDashboardQuery.isLoading && (familyDashboardQuery.data?.recent_transactions ?? []).length === 0 ? (
-              <p className="muted">Пока нет операций участников.</p>
-            ) : null}
-          </div>
         </section>
       ) : null}
 
-      {selectedFamilyId !== null ? (
+      {familyId !== null ? (
         <section className="panel panel-wide">
           <div className="panel-header">
             <h3>Семейная лента операций</h3>
@@ -412,7 +391,7 @@ export function FamilyPage() {
         </section>
       ) : null}
 
-      {selectedFamilyId !== null ? (
+      {familyId !== null ? (
         <section className="panel panel-wide">
           <div className="panel-header">
             <h3>Участники семьи</h3>
@@ -449,7 +428,7 @@ export function FamilyPage() {
                       onClick={() => onRemoveMember(member.user_id)}
                       type="button"
                     >
-                      {busyAction === "member_remove" && busyUserId === member.user_id ? "Исключаем..." : "Исключить"}
+                      {busyAction === "member_remove" && busyUserId === member.user_id ? "сключаем..." : "сключить"}
                     </button>
                   </div>
                 </article>

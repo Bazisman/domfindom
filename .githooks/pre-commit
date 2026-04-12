@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+python tools/check_encoding.py --root .
+status=$?
+if [ $status -ne 0 ]; then
+  echo "Commit blocked: fix encoding issues first."
+  exit $status
+fi
+
+exit 0
