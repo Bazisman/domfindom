@@ -80,3 +80,30 @@ class FamilyPendingInviteItemResponse(BaseModel):
 
 class FamilyPendingInviteListResponse(BaseModel):
     invites: List[FamilyPendingInviteItemResponse]
+
+
+class FamilyDashboardBalanceResponse(BaseModel):
+    main_balance: float
+    income: float
+    expense: float
+    difference: float
+
+
+class FamilyDashboardTransactionResponse(BaseModel):
+    id: int
+    type: Literal["income", "expense"]
+    category: str
+    amount: float
+    comment: str
+    date: str
+    status: Literal["actual", "planned"]
+    owner_user_id: int
+    owner_email: str
+
+
+class FamilyDashboardResponse(BaseModel):
+    family_id: int
+    family_name: str
+    members_count: int
+    balance: FamilyDashboardBalanceResponse
+    recent_transactions: List[FamilyDashboardTransactionResponse]

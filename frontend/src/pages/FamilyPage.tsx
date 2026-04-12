@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createFamily,
   createFamilyInvite,
+  getFamilyDashboard,
   getFamilyMembers,
   getMe,
   getMyFamilies,
@@ -23,6 +24,14 @@ function roleLabel(role: "owner" | "member" | "viewer"): string {
   return "Помощник";
 }
 
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function FamilyPage() {
   const queryClient = useQueryClient();
   const [busyAction, setBusyAction] = useState<FamilyBusyAction>("");
@@ -39,6 +48,7 @@ export function FamilyPage() {
     queryFn: getMyFamilies,
     retry: false,
   });
+
   const meQuery = useQuery({
     queryKey: ["auth", "me"],
     queryFn: getMe,
@@ -54,6 +64,13 @@ export function FamilyPage() {
   const familyMembersQuery = useQuery({
     queryKey: ["families", selectedFamilyId, "members"],
     queryFn: () => getFamilyMembers(selectedFamilyId as number),
+    enabled: selectedFamilyId !== null,
+    retry: false,
+  });
+
+  const familyDashboardQuery = useQuery({
+    queryKey: ["families", selectedFamilyId, "dashboard"],
+    queryFn: () => getFamilyDashboard(selectedFamilyId as number),
     enabled: selectedFamilyId !== null,
     retry: false,
   });
@@ -97,7 +114,10 @@ export function FamilyPage() {
       setMessage(response.message);
       setError("");
       if (selectedFamilyId !== null) {
-        await queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        ]);
       }
     },
     onError: (mutationError: Error) => {
@@ -115,7 +135,10 @@ export function FamilyPage() {
       setMessage(response.message);
       setError("");
       if (selectedFamilyId !== null) {
-        await queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        ]);
       }
     },
     onError: (mutationError: Error) => {
@@ -134,7 +157,10 @@ export function FamilyPage() {
       setMessage(response.message);
       setError("");
       if (selectedFamilyId !== null) {
-        await queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "members"] }),
+          queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        ]);
       }
     },
     onError: (mutationError: Error) => {
@@ -262,6 +288,55 @@ export function FamilyPage() {
         {message ? <p className="form-status form-status-success">{message}</p> : null}
         {error ? <p className="form-error">{error}</p> : null}
       </section>
+
+      {selectedFamilyId !== null ? (
+        <section className="panel panel-wide">
+          <div className="panel-header">
+            <h3>Сводка семьи</h3>
+            <span>{familyDashboardQuery.data?.family_name ?? "Семейный бюджет"}</span>
+          </div>
+
+          <div className="family-summary-grid">
+            <article className="list-item">
+              <div>
+                <strong>Текущий семейный баланс</strong>
+                <p>{formatMoney(familyDashboardQuery.data?.balance.main_balance ?? 0)}</p>
+              </div>
+            </article>
+            <article className="list-item">
+              <div>
+                <strong>Доход за месяц</strong>
+                <p className="money plus">{formatMoney(familyDashboardQuery.data?.balance.income ?? 0)}</p>
+              </div>
+            </article>
+            <article className="list-item">
+              <div>
+                <strong>Расход за месяц</strong>
+                <p className="money minus">{formatMoney(familyDashboardQuery.data?.balance.expense ?? 0)}</p>
+              </div>
+            </article>
+          </div>
+
+          <div className="list">
+            <h4>Последние операции участников</h4>
+            {(familyDashboardQuery.data?.recent_transactions ?? []).map((item) => (
+              <article className="list-item" key={`${item.owner_user_id}-${item.id}`}>
+                <div>
+                  <strong>{item.category}</strong>
+                  <p>{item.comment || "Без комментария"}</p>
+                </div>
+                <div className="family-page-actions">
+                  <span className="status-chip">{item.owner_email}</span>
+                  <strong className={item.type === "income" ? "money plus" : "money minus"}>{formatMoney(item.amount)}</strong>
+                </div>
+              </article>
+            ))}
+            {!familyDashboardQuery.isLoading && (familyDashboardQuery.data?.recent_transactions ?? []).length === 0 ? (
+              <p className="muted">Пока нет операций участников.</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {selectedFamilyId !== null ? (
         <section className="panel panel-wide">

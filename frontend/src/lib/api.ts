@@ -307,6 +307,29 @@ export type FamilyPendingInvite = {
   created_at: string;
 };
 
+export type FamilyDashboardResponse = {
+  family_id: number;
+  family_name: string;
+  members_count: number;
+  balance: {
+    main_balance: number;
+    income: number;
+    expense: number;
+    difference: number;
+  };
+  recent_transactions: Array<{
+    id: number;
+    type: "income" | "expense";
+    category: string;
+    amount: number;
+    comment: string;
+    date: string;
+    status: "actual" | "planned";
+    owner_user_id: number;
+    owner_email: string;
+  }>;
+};
+
 export class ApiError extends Error {
   status: number;
 
@@ -493,6 +516,10 @@ export function createFamily(payload: { name: string }) {
 
 export function getFamilyMembers(familyId: number) {
   return request<{ members: FamilyMemberItem[] }>(`/families/${familyId}/members`);
+}
+
+export function getFamilyDashboard(familyId: number) {
+  return request<FamilyDashboardResponse>(`/families/${familyId}/dashboard`);
 }
 
 export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {

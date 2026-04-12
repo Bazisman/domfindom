@@ -47,8 +47,10 @@ export default function AppShellNext() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const topbarLinksRef = useRef<HTMLDivElement | null>(null);
+  const notificationsMenuRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("system");
   const [workspaceMode, setWorkspaceMode] = useState<"personal" | "family">("personal");
@@ -92,6 +94,8 @@ export default function AppShellNext() {
 
   const hasFamily = (familiesQuery.data?.families ?? []).length > 0;
   const showFamilyTab = workspaceMode === "family" && hasFamily;
+  const pendingInvites = pendingInvitesQuery.data?.invites ?? [];
+  const hasPendingInvites = pendingInvites.length > 0;
 
   useEffect(() => {
     const container = topbarLinksRef.current;
@@ -143,17 +147,21 @@ export default function AppShellNext() {
 
   useEffect(() => {
     function onDocumentClick(event: MouseEvent) {
-      if (!isAccountMenuOpen) {
+      if (!isAccountMenuOpen && !isNotificationsOpen) {
         return;
       }
       const node = event.target as Node;
-      if (accountMenuRef.current && !accountMenuRef.current.contains(node)) {
+      if (isAccountMenuOpen && accountMenuRef.current && !accountMenuRef.current.contains(node)) {
         setIsAccountMenuOpen(false);
+      }
+      if (isNotificationsOpen && notificationsMenuRef.current && !notificationsMenuRef.current.contains(node)) {
+        setIsNotificationsOpen(false);
       }
     }
 
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        setIsNotificationsOpen(false);
         setIsAccountMenuOpen(false);
         if (busyAction === "") {
           setConfirmAction(null);
@@ -169,9 +177,10 @@ export default function AppShellNext() {
       document.removeEventListener("mousedown", onDocumentClick);
       document.removeEventListener("keydown", onEscape);
     };
-  }, [isAccountMenuOpen, busyAction]);
+  }, [isAccountMenuOpen, isNotificationsOpen, busyAction]);
 
   useEffect(() => {
+    setIsNotificationsOpen(false);
     setIsAccountMenuOpen(false);
     setConfirmAction(null);
     setResetConfirmText("");
@@ -421,12 +430,73 @@ export default function AppShellNext() {
           ) : null}
         </div>
 
+        <div className="notifications-menu" ref={notificationsMenuRef}>
+          <button
+            aria-expanded={isNotificationsOpen}
+            aria-haspopup="menu"
+            className="notification-trigger"
+            onClick={() => {
+              setIsNotificationsOpen((prev) => !prev);
+              setIsAccountMenuOpen(false);
+            }}
+            title="Уведомления"
+            type="button"
+          >
+            <span className="notification-icon">🔔</span>
+            {hasPendingInvites ? <span className="notification-badge">{pendingInvites.length}</span> : null}
+          </button>
+
+          <div className={isNotificationsOpen ? "account-overlay open" : "account-overlay"} onClick={() => setIsNotificationsOpen(false)} />
+
+          <div className={isNotificationsOpen ? "notifications-dropdown open" : "notifications-dropdown"} role="menu">
+            <div className="panel-header">
+              <h3>Уведомления</h3>
+              <span>{hasPendingInvites ? `${pendingInvites.length}` : "0"}</span>
+            </div>
+
+            {hasPendingInvites ? (
+              pendingInvites.map((invite) => (
+                <div className="family-member-item" key={invite.invite_id}>
+                  <div className="family-member-main">
+                    <strong>{invite.family_name}</strong>
+                    <span>От: {invite.invited_by_email}</span>
+                    <span>Роль: {invite.role}</span>
+                  </div>
+                  <div className="family-member-controls">
+                    <button
+                      className="account-action"
+                      disabled={inviteAction !== ""}
+                      onClick={() => void onAcceptInvite(invite.invite_id)}
+                      type="button"
+                    >
+                      {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "Принимаем..." : "Принять"}
+                    </button>
+                    <button
+                      className="account-action danger"
+                      disabled={inviteAction !== ""}
+                      onClick={() => void onDeclineInvite(invite.invite_id)}
+                      type="button"
+                    >
+                      {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "Отклоняем..." : "Отклонить"}
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="account-meta">Пока нет новых приглашений.</p>
+            )}
+          </div>
+        </div>
+
         <div className="account-menu" ref={accountMenuRef}>
           <button
             aria-expanded={isAccountMenuOpen}
             aria-haspopup="menu"
             className="account-trigger"
-            onClick={() => setIsAccountMenuOpen((prev) => !prev)}
+            onClick={() => {
+              setIsAccountMenuOpen((prev) => !prev);
+              setIsNotificationsOpen(false);
+            }}
             type="button"
           >
             <span className="account-trigger-avatar">{initials || "U"}</span>
@@ -475,39 +545,6 @@ export default function AppShellNext() {
                 </button>
               </div>
             </div>
-
-            {(pendingInvitesQuery.data?.invites ?? []).length > 0 ? (
-              <div className="account-dropdown-section">
-                <p className="account-dropdown-title">Приглашения</p>
-                {(pendingInvitesQuery.data?.invites ?? []).map((invite) => (
-                  <div className="family-member-item" key={invite.invite_id}>
-                    <div className="family-member-main">
-                      <strong>{invite.family_name}</strong>
-                      <span>От: {invite.invited_by_email}</span>
-                      <span>Роль: {invite.role}</span>
-                    </div>
-                    <div className="family-member-controls">
-                      <button
-                        className="account-action"
-                        disabled={inviteAction !== ""}
-                        onClick={() => void onAcceptInvite(invite.invite_id)}
-                        type="button"
-                      >
-                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "Принимаем..." : "Принять"}
-                      </button>
-                      <button
-                        className="account-action danger"
-                        disabled={inviteAction !== ""}
-                        onClick={() => void onDeclineInvite(invite.invite_id)}
-                        type="button"
-                      >
-                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "Отклоняем..." : "Отклонить"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
 
             <div className="account-dropdown-section">
               <p className="account-dropdown-title">Управление</p>

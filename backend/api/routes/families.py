@@ -1,5 +1,9 @@
+from datetime import datetime
+from typing import Dict, List
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+import core
 from backend.auth.dependencies import require_user
 from backend.auth.mailer import auth_mailer
 from backend.auth.service import auth_service
@@ -15,9 +19,13 @@ from backend.schemas.families import (
     FamilyMemberItemResponse,
     FamilyMemberListResponse,
     FamilyMemberRoleUpdatePayload,
+    FamilyDashboardBalanceResponse,
+    FamilyDashboardResponse,
+    FamilyDashboardTransactionResponse,
     FamilyPendingInviteItemResponse,
     FamilyPendingInviteListResponse,
 )
+from backend.services import row_to_transaction_response, transaction_service
 
 
 router = APIRouter()
@@ -42,6 +50,59 @@ def _require_family_admin_access(family_id: int, user_id: int):
     if membership["role"] != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     return membership
+
+
+def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboardResponse:
+    members = auth_service.list_family_members(family_id)
+    now = datetime.now()
+
+    main_balance = 0.0
+    income = 0.0
+    expense = 0.0
+    recent_transactions: List[Dict[str, object]] = []
+
+    for member in members:
+        user_id = int(member["user_id"])
+        user_email = str(member["email"] or "")
+        user_db_path = auth_service.ensure_user_finance_db(user_id)
+        db_token = core.push_db_name(user_db_path)
+        try:
+            balance = transaction_service.get_balance()
+            stats = transaction_service.get_monthly_stats(now.year, now.month)
+            main_balance += float(balance.main_balance)
+            income += float(stats.get("income", 0.0) or 0.0)
+            expense += float(stats.get("expense", 0.0) or 0.0)
+
+            items = transaction_service.get_transactions(limit=100, period="all", offset=0)
+            for item in items:
+                if item.status == "planned":
+                    continue
+                mapped = row_to_transaction_response(item)
+                recent_transactions.append(
+                    {
+                        **mapped,
+                        "owner_user_id": user_id,
+                        "owner_email": user_email,
+                    }
+                )
+        finally:
+            core.pop_db_name(db_token)
+
+    recent_transactions.sort(key=lambda item: (str(item["date"]), int(item["id"])), reverse=True)
+    top_transactions = recent_transactions[:20]
+
+    return FamilyDashboardResponse(
+        family_id=family_id,
+        family_name=family_name,
+        members_count=len(members),
+        balance=FamilyDashboardBalanceResponse(
+            main_balance=round(main_balance, 2),
+            income=round(income, 2),
+            expense=round(expense, 2),
+            difference=round(income - expense, 2),
+        ),
+        recent_transactions=[FamilyDashboardTransactionResponse(**item) for item in top_transactions],
+    )
 
 
 def _validate_member_management_rules(
@@ -79,6 +140,16 @@ def list_family_members(family_id: int, current_user=Depends(require_user)) -> F
     _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
     members = auth_service.list_family_members(family_id=family_id)
     return FamilyMemberListResponse(members=[FamilyMemberItemResponse(**item) for item in members])
+
+
+@router.get("/{family_id}/dashboard", response_model=FamilyDashboardResponse)
+def get_family_dashboard(family_id: int, current_user=Depends(require_user)) -> FamilyDashboardResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
+    family_name = str(membership.get("family_name") or "Семья")
+    return _collect_family_dashboard(family_id=family_id, family_name=family_name)
 
 
 @router.post("/{family_id}/invites", response_model=FamilyInviteCreateResponse)

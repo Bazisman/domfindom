@@ -1670,6 +1670,19 @@ body {
   min-width: 160px;
 }
 
+.family-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 960px) {
+  .family-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .family-page-actions {
     width: 100%;
