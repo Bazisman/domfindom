@@ -30,7 +30,7 @@ type InviteAction = "" | "accept" | "decline";
 
 function formatBackupTimestamp(value: string): string {
   if (!value) {
-    return "РґР°С‚Р° РЅРµРёР·РІРµСЃС‚РЅР°";
+    return "дата неизвестна";
   }
   const parsed = new Date(value.replace(" ", "T") + "Z");
   if (Number.isNaN(parsed.getTime())) {
@@ -42,26 +42,14 @@ function formatBackupTimestamp(value: string): string {
   }).format(parsed);
 }
 
-function familyRoleLabel(role: "owner" | "member" | "viewer"): string {
-  if (role === "owner") {
-    return "Р’Р»Р°РґРµР»РµС†";
-  }
-  if (role === "viewer") {
-    return "РўРѕР»СЊРєРѕ РїСЂРѕСЃРјРѕС‚СЂ";
-  }
-  return "РџРѕРјРѕС‰РЅРёРє";
-}
-
 export default function AppShellNext() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const topbarLinksRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
-  const notificationsRef = useRef<HTMLDivElement | null>(null);
 
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("system");
   const [workspaceMode, setWorkspaceMode] = useState<"personal" | "family">("personal");
   const [accountMessage, setAccountMessage] = useState("");
@@ -103,8 +91,6 @@ export default function AppShellNext() {
   });
 
   const hasFamily = (familiesQuery.data?.families ?? []).length > 0;
-  const pendingInvites = pendingInvitesQuery.data?.invites ?? [];
-  const pendingInvitesCount = pendingInvites.length;
   const showFamilyTab = workspaceMode === "family" && hasFamily;
 
   useEffect(() => {
@@ -157,24 +143,18 @@ export default function AppShellNext() {
 
   useEffect(() => {
     function onDocumentClick(event: MouseEvent) {
-      if (!isAccountMenuOpen && !isNotificationsOpen) {
+      if (!isAccountMenuOpen) {
         return;
       }
       const node = event.target as Node;
-      const clickedInsideAccount = Boolean(accountMenuRef.current && accountMenuRef.current.contains(node));
-      const clickedInsideNotifications = Boolean(notificationsRef.current && notificationsRef.current.contains(node));
-      if (!clickedInsideAccount) {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(node)) {
         setIsAccountMenuOpen(false);
-      }
-      if (!clickedInsideNotifications) {
-        setIsNotificationsOpen(false);
       }
     }
 
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsAccountMenuOpen(false);
-        setIsNotificationsOpen(false);
         if (busyAction === "") {
           setConfirmAction(null);
           setResetConfirmText("");
@@ -189,10 +169,9 @@ export default function AppShellNext() {
       document.removeEventListener("mousedown", onDocumentClick);
       document.removeEventListener("keydown", onEscape);
     };
-  }, [isAccountMenuOpen, isNotificationsOpen, busyAction]);
+  }, [isAccountMenuOpen, busyAction]);
 
   useEffect(() => {
-    setIsNotificationsOpen(false);
     setIsAccountMenuOpen(false);
     setConfirmAction(null);
     setResetConfirmText("");
@@ -223,7 +202,7 @@ export default function AppShellNext() {
       await updateAccountPreferences({ workspace_mode: nextMode, theme_mode: themeMode });
       await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
       if (nextMode === "family" && !hasFamily) {
-        setAccountMessage("РЎРЅР°С‡Р°Р»Р° РїСЂРёРјРёС‚Рµ РїСЂРёРіР»Р°С€РµРЅРёРµ РІ СЃРµРјСЊСЋ РёР»Рё СЃРѕР·РґР°Р№С‚Рµ СЃРµРјРµР№РЅС‹Р№ Р±СЋРґР¶РµС‚.");
+        setAccountMessage("Сначала примите приглашение в семью или создайте семейный бюджет.");
       }
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : "Не удалось сохранить режим.");
@@ -343,14 +322,14 @@ export default function AppShellNext() {
 
     if (confirmAction === "reset") {
       const normalized = resetConfirmText.trim().toUpperCase();
-      if (normalized !== "РЎР‘Р РћРЎ") {
-        setAccountError("Р’РІРµРґРёС‚Рµ РЎР‘Р РћРЎ РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.");
+      if (normalized !== "СБРОС") {
+        setAccountError("Введите СБРОС для подтверждения.");
         return;
       }
 
       setBusyAction("reset");
       try {
-        const response = await resetAllAccountData({ confirm_text: "РЎР‘Р РћРЎ" });
+        const response = await resetAllAccountData({ confirm_text: "СБРОС" });
         setAccountMessage(response.message);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -377,13 +356,13 @@ export default function AppShellNext() {
 
   const confirmTitle = useMemo(() => {
     if (confirmAction === "logout") {
-      return "РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РІС‹С…РѕРґР°";
+      return "Подтверждение выхода";
     }
     if (confirmAction === "restore") {
-      return "Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ";
+      return "Восстановить данные";
     }
     if (confirmAction === "reset") {
-      return "РћР±РЅСѓР»РёС‚СЊ РґР°РЅРЅС‹Рµ";
+      return "Обнулить данные";
     }
     return "";
   }, [confirmAction]);
@@ -393,114 +372,53 @@ export default function AppShellNext() {
       return "Вы действительно хотите выйти из аккаунта?";
     }
     if (confirmAction === "restore") {
-      return "РўРµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ Р±СѓРґСѓС‚ Р·Р°РјРµРЅРµРЅС‹ РїРѕСЃР»РµРґРЅРµР№ СЂРµР·РµСЂРІРЅРѕР№ РєРѕРїРёРµР№.";
+      return "Текущие данные будут заменены последней резервной копией.";
     }
     if (confirmAction === "reset") {
-      return "Р‘СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ РІСЃРµ С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ. Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµРѕР±СЂР°С‚РёРјРѕ.";
+      return "Будут удалены все финансовые данные пользователя. Это действие необратимо.";
     }
     return "";
   }, [confirmAction]);
 
   const confirmButtonLabel = useMemo(() => {
     if (confirmAction === "logout") {
-      return "Р’С‹Р№С‚Рё";
+      return "Выйти";
     }
     if (confirmAction === "restore") {
-      return "Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ";
+      return "Восстановить";
     }
     if (confirmAction === "reset") {
-      return "РћР±РЅСѓР»РёС‚СЊ";
+      return "Обнулить";
     }
-    return "РџРѕРґС‚РІРµСЂРґРёС‚СЊ";
+    return "Подтвердить";
   }, [confirmAction]);
 
-  const resetAllowed = confirmAction !== "reset" || resetConfirmText.trim().toUpperCase() === "РЎР‘Р РћРЎ";
+  const resetAllowed = confirmAction !== "reset" || resetConfirmText.trim().toUpperCase() === "СБРОС";
 
   return (
     <div className="shell">
       <nav className="topbar">
         <div className="topbar-links" ref={topbarLinksRef}>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} end to="/">
-            Р“Р»Р°РІРЅР°СЏ
+            Главная
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/transactions">
-            РўСЂР°РЅР·Р°РєС†РёРё
+            Транзакции
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/categories">
-            РљР°С‚РµРіРѕСЂРёРё
+            Категории
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/planning">
-            РџР»Р°РЅРёСЂРѕРІР°РЅРёРµ
+            Планирование
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/accounts">
-            РЎС‡РµС‚Р°
+            Счета
           </NavLink>
           {showFamilyTab ? (
             <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/family">
-              РЎРµРјСЊСЏ
+              Семья
             </NavLink>
           ) : null}
-        </div>
-
-        <div className="notifications-menu" ref={notificationsRef}>
-          <button
-            aria-expanded={isNotificationsOpen}
-            aria-haspopup="menu"
-            className="notification-trigger"
-            onClick={() => {
-              setIsAccountMenuOpen(false);
-              setIsNotificationsOpen((prev) => !prev);
-            }}
-            type="button"
-          >
-            <span className="notification-icon" aria-hidden="true">
-              рџ””
-            </span>
-            {pendingInvitesCount > 0 ? <span className="notification-badge">{pendingInvitesCount}</span> : null}
-          </button>
-          <div
-            className={isNotificationsOpen ? "account-overlay open" : "account-overlay"}
-            onClick={() => setIsNotificationsOpen(false)}
-          />
-          <div className={isNotificationsOpen ? "notifications-dropdown open" : "notifications-dropdown"} role="menu">
-            <div className="account-dropdown-head">
-              <strong>РЈРІРµРґРѕРјР»РµРЅРёСЏ</strong>
-              <span>{pendingInvitesCount > 0 ? `Новых приглашений: ${pendingInvitesCount}` : "Новых приглашений нет"}</span>
-            </div>
-            {pendingInvitesCount === 0 ? (
-              <p className="account-meta">РЎРµР№С‡Р°СЃ Р·РґРµСЃСЊ РїСѓСЃС‚Рѕ.</p>
-            ) : (
-              <div className="account-dropdown-section">
-                {pendingInvites.map((invite) => (
-                  <div className="family-member-item" key={invite.invite_id}>
-                    <div className="family-member-main">
-                      <strong>{invite.family_name}</strong>
-                      <span>РћС‚: {invite.invited_by_email}</span>
-                      <span>Р РѕР»СЊ: {familyRoleLabel(invite.role)}</span>
-                    </div>
-                    <div className="family-member-controls">
-                      <button
-                        className="account-action"
-                        disabled={inviteAction !== ""}
-                        onClick={() => void onAcceptInvite(invite.invite_id)}
-                        type="button"
-                      >
-                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "Принимаем..." : "Принять"}
-                      </button>
-                      <button
-                        className="account-action danger"
-                        disabled={inviteAction !== ""}
-                        onClick={() => void onDeclineInvite(invite.invite_id)}
-                        type="button"
-                      >
-                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "Отклоняем..." : "Отклонить"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         <div className="account-menu" ref={accountMenuRef}>
@@ -508,68 +426,65 @@ export default function AppShellNext() {
             aria-expanded={isAccountMenuOpen}
             aria-haspopup="menu"
             className="account-trigger"
-            onClick={() => {
-              setIsNotificationsOpen(false);
-              setIsAccountMenuOpen((prev) => !prev);
-            }}
+            onClick={() => setIsAccountMenuOpen((prev) => !prev)}
             type="button"
           >
             <span className="account-trigger-avatar">{initials || "U"}</span>
-            <span className="account-trigger-label">РђРєРєР°СѓРЅС‚</span>
+            <span className="account-trigger-label">Аккаунт</span>
           </button>
 
           <div className={isAccountMenuOpen ? "account-overlay open" : "account-overlay"} onClick={() => setIsAccountMenuOpen(false)} />
 
           <div className={isAccountMenuOpen ? "account-dropdown open" : "account-dropdown"} role="menu">
             <div className="account-dropdown-head">
-              <strong>{displayName || "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ"}</strong>
-              <span title={userEmail}>{userEmail || "email РЅРµ СѓРєР°Р·Р°РЅ"}</span>
+              <strong>{displayName || "Пользователь"}</strong>
+              <span title={userEmail}>{userEmail || "email не указан"}</span>
             </div>
 
             <div className="account-dropdown-section">
-              <p className="account-dropdown-title">Р РµР¶РёРј</p>
+              <p className="account-dropdown-title">Режим</p>
               <div className="account-theme-row">
                 <button
                   className={workspaceMode === "personal" ? "account-pill active" : "account-pill"}
                   onClick={() => void onWorkspaceChange("personal")}
                   type="button"
                 >
-                  Р›РёС‡РЅС‹Р№
+                  Личный
                 </button>
                 <button
                   className={workspaceMode === "family" ? "account-pill active" : "account-pill"}
                   onClick={() => void onWorkspaceChange("family")}
                   type="button"
                 >
-                  РЎРѕРІРјРµСЃС‚РЅС‹Р№
+                  Совместный
                 </button>
               </div>
             </div>
 
             <div className="account-dropdown-section">
-              <p className="account-dropdown-title">РўРµРјР° РїСЂРёР»РѕР¶РµРЅРёСЏ</p>
+              <p className="account-dropdown-title">Тема приложения</p>
               <div className="account-theme-row">
                 <button className={themeMode === "light" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("light")} type="button">
-                  РЎРІРµС‚Р»Р°СЏ
+                  Светлая
                 </button>
                 <button className={themeMode === "dark" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("dark")} type="button">
-                  РўС‘РјРЅР°СЏ
+                  Тёмная
                 </button>
                 <button className={themeMode === "system" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("system")} type="button">
-                  РЎРёСЃС‚РµРјР°
+                  Система
                 </button>
               </div>
             </div>
 
-            {pendingInvitesCount > 0 ? (
+            {(pendingInvitesQuery.data?.invites ?? []).length > 0 ? (
               <div className="account-dropdown-section">
-                <p className="account-dropdown-title">РџСЂРёРіР»Р°С€РµРЅРёСЏ</p>
-                {pendingInvites.map((invite) => (
+                <p className="account-dropdown-title">Приглашения</p>
+                {(pendingInvitesQuery.data?.invites ?? []).map((invite) => (
                   <div className="family-member-item" key={invite.invite_id}>
                     <div className="family-member-main">
                       <strong>{invite.family_name}</strong>
-                      <span>РћС‚: {invite.invited_by_email}</span>
-                      <span>Р РѕР»СЊ: {familyRoleLabel(invite.role)}</span>
+                      <span>От: {invite.invited_by_email}</span>
+                      <span>Роль: {invite.role}</span>
                     </div>
                     <div className="family-member-controls">
                       <button
@@ -595,14 +510,14 @@ export default function AppShellNext() {
             ) : null}
 
             <div className="account-dropdown-section">
-              <p className="account-dropdown-title">РЈРїСЂР°РІР»РµРЅРёРµ</p>
+              <p className="account-dropdown-title">Управление</p>
               <NavLink className="account-action" onClick={() => setIsAccountMenuOpen(false)} to="/security">
-                РќР°СЃС‚СЂРѕР№РєРё Рё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ
+                Настройки и безопасность
               </NavLink>
             </div>
 
             <div className="account-dropdown-section">
-              <p className="account-dropdown-title">РњРѕРё РґР°РЅРЅС‹Рµ</p>
+              <p className="account-dropdown-title">Мои данные</p>
               <button className="account-action" disabled={busyAction !== ""} onClick={() => void onSaveBackup()} type="button">
                 {busyAction === "save" ? "Сохраняем..." : "Сохранить данные (1 слот)"}
               </button>
@@ -612,17 +527,17 @@ export default function AppShellNext() {
                 onClick={() => openConfirm("restore")}
                 type="button"
               >
-                Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ
+                Восстановить данные
               </button>
               <button className="account-action danger" disabled={busyAction !== ""} onClick={() => openConfirm("reset")} type="button">
-                РћР±РЅСѓР»РёС‚СЊ РґР°РЅРЅС‹Рµ
+                Обнулить данные
               </button>
             </div>
 
             {backupInfoQuery.data?.has_backup ? (
-              <p className="account-meta">РџРѕСЃР»РµРґРЅСЏСЏ РєРѕРїРёСЏ: {formatBackupTimestamp(backupInfoQuery.data.updated_at || "")}</p>
+              <p className="account-meta">Последняя копия: {formatBackupTimestamp(backupInfoQuery.data.updated_at || "")}</p>
             ) : (
-              <p className="account-meta">Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ РµС‰С‘ РЅРµ СЃРѕР·РґР°РЅР°.</p>
+              <p className="account-meta">Резервная копия ещё не создана.</p>
             )}
 
             {busyAction !== "" ? <p className="account-meta">Выполняем операцию...</p> : null}
@@ -630,7 +545,7 @@ export default function AppShellNext() {
             {accountError ? <p className="account-feedback error">{accountError}</p> : null}
 
             <button className="account-action danger" disabled={busyAction !== ""} onClick={() => openConfirm("logout")} type="button">
-              Р’С‹Р№С‚Рё
+              Выйти
             </button>
           </div>
         </div>
@@ -644,11 +559,11 @@ export default function AppShellNext() {
 
             {confirmAction === "reset" ? (
               <label className="confirm-field">
-                <span>Р’РІРµРґРёС‚Рµ РЎР‘Р РћРЎ РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ</span>
+                <span>Введите СБРОС для подтверждения</span>
                 <input
                   autoComplete="off"
                   onChange={(event) => setResetConfirmText(event.target.value)}
-                  placeholder="РЎР‘Р РћРЎ"
+                  placeholder="СБРОС"
                   value={resetConfirmText}
                 />
               </label>
@@ -656,7 +571,7 @@ export default function AppShellNext() {
 
             <div className="confirm-actions">
               <button className="account-action" disabled={busyAction !== ""} onClick={closeConfirm} type="button">
-                РћС‚РјРµРЅР°
+                Отмена
               </button>
               <button
                 className="account-action danger"
