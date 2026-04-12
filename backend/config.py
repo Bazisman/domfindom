@@ -67,6 +67,8 @@ class AppConfig:
     smtp_use_ssl: bool
     password_reset_url_template: str
     password_reset_email_subject: str
+    family_invite_url_template: str
+    family_invite_email_subject: str
 
 
 settings = AppConfig(
@@ -115,6 +117,14 @@ settings = AppConfig(
     password_reset_email_subject=os.getenv(
         "FINANCE_APP_PASSWORD_RESET_EMAIL_SUBJECT",
         "Восстановление пароля",
+    ).strip(),
+    family_invite_url_template=os.getenv(
+        "FINANCE_APP_FAMILY_INVITE_URL_TEMPLATE",
+        "https://domfindom.ru/login?family_invite_token={token}",
+    ).strip(),
+    family_invite_email_subject=os.getenv(
+        "FINANCE_APP_FAMILY_INVITE_EMAIL_SUBJECT",
+        "Приглашение в семейный бюджет",
     ).strip(),
 )
 

@@ -30,7 +30,7 @@ type InviteAction = "" | "accept" | "decline";
 
 function formatBackupTimestamp(value: string): string {
   if (!value) {
-    return "дата неизвестна";
+    return "РґР°С‚Р° РЅРµРёР·РІРµСЃС‚РЅР°";
   }
   const parsed = new Date(value.replace(" ", "T") + "Z");
   if (Number.isNaN(parsed.getTime())) {
@@ -42,14 +42,26 @@ function formatBackupTimestamp(value: string): string {
   }).format(parsed);
 }
 
+function familyRoleLabel(role: "owner" | "member" | "viewer"): string {
+  if (role === "owner") {
+    return "Р’Р»Р°РґРµР»РµС†";
+  }
+  if (role === "viewer") {
+    return "РўРѕР»СЊРєРѕ РїСЂРѕСЃРјРѕС‚СЂ";
+  }
+  return "РџРѕРјРѕС‰РЅРёРє";
+}
+
 export default function AppShellNext() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const topbarLinksRef = useRef<HTMLDivElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
 
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("system");
   const [workspaceMode, setWorkspaceMode] = useState<"personal" | "family">("personal");
   const [accountMessage, setAccountMessage] = useState("");
@@ -91,6 +103,8 @@ export default function AppShellNext() {
   });
 
   const hasFamily = (familiesQuery.data?.families ?? []).length > 0;
+  const pendingInvites = pendingInvitesQuery.data?.invites ?? [];
+  const pendingInvitesCount = pendingInvites.length;
   const showFamilyTab = workspaceMode === "family" && hasFamily;
 
   useEffect(() => {
@@ -143,18 +157,24 @@ export default function AppShellNext() {
 
   useEffect(() => {
     function onDocumentClick(event: MouseEvent) {
-      if (!isAccountMenuOpen) {
+      if (!isAccountMenuOpen && !isNotificationsOpen) {
         return;
       }
       const node = event.target as Node;
-      if (accountMenuRef.current && !accountMenuRef.current.contains(node)) {
+      const clickedInsideAccount = Boolean(accountMenuRef.current && accountMenuRef.current.contains(node));
+      const clickedInsideNotifications = Boolean(notificationsRef.current && notificationsRef.current.contains(node));
+      if (!clickedInsideAccount) {
         setIsAccountMenuOpen(false);
+      }
+      if (!clickedInsideNotifications) {
+        setIsNotificationsOpen(false);
       }
     }
 
     function onEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsAccountMenuOpen(false);
+        setIsNotificationsOpen(false);
         if (busyAction === "") {
           setConfirmAction(null);
           setResetConfirmText("");
@@ -169,9 +189,10 @@ export default function AppShellNext() {
       document.removeEventListener("mousedown", onDocumentClick);
       document.removeEventListener("keydown", onEscape);
     };
-  }, [isAccountMenuOpen, busyAction]);
+  }, [isAccountMenuOpen, isNotificationsOpen, busyAction]);
 
   useEffect(() => {
+    setIsNotificationsOpen(false);
     setIsAccountMenuOpen(false);
     setConfirmAction(null);
     setResetConfirmText("");
@@ -190,7 +211,7 @@ export default function AppShellNext() {
       await updateAccountPreferences({ theme_mode: nextTheme, workspace_mode: workspaceMode });
       await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "Не удалось сохранить тему.");
+      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ С‚РµРјСѓ.");
     }
   }
 
@@ -202,10 +223,10 @@ export default function AppShellNext() {
       await updateAccountPreferences({ workspace_mode: nextMode, theme_mode: themeMode });
       await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
       if (nextMode === "family" && !hasFamily) {
-        setAccountMessage("Сначала примите приглашение в семью или создайте семейный бюджет.");
+        setAccountMessage("РЎРЅР°С‡Р°Р»Р° РїСЂРёРјРёС‚Рµ РїСЂРёРіР»Р°С€РµРЅРёРµ РІ СЃРµРјСЊСЋ РёР»Рё СЃРѕР·РґР°Р№С‚Рµ СЃРµРјРµР№РЅС‹Р№ Р±СЋРґР¶РµС‚.");
       }
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "Не удалось сохранить режим.");
+      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµР¶РёРј.");
     }
   }
 
@@ -225,7 +246,7 @@ export default function AppShellNext() {
         queryClient.invalidateQueries({ queryKey: ["account", "preferences"] }),
       ]);
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "Не удалось принять приглашение.");
+      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРЅСЏС‚СЊ РїСЂРёРіР»Р°С€РµРЅРёРµ.");
     } finally {
       setInviteAction("");
       setInviteBusyId(null);
@@ -242,7 +263,7 @@ export default function AppShellNext() {
       setAccountMessage(response.message);
       await queryClient.invalidateQueries({ queryKey: ["families", "invites", "pending"] });
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "Не удалось отклонить приглашение.");
+      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєР»РѕРЅРёС‚СЊ РїСЂРёРіР»Р°С€РµРЅРёРµ.");
     } finally {
       setInviteAction("");
       setInviteBusyId(null);
@@ -258,7 +279,7 @@ export default function AppShellNext() {
       setAccountMessage(response.message);
       await queryClient.invalidateQueries({ queryKey: ["account", "backup"] });
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "Не удалось сохранить резервную копию.");
+      setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ СЂРµР·РµСЂРІРЅСѓСЋ РєРѕРїРёСЋ.");
     } finally {
       setBusyAction("");
     }
@@ -312,7 +333,7 @@ export default function AppShellNext() {
           queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
         ]);
       } catch (error) {
-        setAccountError(error instanceof Error ? error.message : "Не удалось восстановить данные.");
+        setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ.");
       } finally {
         setBusyAction("");
         setConfirmAction(null);
@@ -322,14 +343,14 @@ export default function AppShellNext() {
 
     if (confirmAction === "reset") {
       const normalized = resetConfirmText.trim().toUpperCase();
-      if (normalized !== "СБРОС") {
-        setAccountError("Введите СБРОС для подтверждения.");
+      if (normalized !== "РЎР‘Р РћРЎ") {
+        setAccountError("Р’РІРµРґРёС‚Рµ РЎР‘Р РћРЎ РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ.");
         return;
       }
 
       setBusyAction("reset");
       try {
-        const response = await resetAllAccountData({ confirm_text: "СБРОС" });
+        const response = await resetAllAccountData({ confirm_text: "РЎР‘Р РћРЎ" });
         setAccountMessage(response.message);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -341,7 +362,7 @@ export default function AppShellNext() {
           queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
         ]);
       } catch (error) {
-        setAccountError(error instanceof Error ? error.message : "Не удалось очистить данные.");
+        setAccountError(error instanceof Error ? error.message : "РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‡РёСЃС‚РёС‚СЊ РґР°РЅРЅС‹Рµ.");
       } finally {
         setBusyAction("");
         setConfirmAction(null);
@@ -351,140 +372,111 @@ export default function AppShellNext() {
   }
 
   const userEmail = currentUser?.email ?? "";
-  const displayName = userEmail ? userEmail.split("@")[0] : "Профиль";
+  const displayName = userEmail ? userEmail.split("@")[0] : "РџСЂРѕС„РёР»СЊ";
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const confirmTitle = useMemo(() => {
     if (confirmAction === "logout") {
-      return "Подтверждение выхода";
+      return "РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РІС‹С…РѕРґР°";
     }
     if (confirmAction === "restore") {
-      return "Восстановить данные";
+      return "Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ";
     }
     if (confirmAction === "reset") {
-      return "Обнулить данные";
+      return "РћР±РЅСѓР»РёС‚СЊ РґР°РЅРЅС‹Рµ";
     }
     return "";
   }, [confirmAction]);
 
   const confirmText = useMemo(() => {
     if (confirmAction === "logout") {
-      return "Вы действительно хотите выйти из аккаунта?";
+      return "Р’С‹ РґРµР№СЃС‚РІРёС‚РµР»СЊРЅРѕ С…РѕС‚РёС‚Рµ РІС‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°?";
     }
     if (confirmAction === "restore") {
-      return "Текущие данные будут заменены последней резервной копией.";
+      return "РўРµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ Р±СѓРґСѓС‚ Р·Р°РјРµРЅРµРЅС‹ РїРѕСЃР»РµРґРЅРµР№ СЂРµР·РµСЂРІРЅРѕР№ РєРѕРїРёРµР№.";
     }
     if (confirmAction === "reset") {
-      return "Будут удалены все финансовые данные пользователя. Это действие необратимо.";
+      return "Р‘СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ РІСЃРµ С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ. Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµРѕР±СЂР°С‚РёРјРѕ.";
     }
     return "";
   }, [confirmAction]);
 
   const confirmButtonLabel = useMemo(() => {
     if (confirmAction === "logout") {
-      return "Выйти";
+      return "Р’С‹Р№С‚Рё";
     }
     if (confirmAction === "restore") {
-      return "Восстановить";
+      return "Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ";
     }
     if (confirmAction === "reset") {
-      return "Обнулить";
+      return "РћР±РЅСѓР»РёС‚СЊ";
     }
-    return "Подтвердить";
+    return "РџРѕРґС‚РІРµСЂРґРёС‚СЊ";
   }, [confirmAction]);
 
-  const resetAllowed = confirmAction !== "reset" || resetConfirmText.trim().toUpperCase() === "СБРОС";
+  const resetAllowed = confirmAction !== "reset" || resetConfirmText.trim().toUpperCase() === "РЎР‘Р РћРЎ";
 
   return (
     <div className="shell">
       <nav className="topbar">
         <div className="topbar-links" ref={topbarLinksRef}>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} end to="/">
-            Главная
+            Р“Р»Р°РІРЅР°СЏ
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/transactions">
-            Транзакции
+            РўСЂР°РЅР·Р°РєС†РёРё
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/categories">
-            Категории
+            РљР°С‚РµРіРѕСЂРёРё
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/planning">
-            Планирование
+            РџР»Р°РЅРёСЂРѕРІР°РЅРёРµ
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/accounts">
-            Счета
+            РЎС‡РµС‚Р°
           </NavLink>
           {showFamilyTab ? (
             <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/family">
-              Семья
+              РЎРµРјСЊСЏ
             </NavLink>
           ) : null}
         </div>
 
-        <div className="account-menu" ref={accountMenuRef}>
+        <div className="notifications-menu" ref={notificationsRef}>
           <button
-            aria-expanded={isAccountMenuOpen}
+            aria-expanded={isNotificationsOpen}
             aria-haspopup="menu"
-            className="account-trigger"
-            onClick={() => setIsAccountMenuOpen((prev) => !prev)}
+            className="notification-trigger"
+            onClick={() => {
+              setIsAccountMenuOpen(false);
+              setIsNotificationsOpen((prev) => !prev);
+            }}
             type="button"
           >
-            <span className="account-trigger-avatar">{initials || "U"}</span>
-            <span className="account-trigger-label">Аккаунт</span>
+            <span className="notification-icon" aria-hidden="true">
+              рџ””
+            </span>
+            {pendingInvitesCount > 0 ? <span className="notification-badge">{pendingInvitesCount}</span> : null}
           </button>
-
-          <div className={isAccountMenuOpen ? "account-overlay open" : "account-overlay"} onClick={() => setIsAccountMenuOpen(false)} />
-
-          <div className={isAccountMenuOpen ? "account-dropdown open" : "account-dropdown"} role="menu">
+          <div
+            className={isNotificationsOpen ? "account-overlay open" : "account-overlay"}
+            onClick={() => setIsNotificationsOpen(false)}
+          />
+          <div className={isNotificationsOpen ? "notifications-dropdown open" : "notifications-dropdown"} role="menu">
             <div className="account-dropdown-head">
-              <strong>{displayName || "Пользователь"}</strong>
-              <span title={userEmail}>{userEmail || "email не указан"}</span>
+              <strong>РЈРІРµРґРѕРјР»РµРЅРёСЏ</strong>
+              <span>{pendingInvitesCount > 0 ? `РќРѕРІС‹С… РїСЂРёРіР»Р°С€РµРЅРёР№: ${pendingInvitesCount}` : "РќРѕРІС‹С… РїСЂРёРіР»Р°С€РµРЅРёР№ РЅРµС‚"}</span>
             </div>
-
-            <div className="account-dropdown-section">
-              <p className="account-dropdown-title">Режим</p>
-              <div className="account-theme-row">
-                <button
-                  className={workspaceMode === "personal" ? "account-pill active" : "account-pill"}
-                  onClick={() => void onWorkspaceChange("personal")}
-                  type="button"
-                >
-                  Личный
-                </button>
-                <button
-                  className={workspaceMode === "family" ? "account-pill active" : "account-pill"}
-                  onClick={() => void onWorkspaceChange("family")}
-                  type="button"
-                >
-                  Совместный
-                </button>
-              </div>
-            </div>
-
-            <div className="account-dropdown-section">
-              <p className="account-dropdown-title">Тема приложения</p>
-              <div className="account-theme-row">
-                <button className={themeMode === "light" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("light")} type="button">
-                  Светлая
-                </button>
-                <button className={themeMode === "dark" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("dark")} type="button">
-                  Тёмная
-                </button>
-                <button className={themeMode === "system" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("system")} type="button">
-                  Система
-                </button>
-              </div>
-            </div>
-
-            {(pendingInvitesQuery.data?.invites ?? []).length > 0 ? (
+            {pendingInvitesCount === 0 ? (
+              <p className="account-meta">РЎРµР№С‡Р°СЃ Р·РґРµСЃСЊ РїСѓСЃС‚Рѕ.</p>
+            ) : (
               <div className="account-dropdown-section">
-                <p className="account-dropdown-title">Приглашения</p>
-                {(pendingInvitesQuery.data?.invites ?? []).map((invite) => (
+                {pendingInvites.map((invite) => (
                   <div className="family-member-item" key={invite.invite_id}>
                     <div className="family-member-main">
                       <strong>{invite.family_name}</strong>
-                      <span>От: {invite.invited_by_email}</span>
-                      <span>Роль: {invite.role}</span>
+                      <span>РћС‚: {invite.invited_by_email}</span>
+                      <span>Р РѕР»СЊ: {familyRoleLabel(invite.role)}</span>
                     </div>
                     <div className="family-member-controls">
                       <button
@@ -493,7 +485,7 @@ export default function AppShellNext() {
                         onClick={() => void onAcceptInvite(invite.invite_id)}
                         type="button"
                       >
-                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "Принимаем..." : "Принять"}
+                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "РџСЂРёРЅРёРјР°РµРј..." : "РџСЂРёРЅСЏС‚СЊ"}
                       </button>
                       <button
                         className="account-action danger"
@@ -501,7 +493,100 @@ export default function AppShellNext() {
                         onClick={() => void onDeclineInvite(invite.invite_id)}
                         type="button"
                       >
-                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "Отклоняем..." : "Отклонить"}
+                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "РћС‚РєР»РѕРЅСЏРµРј..." : "РћС‚РєР»РѕРЅРёС‚СЊ"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="account-menu" ref={accountMenuRef}>
+          <button
+            aria-expanded={isAccountMenuOpen}
+            aria-haspopup="menu"
+            className="account-trigger"
+            onClick={() => {
+              setIsNotificationsOpen(false);
+              setIsAccountMenuOpen((prev) => !prev);
+            }}
+            type="button"
+          >
+            <span className="account-trigger-avatar">{initials || "U"}</span>
+            <span className="account-trigger-label">РђРєРєР°СѓРЅС‚</span>
+          </button>
+
+          <div className={isAccountMenuOpen ? "account-overlay open" : "account-overlay"} onClick={() => setIsAccountMenuOpen(false)} />
+
+          <div className={isAccountMenuOpen ? "account-dropdown open" : "account-dropdown"} role="menu">
+            <div className="account-dropdown-head">
+              <strong>{displayName || "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ"}</strong>
+              <span title={userEmail}>{userEmail || "email РЅРµ СѓРєР°Р·Р°РЅ"}</span>
+            </div>
+
+            <div className="account-dropdown-section">
+              <p className="account-dropdown-title">Р РµР¶РёРј</p>
+              <div className="account-theme-row">
+                <button
+                  className={workspaceMode === "personal" ? "account-pill active" : "account-pill"}
+                  onClick={() => void onWorkspaceChange("personal")}
+                  type="button"
+                >
+                  Р›РёС‡РЅС‹Р№
+                </button>
+                <button
+                  className={workspaceMode === "family" ? "account-pill active" : "account-pill"}
+                  onClick={() => void onWorkspaceChange("family")}
+                  type="button"
+                >
+                  РЎРѕРІРјРµСЃС‚РЅС‹Р№
+                </button>
+              </div>
+            </div>
+
+            <div className="account-dropdown-section">
+              <p className="account-dropdown-title">РўРµРјР° РїСЂРёР»РѕР¶РµРЅРёСЏ</p>
+              <div className="account-theme-row">
+                <button className={themeMode === "light" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("light")} type="button">
+                  РЎРІРµС‚Р»Р°СЏ
+                </button>
+                <button className={themeMode === "dark" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("dark")} type="button">
+                  РўС‘РјРЅР°СЏ
+                </button>
+                <button className={themeMode === "system" ? "account-pill active" : "account-pill"} onClick={() => void onThemeChange("system")} type="button">
+                  РЎРёСЃС‚РµРјР°
+                </button>
+              </div>
+            </div>
+
+            {pendingInvitesCount > 0 ? (
+              <div className="account-dropdown-section">
+                <p className="account-dropdown-title">РџСЂРёРіР»Р°С€РµРЅРёСЏ</p>
+                {pendingInvites.map((invite) => (
+                  <div className="family-member-item" key={invite.invite_id}>
+                    <div className="family-member-main">
+                      <strong>{invite.family_name}</strong>
+                      <span>РћС‚: {invite.invited_by_email}</span>
+                      <span>Р РѕР»СЊ: {familyRoleLabel(invite.role)}</span>
+                    </div>
+                    <div className="family-member-controls">
+                      <button
+                        className="account-action"
+                        disabled={inviteAction !== ""}
+                        onClick={() => void onAcceptInvite(invite.invite_id)}
+                        type="button"
+                      >
+                        {inviteAction === "accept" && inviteBusyId === invite.invite_id ? "РџСЂРёРЅРёРјР°РµРј..." : "РџСЂРёРЅСЏС‚СЊ"}
+                      </button>
+                      <button
+                        className="account-action danger"
+                        disabled={inviteAction !== ""}
+                        onClick={() => void onDeclineInvite(invite.invite_id)}
+                        type="button"
+                      >
+                        {inviteAction === "decline" && inviteBusyId === invite.invite_id ? "РћС‚РєР»РѕРЅСЏРµРј..." : "РћС‚РєР»РѕРЅРёС‚СЊ"}
                       </button>
                     </div>
                   </div>
@@ -510,16 +595,16 @@ export default function AppShellNext() {
             ) : null}
 
             <div className="account-dropdown-section">
-              <p className="account-dropdown-title">Управление</p>
+              <p className="account-dropdown-title">РЈРїСЂР°РІР»РµРЅРёРµ</p>
               <NavLink className="account-action" onClick={() => setIsAccountMenuOpen(false)} to="/security">
-                Настройки и безопасность
+                РќР°СЃС‚СЂРѕР№РєРё Рё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ
               </NavLink>
             </div>
 
             <div className="account-dropdown-section">
-              <p className="account-dropdown-title">Мои данные</p>
+              <p className="account-dropdown-title">РњРѕРё РґР°РЅРЅС‹Рµ</p>
               <button className="account-action" disabled={busyAction !== ""} onClick={() => void onSaveBackup()} type="button">
-                {busyAction === "save" ? "Сохраняем..." : "Сохранить данные (1 слот)"}
+                {busyAction === "save" ? "РЎРѕС…СЂР°РЅСЏРµРј..." : "РЎРѕС…СЂР°РЅРёС‚СЊ РґР°РЅРЅС‹Рµ (1 СЃР»РѕС‚)"}
               </button>
               <button
                 className="account-action"
@@ -527,25 +612,25 @@ export default function AppShellNext() {
                 onClick={() => openConfirm("restore")}
                 type="button"
               >
-                Восстановить данные
+                Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РґР°РЅРЅС‹Рµ
               </button>
               <button className="account-action danger" disabled={busyAction !== ""} onClick={() => openConfirm("reset")} type="button">
-                Обнулить данные
+                РћР±РЅСѓР»РёС‚СЊ РґР°РЅРЅС‹Рµ
               </button>
             </div>
 
             {backupInfoQuery.data?.has_backup ? (
-              <p className="account-meta">Последняя копия: {formatBackupTimestamp(backupInfoQuery.data.updated_at || "")}</p>
+              <p className="account-meta">РџРѕСЃР»РµРґРЅСЏСЏ РєРѕРїРёСЏ: {formatBackupTimestamp(backupInfoQuery.data.updated_at || "")}</p>
             ) : (
-              <p className="account-meta">Резервная копия ещё не создана.</p>
+              <p className="account-meta">Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ РµС‰С‘ РЅРµ СЃРѕР·РґР°РЅР°.</p>
             )}
 
-            {busyAction !== "" ? <p className="account-meta">Выполняем операцию...</p> : null}
+            {busyAction !== "" ? <p className="account-meta">Р’С‹РїРѕР»РЅСЏРµРј РѕРїРµСЂР°С†РёСЋ...</p> : null}
             {accountMessage ? <p className="account-feedback success">{accountMessage}</p> : null}
             {accountError ? <p className="account-feedback error">{accountError}</p> : null}
 
             <button className="account-action danger" disabled={busyAction !== ""} onClick={() => openConfirm("logout")} type="button">
-              Выйти
+              Р’С‹Р№С‚Рё
             </button>
           </div>
         </div>
@@ -559,11 +644,11 @@ export default function AppShellNext() {
 
             {confirmAction === "reset" ? (
               <label className="confirm-field">
-                <span>Введите СБРОС для подтверждения</span>
+                <span>Р’РІРµРґРёС‚Рµ РЎР‘Р РћРЎ РґР»СЏ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ</span>
                 <input
                   autoComplete="off"
                   onChange={(event) => setResetConfirmText(event.target.value)}
-                  placeholder="СБРОС"
+                  placeholder="РЎР‘Р РћРЎ"
                   value={resetConfirmText}
                 />
               </label>
@@ -571,7 +656,7 @@ export default function AppShellNext() {
 
             <div className="confirm-actions">
               <button className="account-action" disabled={busyAction !== ""} onClick={closeConfirm} type="button">
-                Отмена
+                РћС‚РјРµРЅР°
               </button>
               <button
                 className="account-action danger"
@@ -579,7 +664,7 @@ export default function AppShellNext() {
                 onClick={() => void runConfirmedAction()}
                 type="button"
               >
-                {busyAction !== "" ? "Подождите..." : confirmButtonLabel}
+                {busyAction !== "" ? "РџРѕРґРѕР¶РґРёС‚Рµ..." : confirmButtonLabel}
               </button>
             </div>
           </div>

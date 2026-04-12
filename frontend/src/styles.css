@@ -1390,8 +1390,82 @@ body {
 
 .account-menu {
   position: relative;
+  margin-left: 10px;
+  flex: 0 0 auto;
+}
+
+.notifications-menu {
+  position: relative;
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+.notification-trigger {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  cursor: pointer;
+}
+
+.notification-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #c15445;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notifications-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(360px, 92vw);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 12px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition:
+    opacity var(--dur-fast) var(--ease-smooth),
+    visibility var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+  z-index: 40;
+}
+
+.notifications-dropdown.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .account-trigger {
@@ -1464,6 +1538,15 @@ body {
 }
 
 [data-theme="dark"] .account-dropdown {
+  background: rgba(26, 34, 40, 0.96);
+}
+
+[data-theme="dark"] .notification-trigger {
+  background: rgba(20, 28, 34, 0.9);
+  border-color: rgba(230, 237, 243, 0.2);
+}
+
+[data-theme="dark"] .notifications-dropdown {
   background: rgba(26, 34, 40, 0.96);
 }
 
@@ -1800,6 +1883,24 @@ body {
   }
 
   .account-dropdown.open {
+    transform: translateY(0);
+  }
+
+  .notifications-dropdown {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    top: auto;
+    width: auto;
+    max-height: 65vh;
+    overflow-y: auto;
+    border-radius: 20px;
+    transform: translateY(18px);
+    z-index: 40;
+  }
+
+  .notifications-dropdown.open {
     transform: translateY(0);
   }
 }

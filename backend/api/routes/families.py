@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend.auth.dependencies import require_user
+from backend.auth.mailer import auth_mailer
 from backend.auth.service import auth_service
 from backend.schemas.families import (
     FamilyActionResponse,
@@ -84,12 +85,13 @@ def list_family_members(family_id: int, current_user=Depends(require_user)) -> F
 def create_family_invite(
     family_id: int,
     payload: FamilyInviteCreatePayload,
+    request: Request,
     current_user=Depends(require_user),
 ) -> FamilyInviteCreateResponse:
     if family_id <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
 
-    _require_family_admin_access(family_id=family_id, user_id=int(current_user["id"]))
+    actor_membership = _require_family_admin_access(family_id=family_id, user_id=int(current_user["id"]))
 
     invited_email = _normalize_email(payload.email)
     try:
@@ -107,8 +109,33 @@ def create_family_invite(
             ) from exc
         raise
 
+    sent_email = False
+    if auth_mailer.is_configured():
+        try:
+            role_label = "Помощник" if payload.role == "member" else "Только просмотр"
+            auth_mailer.send_family_invite_email(
+                to_email=invited_email,
+                family_name=str(actor_membership.get("family_name") or "Семья"),
+                invited_by_email=str(current_user["email"]),
+                role_label=role_label,
+                token=str(invite["token"]),
+            )
+            sent_email = True
+        except Exception:
+            sent_email = False
+
+    auth_service.log_auth_event(
+        event_type="family_invite_create",
+        status="success",
+        user_id=int(current_user["id"]),
+        email=str(current_user["email"]),
+        ip=request.client.host if request.client else "",
+        user_agent=request.headers.get("user-agent", ""),
+        detail="sent_via_email_and_cabinet" if sent_email else "saved_to_cabinet_only",
+    )
+
     return FamilyInviteCreateResponse(
-        message="Приглашение создано.",
+        message="Приглашение отправлено на почту и добавлено в личный кабинет." if sent_email else "Приглашение добавлено в личный кабинет.",
         family_id=family_id,
         email=invited_email,
         role=payload.role,

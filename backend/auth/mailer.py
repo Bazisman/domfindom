@@ -16,6 +16,8 @@ class AuthMailer:
         self.smtp_use_ssl = settings.smtp_use_ssl
         self.reset_url_template = settings.password_reset_url_template
         self.reset_email_subject = settings.password_reset_email_subject
+        self.family_invite_url_template = settings.family_invite_url_template
+        self.family_invite_email_subject = settings.family_invite_email_subject
 
     def is_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
@@ -23,6 +25,25 @@ class AuthMailer:
     def _build_reset_url(self, token: str) -> str:
         template = self.reset_url_template or "{token}"
         return template.replace("{token}", quote(token, safe=""))
+
+    def _build_family_invite_url(self, token: str) -> str:
+        template = self.family_invite_url_template or "{token}"
+        return template.replace("{token}", quote(token, safe=""))
+
+    def _deliver_message(self, message: EmailMessage) -> None:
+        if self.smtp_use_ssl:
+            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=10) as server:
+                if self.smtp_user:
+                    server.login(self.smtp_user, self.smtp_password)
+                server.send_message(message)
+            return
+
+        with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
+            if self.smtp_use_tls:
+                server.starttls()
+            if self.smtp_user:
+                server.login(self.smtp_user, self.smtp_password)
+            server.send_message(message)
 
     def send_password_reset_email(self, to_email: str, token: str) -> None:
         if not self.is_configured():
@@ -38,20 +59,32 @@ class AuthMailer:
             f"Откройте ссылку, чтобы продолжить:\n{reset_url}\n\n"
             "Если вы не запрашивали сброс, просто проигнорируйте это письмо."
         )
+        self._deliver_message(message)
 
-        if self.smtp_use_ssl:
-            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=10) as server:
-                if self.smtp_user:
-                    server.login(self.smtp_user, self.smtp_password)
-                server.send_message(message)
+    def send_family_invite_email(
+        self,
+        to_email: str,
+        family_name: str,
+        invited_by_email: str,
+        role_label: str,
+        token: str,
+    ) -> None:
+        if not self.is_configured():
             return
 
-        with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
-            if self.smtp_use_tls:
-                server.starttls()
-            if self.smtp_user:
-                server.login(self.smtp_user, self.smtp_password)
-            server.send_message(message)
+        invite_url = self._build_family_invite_url(token)
+        message = EmailMessage()
+        message["Subject"] = self.family_invite_email_subject or "Приглашение в семейный бюджет"
+        message["From"] = self.smtp_from
+        message["To"] = to_email
+        message.set_content(
+            f"Вас пригласили в семейный бюджет \"{family_name}\".\n"
+            f"Пригласил: {invited_by_email}\n"
+            f"Роль: {role_label}\n\n"
+            "Приглашение уже доступно в вашем личном кабинете в разделе уведомлений.\n"
+            f"Также можно перейти по ссылке:\n{invite_url}\n"
+        )
+        self._deliver_message(message)
 
 
 auth_mailer = AuthMailer()

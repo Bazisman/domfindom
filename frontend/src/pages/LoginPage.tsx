@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { ApiError, confirmPasswordReset, login, register, requestPasswordReset } from "../lib/api";
+import { ApiError, acceptFamilyInvite, confirmPasswordReset, login, register, requestPasswordReset } from "../lib/api";
 
 type AuthMode = "login" | "register" | "reset_request" | "reset_confirm";
 
@@ -19,6 +19,7 @@ export function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const tokenFromUrl = searchParams.get("reset_token");
+  const familyInviteTokenFromUrl = searchParams.get("family_invite_token");
   const hasTokenFromUrl = Boolean(tokenFromUrl);
 
   useEffect(() => {
@@ -68,11 +69,29 @@ export function LoginPage() {
     try {
       if (mode === "login") {
         const response = await login({ email, password });
+        if (familyInviteTokenFromUrl) {
+          try {
+            await acceptFamilyInvite({ token: familyInviteTokenFromUrl });
+            void queryClient.invalidateQueries({ queryKey: ["families", "me"] });
+            void queryClient.invalidateQueries({ queryKey: ["families", "invites", "pending"] });
+          } catch {
+            // do not block login if invite token is invalid/expired
+          }
+        }
         queryClient.setQueryData(["auth", "me"], response.user);
         void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         navigate("/", { replace: true });
       } else if (mode === "register") {
         const response = await register({ email, password });
+        if (familyInviteTokenFromUrl) {
+          try {
+            await acceptFamilyInvite({ token: familyInviteTokenFromUrl });
+            void queryClient.invalidateQueries({ queryKey: ["families", "me"] });
+            void queryClient.invalidateQueries({ queryKey: ["families", "invites", "pending"] });
+          } catch {
+            // do not block registration if invite token is invalid/expired
+          }
+        }
         queryClient.setQueryData(["auth", "me"], response.user);
         void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         navigate("/", { replace: true });
