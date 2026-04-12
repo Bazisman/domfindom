@@ -1583,6 +1583,77 @@ body {
   background: rgba(193, 84, 69, 0.08);
 }
 
+.confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 14, 0.46);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 80;
+  padding: 16px;
+}
+
+.confirm-modal {
+  width: min(460px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+[data-theme="dark"] .confirm-modal {
+  background: rgba(18, 26, 31, 0.98);
+}
+
+.confirm-modal h3 {
+  margin: 0;
+}
+
+.confirm-modal p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.confirm-field {
+  display: grid;
+  gap: 8px;
+}
+
+.confirm-field span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.confirm-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  font: inherit;
+}
+
+[data-theme="dark"] .confirm-field input {
+  background: rgba(20, 28, 34, 0.9);
+  border-color: rgba(230, 237, 243, 0.2);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.confirm-actions .account-action {
+  width: auto;
+  flex: 1 1 0;
+  text-align: center;
+}
+
 @media (max-width: 820px) {
   .account-trigger-label {
     display: none;
