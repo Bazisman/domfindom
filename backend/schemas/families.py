@@ -3,8 +3,8 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-FamilyRole = Literal["owner", "admin", "accountant", "member", "viewer"]
-InviteRole = Literal["admin", "accountant", "member", "viewer"]
+FamilyRole = Literal["owner", "member", "viewer"]
+InviteRole = Literal["member", "viewer"]
 
 
 class FamilyCreatePayload(BaseModel):

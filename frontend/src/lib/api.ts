@@ -274,8 +274,8 @@ export type AccountActivityEvent = {
   created_at: string;
 };
 
-export type FamilyRole = "owner" | "admin" | "accountant" | "member" | "viewer";
-export type FamilyInviteRole = "admin" | "accountant" | "member" | "viewer";
+export type FamilyRole = "owner" | "member" | "viewer";
+export type FamilyInviteRole = "member" | "viewer";
 
 export type FamilyItem = {
   id: number;

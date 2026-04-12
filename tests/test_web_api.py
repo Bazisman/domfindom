@@ -496,16 +496,16 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(duplicate_invite.status_code, 409)
 
-        promote_to_accountant = self.client.patch(
+        change_role_to_viewer = self.client.patch(
             f"/api/v1/families/{family_id}/members/{second_register.json()['user']['id']}/role",
-            json={"role": "accountant"},
+            json={"role": "viewer"},
         )
-        self.assertEqual(promote_to_accountant.status_code, 200)
+        self.assertEqual(change_role_to_viewer.status_code, 200)
 
         members_after_update = self.client.get(f"/api/v1/families/{family_id}/members")
         self.assertEqual(members_after_update.status_code, 200)
         members_after_update_by_email = {item["email"]: item for item in members_after_update.json()["members"]}
-        self.assertEqual(members_after_update_by_email[second_email]["role"], "accountant")
+        self.assertEqual(members_after_update_by_email[second_email]["role"], "viewer")
 
         third_email = f"family-{uuid4().hex[:8]}@example.com"
 

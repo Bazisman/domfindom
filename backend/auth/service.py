@@ -199,6 +199,14 @@ class AuthService:
             )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_memberships_family ON family_memberships(family_id, status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_memberships_user ON family_memberships(user_id, status)")
+            # Legacy role migration: collapse old roles into member.
+            cursor.execute(
+                """
+                UPDATE family_memberships
+                SET role = 'member', updated_at = datetime('now')
+                WHERE role IN ('admin', 'accountant')
+                """
+            )
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS family_invites (
@@ -220,6 +228,13 @@ class AuthService:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_invites_family ON family_invites(family_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_invites_email ON family_invites(email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_family_invites_expires ON family_invites(expires_at)")
+            cursor.execute(
+                """
+                UPDATE family_invites
+                SET role = 'member'
+                WHERE role IN ('admin', 'accountant')
+                """
+            )
             conn.commit()
         self.cleanup_expired_sessions()
 
@@ -840,10 +855,9 @@ class AuthService:
                 ORDER BY
                   CASE fm.role
                     WHEN 'owner' THEN 1
-                    WHEN 'admin' THEN 2
-                    WHEN 'accountant' THEN 3
-                    WHEN 'member' THEN 4
-                    ELSE 5
+                    WHEN 'member' THEN 2
+                    WHEN 'viewer' THEN 3
+                    ELSE 4
                   END,
                   fm.created_at ASC
                 """,
@@ -862,7 +876,7 @@ class AuthService:
         ]
 
     def update_family_member_role(self, family_id: int, user_id: int, role: str) -> bool:
-        normalized_role = role if role in {"admin", "accountant", "member", "viewer"} else "member"
+        normalized_role = role if role in {"member", "viewer"} else "member"
         with self._auth_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -934,7 +948,7 @@ class AuthService:
         role: str = "member",
     ) -> Dict[str, str]:
         normalized_email = self._normalize_email(email)
-        invite_role = role if role in {"admin", "accountant", "member", "viewer"} else "member"
+        invite_role = role if role in {"member", "viewer"} else "member"
 
         with self._auth_connection() as conn:
             cursor = conn.cursor()

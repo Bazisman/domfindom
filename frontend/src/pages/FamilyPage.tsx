@@ -13,6 +13,16 @@ import {
 
 type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove";
 
+function roleLabel(role: "owner" | "member" | "viewer"): string {
+  if (role === "owner") {
+    return "Владелец";
+  }
+  if (role === "viewer") {
+    return "Только просмотр";
+  }
+  return "Помощник";
+}
+
 export function FamilyPage() {
   const queryClient = useQueryClient();
   const [busyAction, setBusyAction] = useState<FamilyBusyAction>("");
@@ -20,7 +30,7 @@ export function FamilyPage() {
   const [familyName, setFamilyName] = useState("");
   const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "accountant" | "member" | "viewer">("member");
+  const [inviteRole, setInviteRole] = useState<"member" | "viewer">("member");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -39,7 +49,7 @@ export function FamilyPage() {
     () => (familiesQuery.data?.families ?? []).find((item) => item.id === selectedFamilyId) ?? null,
     [familiesQuery.data?.families, selectedFamilyId],
   );
-  const canManageFamilyMembers = selectedFamily?.role === "owner" || selectedFamily?.role === "admin";
+  const canManageFamilyMembers = selectedFamily?.role === "owner";
 
   const familyMembersQuery = useQuery({
     queryKey: ["families", selectedFamilyId, "members"],
@@ -164,7 +174,7 @@ export function FamilyPage() {
     inviteMutation.mutate({ family_id: selectedFamilyId, email, role: inviteRole });
   }
 
-  function onUpdateMemberRole(memberUserId: number, role: "admin" | "accountant" | "member" | "viewer") {
+  function onUpdateMemberRole(memberUserId: number, role: "member" | "viewer") {
     if (selectedFamilyId === null) {
       return;
     }
@@ -217,7 +227,7 @@ export function FamilyPage() {
               >
                 {(familiesQuery.data?.families ?? []).map((family) => (
                   <option key={family.id} value={family.id}>
-                    {family.name} ({family.role})
+                    {family.name} ({roleLabel(family.role)})
                   </option>
                 ))}
               </select>
@@ -236,13 +246,11 @@ export function FamilyPage() {
               <span>Роль</span>
               <select
                 disabled={busyAction !== "" || !canManageFamilyMembers}
-                onChange={(event) => setInviteRole(event.target.value as "admin" | "accountant" | "member" | "viewer")}
+                onChange={(event) => setInviteRole(event.target.value as "member" | "viewer")}
                 value={inviteRole}
               >
-                <option value="member">Участник</option>
+                <option value="member">Помощник</option>
                 <option value="viewer">Только просмотр</option>
-                <option value="accountant">Бухгалтер</option>
-                <option value="admin">Администратор</option>
               </select>
             </label>
             <button className="primary-button" disabled={busyAction !== "" || !canManageFamilyMembers} onClick={onInviteToFamily} type="button">
@@ -265,13 +273,12 @@ export function FamilyPage() {
           <div className="list">
             {(familyMembersQuery.data?.members ?? []).map((member) => {
               const isSelf = member.user_id === meQuery.data?.id;
-              const canManageThisMember =
-                canManageFamilyMembers && !isSelf && member.role !== "owner" && !(selectedFamily?.role === "admin" && member.role === "admin");
+              const canManageThisMember = canManageFamilyMembers && !isSelf && member.role !== "owner";
               return (
                 <article className="list-item" key={member.user_id}>
                   <div>
                     <strong>{member.email}</strong>
-                    <p>Роль: {member.role}</p>
+                    <p>Роль: {roleLabel(member.role)}</p>
                   </div>
                   <div className="family-page-actions">
                     <select
@@ -279,15 +286,13 @@ export function FamilyPage() {
                       onChange={(event) =>
                         onUpdateMemberRole(
                           member.user_id,
-                          event.target.value as "admin" | "accountant" | "member" | "viewer",
+                          event.target.value as "member" | "viewer",
                         )
                       }
                       value={member.role === "owner" ? "member" : member.role}
                     >
-                      <option value="member">Участник</option>
+                      <option value="member">Помощник</option>
                       <option value="viewer">Просмотр</option>
-                      <option value="accountant">Бухгалтер</option>
-                      <option value="admin">Админ</option>
                     </select>
                     <button
                       className="ghost-button"
