@@ -86,13 +86,14 @@ export function LoginPage() {
           setMessage(response.message);
         }
       } else {
-        await confirmPasswordReset({ token: resetToken, new_password: newPassword });
+        const response = await confirmPasswordReset({ token: resetToken, new_password: newPassword });
+        queryClient.setQueryData(["auth", "me"], response.user);
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         setMode("login");
         setPassword("");
         setNewPassword("");
         setResetToken("");
-        setMessage("Пароль обновлен. Теперь можно войти.");
-        navigate("/login", { replace: true });
+        navigate("/", { replace: true });
       }
     } catch (e) {
       if (e instanceof ApiError) {
@@ -170,7 +171,7 @@ export function LoginPage() {
           )}
           {error ? <div className="auth-error">{error}</div> : null}
           {message ? <div className="auth-message">{message}</div> : null}
-          <button className="btn btn-primary" disabled={loading} type="submit">
+          <button className="btn btn-primary auth-submit" disabled={loading} type="submit">
             {loading
               ? "Подождите..."
               : mode === "login"

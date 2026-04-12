@@ -359,7 +359,7 @@ export function requestPasswordReset(payload: { email: string }) {
 }
 
 export function confirmPasswordReset(payload: { token: string; new_password: string }) {
-  return request<{ message: string }>("/auth/password-reset/confirm", {
+  return request<AuthResponse>("/auth/password-reset/confirm", {
     method: "POST",
     body: JSON.stringify(payload),
   });

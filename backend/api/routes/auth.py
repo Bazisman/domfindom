@@ -300,8 +300,8 @@ def request_password_reset(payload: PasswordResetRequestPayload, request: Reques
     return body
 
 
-@router.post("/password-reset/confirm")
-def confirm_password_reset(payload: PasswordResetConfirmPayload, request: Request):
+@router.post("/password-reset/confirm", response_model=AuthResponse)
+def confirm_password_reset(payload: PasswordResetConfirmPayload, request: Request, response: Response):
     _validate_password_strength(payload.new_password)
     client_ip = request.client.host if request.client else ""
     client_agent = request.headers.get("user-agent", "")
@@ -323,4 +323,13 @@ def confirm_password_reset(payload: PasswordResetConfirmPayload, request: Reques
         ip=client_ip,
         user_agent=client_agent,
     )
-    return {"message": "Пароль успешно сброшен. Войдите в аккаунт."}
+    token = auth_service.create_session(
+        user_id=int(reset_user["id"]),
+        ip=client_ip,
+        user_agent=client_agent,
+    )
+    _set_session_cookie(response, token)
+    return AuthResponse(
+        user=AuthUserResponse(**reset_user),
+        message="Пароль успешно сброшен.",
+    )

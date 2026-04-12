@@ -482,6 +482,7 @@ class AuthService:
         return {
             "id": user_id,
             "email": str(row["email"]),
+            "is_active": bool(row["is_active"]),
         }
 
     def _rate_limit_key(self, email: str, ip: str = "") -> str:
