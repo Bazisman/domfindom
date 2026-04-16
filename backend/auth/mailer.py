@@ -18,6 +18,8 @@ class AuthMailer:
         self.reset_email_subject = settings.password_reset_email_subject
         self.family_invite_url_template = settings.family_invite_url_template
         self.family_invite_email_subject = settings.family_invite_email_subject
+        self.email_verification_url_template = settings.email_verification_url_template
+        self.email_verification_email_subject = settings.email_verification_email_subject
 
     def is_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
@@ -28,6 +30,10 @@ class AuthMailer:
 
     def _build_family_invite_url(self, token: str) -> str:
         template = self.family_invite_url_template or "{token}"
+        return template.replace("{token}", quote(token, safe=""))
+
+    def _build_email_verification_url(self, token: str) -> str:
+        template = self.email_verification_url_template or "{token}"
         return template.replace("{token}", quote(token, safe=""))
 
     def _deliver_message(self, message: EmailMessage) -> None:
@@ -83,6 +89,23 @@ class AuthMailer:
             f"Роль: {role_label}\n\n"
             "Приглашение уже доступно в вашем личном кабинете в разделе уведомлений.\n"
             f"Также можно перейти по ссылке:\n{invite_url}\n"
+        )
+        self._deliver_message(message)
+
+    def send_email_verification_email(self, to_email: str, token: str) -> None:
+        if not self.is_configured():
+            return
+
+        verification_url = self._build_email_verification_url(token)
+        message = EmailMessage()
+        message["Subject"] = self.email_verification_email_subject or "Подтверждение email"
+        message["From"] = self.smtp_from
+        message["To"] = to_email
+        message.set_content(
+            "Спасибо за регистрацию.\n\n"
+            "Чтобы завершить создание аккаунта, подтвердите email по ссылке:\n"
+            f"{verification_url}\n\n"
+            "Если вы не регистрировались, просто проигнорируйте это письмо."
         )
         self._deliver_message(message)
 

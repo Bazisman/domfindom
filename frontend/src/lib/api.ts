@@ -231,12 +231,14 @@ export type RecurringTemplateUpdatePayload = {
 export type AuthUser = {
   id: number;
   email: string;
+  email_verified: boolean;
   is_active: boolean;
 };
 
 export type AuthResponse = {
   user: AuthUser;
   message: string;
+  requires_email_verification?: boolean;
 };
 
 export type PasswordResetRequestResponse = {
@@ -414,6 +416,13 @@ export function register(payload: { email: string; password: string }) {
 
 export function login(payload: { email: string; password: string }) {
   return request<AuthResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function verifyEmail(payload: { token: string }) {
+  return request<AuthResponse>("/auth/verify-email", {
     method: "POST",
     body: JSON.stringify(payload),
   });

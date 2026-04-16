@@ -54,12 +54,22 @@ class AuthService:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     email TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
+                    email_verified INTEGER NOT NULL DEFAULT 1,
                     is_active INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now'))
                 )
                 """
             )
+            cursor.execute("PRAGMA table_info(users)")
+            user_columns = {str(row["name"]) for row in cursor.fetchall()}
+            if "email_verified" not in user_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1
+                    """
+                )
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -131,6 +141,31 @@ class AuthService:
                 """
                 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at
                 ON password_reset_tokens(expires_at)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user_id
+                ON email_verification_tokens(user_id)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_expires_at
+                ON email_verification_tokens(expires_at)
                 """
             )
             cursor.execute(
@@ -288,20 +323,21 @@ class AuthService:
         return {
             "id": int(user_row["id"]),
             "email": str(user_row["email"]),
+            "email_verified": bool(user_row["email_verified"]) if "email_verified" in user_row.keys() else True,
             "is_active": bool(user_row["is_active"]),
         }
 
-    def create_user(self, email: str, password: str) -> Dict[str, object]:
+    def create_user(self, email: str, password: str, email_verified: bool = True) -> Dict[str, object]:
         normalized = self._normalize_email(email)
         password_hash = self.hash_password(password)
         with self._auth_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO users (email, password_hash, created_at, updated_at)
-                VALUES (?, ?, datetime('now'), datetime('now'))
+                INSERT INTO users (email, password_hash, email_verified, created_at, updated_at)
+                VALUES (?, ?, ?, datetime('now'), datetime('now'))
                 """,
-                (normalized, password_hash),
+                (normalized, password_hash, 1 if email_verified else 0),
             )
             conn.commit()
             user_id = int(cursor.lastrowid)
@@ -315,9 +351,16 @@ class AuthService:
         user_row = self.get_user_by_email(email)
         if not user_row or not bool(user_row["is_active"]):
             return None
+        if settings.require_email_verification and not bool(user_row["email_verified"]):
+            return None
         if not self.verify_password(password, str(user_row["password_hash"])):
             return None
         return self.get_user_public(user_row)
+
+    def is_email_verified(self, user_row: sqlite3.Row) -> bool:
+        if "email_verified" not in user_row.keys():
+            return True
+        return bool(user_row["email_verified"])
 
     def _token_hash(self, raw_token: str) -> str:
         return hmac.new(self.session_secret, raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -355,7 +398,7 @@ class AuthService:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT s.user_id, s.expires_at, s.revoked_at, u.id, u.email, u.is_active
+                SELECT s.user_id, s.expires_at, s.revoked_at, u.id, u.email, u.email_verified, u.is_active
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
                 WHERE s.token_hash = ?
@@ -376,6 +419,7 @@ class AuthService:
             return {
                 "id": int(row["id"]),
                 "email": str(row["email"]),
+                "email_verified": bool(row["email_verified"]) if "email_verified" in row.keys() else True,
                 "is_active": bool(row["is_active"]),
             }
 
@@ -518,6 +562,92 @@ class AuthService:
             conn.commit()
             return int(cursor.rowcount)
 
+    def cleanup_email_verification_tokens(self) -> int:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM email_verification_tokens
+                WHERE used_at IS NOT NULL OR expires_at < ?
+                """,
+                (_format_utc(_utcnow()),),
+            )
+            conn.commit()
+            return int(cursor.rowcount)
+
+    def create_email_verification_token(self, user_id: int) -> Optional[str]:
+        user = self.get_user_by_id(user_id)
+        if not user or not bool(user["is_active"]):
+            return None
+        if self.is_email_verified(user):
+            return None
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = self._token_hash(raw_token)
+        expires_at = _format_utc(_utcnow() + timedelta(hours=settings.email_verification_token_ttl_hours))
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE email_verification_tokens
+                SET used_at = datetime('now')
+                WHERE user_id = ? AND used_at IS NULL
+                """,
+                (user_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO email_verification_tokens (user_id, token_hash, expires_at, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+                """,
+                (user_id, token_hash, expires_at),
+            )
+            conn.commit()
+        self.cleanup_email_verification_tokens()
+        return raw_token
+
+    def verify_email_by_token(self, raw_token: str) -> Optional[Dict[str, object]]:
+        token_hash = self._token_hash(raw_token)
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT evt.id AS verify_id, evt.user_id, evt.expires_at, evt.used_at, u.email, u.is_active, u.email_verified
+                FROM email_verification_tokens evt
+                JOIN users u ON u.id = evt.user_id
+                WHERE evt.token_hash = ?
+                LIMIT 1
+                """,
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            if row["used_at"] or _parse_utc(str(row["expires_at"])) < _utcnow() or not bool(row["is_active"]):
+                return None
+            user_id = int(row["user_id"])
+            cursor.execute(
+                """
+                UPDATE users
+                SET email_verified = 1, updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (user_id,),
+            )
+            cursor.execute(
+                """
+                UPDATE email_verification_tokens
+                SET used_at = datetime('now')
+                WHERE user_id = ? AND used_at IS NULL
+                """,
+                (user_id,),
+            )
+            conn.commit()
+        self.cleanup_email_verification_tokens()
+        user_row = self.get_user_by_id(user_id)
+        if not user_row:
+            return None
+        return self.get_user_public(user_row)
+
     def create_password_reset_token(self, email: str) -> Optional[str]:
         user = self.get_user_by_email(email)
         if not user or not bool(user["is_active"]):
@@ -544,7 +674,7 @@ class AuthService:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT prt.id AS reset_id, prt.user_id, prt.expires_at, prt.used_at, u.email, u.is_active
+                SELECT prt.id AS reset_id, prt.user_id, prt.expires_at, prt.used_at, u.email, u.email_verified, u.is_active
                 FROM password_reset_tokens prt
                 JOIN users u ON u.id = prt.user_id
                 WHERE prt.token_hash = ?
@@ -588,6 +718,7 @@ class AuthService:
         return {
             "id": user_id,
             "email": str(row["email"]),
+            "email_verified": bool(row["email_verified"]) if "email_verified" in row.keys() else True,
             "is_active": bool(row["is_active"]),
         }
 

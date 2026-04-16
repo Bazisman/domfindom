@@ -26,6 +26,7 @@ SKIP_DIRS = {
     "dist",
     "__pycache__",
     ".venv",
+    ".venv_new_job",
     "backups",
 }
 

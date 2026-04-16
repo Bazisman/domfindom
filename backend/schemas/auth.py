@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class AuthUserResponse(BaseModel):
     id: int
     email: str
+    email_verified: bool = True
     is_active: bool
 
 
@@ -33,9 +34,14 @@ class PasswordResetConfirmPayload(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class EmailVerificationConfirmPayload(BaseModel):
+    token: str = Field(min_length=16, max_length=512)
+
+
 class AuthResponse(BaseModel):
     user: AuthUserResponse
     message: str
+    requires_email_verification: bool = False
 
 
 class SessionItemResponse(BaseModel):

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { ApiError, acceptFamilyInvite, confirmPasswordReset, login, register, requestPasswordReset } from "../lib/api";
+import { ApiError, acceptFamilyInvite, confirmPasswordReset, login, register, requestPasswordReset, verifyEmail } from "../lib/api";
 
 type AuthMode = "login" | "register" | "reset_request" | "reset_confirm";
 
@@ -19,6 +19,7 @@ export function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const tokenFromUrl = searchParams.get("reset_token");
+  const emailVerifyTokenFromUrl = searchParams.get("verify_email_token");
   const familyInviteTokenFromUrl = searchParams.get("family_invite_token");
   const hasTokenFromUrl = Boolean(tokenFromUrl);
 
@@ -30,6 +31,32 @@ export function LoginPage() {
       setError(null);
     }
   }, [tokenFromUrl, resetToken]);
+
+  useEffect(() => {
+    async function runEmailVerification(token: string) {
+      setLoading(true);
+      setError(null);
+      setMessage("Подтверждаем email...");
+      try {
+        const response = await verifyEmail({ token });
+        queryClient.setQueryData(["auth", "me"], response.user);
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        navigate("/", { replace: true });
+      } catch (e) {
+        if (e instanceof ApiError) {
+          setError(e.message);
+        } else {
+          setError("Не удалось подтвердить email");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (emailVerifyTokenFromUrl) {
+      void runEmailVerification(emailVerifyTokenFromUrl);
+    }
+  }, [emailVerifyTokenFromUrl, navigate, queryClient]);
 
   const title = useMemo(() => {
     if (mode === "login") {
@@ -83,6 +110,12 @@ export function LoginPage() {
         navigate("/", { replace: true });
       } else if (mode === "register") {
         const response = await register({ email, password });
+        if (response.requires_email_verification) {
+          setPassword("");
+          setMessage(response.message || "Проверьте почту и подтвердите email.");
+          setMode("login");
+          return;
+        }
         if (familyInviteTokenFromUrl) {
           try {
             await acceptFamilyInvite({ token: familyInviteTokenFromUrl });

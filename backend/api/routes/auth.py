@@ -11,6 +11,7 @@ from backend.schemas.auth import (
     AuthResponse,
     AuthUserResponse,
     ChangePasswordRequest,
+    EmailVerificationConfirmPayload,
     LoginRequest,
     PasswordResetConfirmPayload,
     PasswordResetRequestPayload,
@@ -94,10 +95,15 @@ def register(payload: RegisterRequest, request: Request, response: Response) -> 
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь уже существует")
 
+    require_email_verification = settings.require_email_verification
+
     try:
-        user = auth_service.create_user(email=email, password=password)
+        user = auth_service.create_user(
+            email=email,
+            password=password,
+            email_verified=not require_email_verification,
+        )
     except sqlite3.IntegrityError:
-        # Race-safe guard: parallel register requests for the same email can collide on UNIQUE(email).
         auth_service.log_auth_event(
             event_type="register",
             status="fail",
@@ -107,6 +113,36 @@ def register(payload: RegisterRequest, request: Request, response: Response) -> 
             detail="user_exists_race",
         )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Пользователь уже существует")
+
+    if require_email_verification:
+        verify_token = auth_service.create_email_verification_token(int(user["id"]))
+        sent_email = False
+        if verify_token and auth_mailer.is_configured():
+            try:
+                auth_mailer.send_email_verification_email(email, verify_token)
+                sent_email = True
+            except Exception:
+                sent_email = False
+        message = (
+            "Подтвердите email по ссылке из письма, чтобы завершить регистрацию."
+            if sent_email
+            else "Аккаунт создан. Подтверждение email временно недоступно, обратитесь в поддержку."
+        )
+        auth_service.log_auth_event(
+            event_type="register",
+            status="success" if sent_email else "fail",
+            user_id=int(user["id"]),
+            email=email,
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="verification_email_sent" if sent_email else "verification_email_not_sent",
+        )
+        return AuthResponse(
+            user=AuthUserResponse(**user),
+            message=message,
+            requires_email_verification=True,
+        )
+
     token = auth_service.create_session(
         user_id=int(user["id"]),
         ip=client_ip,
@@ -143,6 +179,25 @@ def login(payload: LoginRequest, request: Request, response: Response) -> AuthRe
             detail="Слишком много неудачных попыток входа. Попробуйте позже.",
         )
 
+    user_row = auth_service.get_user_by_email(email)
+    if (
+        settings.require_email_verification
+        and user_row
+        and bool(user_row["is_active"])
+        and auth_service.verify_password(payload.password, str(user_row["password_hash"]))
+        and not auth_service.is_email_verified(user_row)
+    ):
+        auth_service.record_login_attempt(email=email, ip=client_ip, success=False)
+        auth_service.log_auth_event(
+            event_type="login",
+            status="fail",
+            email=email,
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="email_not_verified",
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Подтвердите email по ссылке из письма.")
+
     user = auth_service.authenticate(email=email, password=payload.password)
     if not user:
         auth_service.record_login_attempt(email=email, ip=client_ip, success=False)
@@ -172,6 +227,42 @@ def login(payload: LoginRequest, request: Request, response: Response) -> AuthRe
     )
     _set_session_cookie(response, token)
     return AuthResponse(user=AuthUserResponse(**user), message="Вход выполнен")
+
+
+@router.post("/verify-email", response_model=AuthResponse)
+def verify_email(payload: EmailVerificationConfirmPayload, request: Request, response: Response) -> AuthResponse:
+    client_ip = request.client.host if request.client else ""
+    client_agent = request.headers.get("user-agent", "")
+    verified_user = auth_service.verify_email_by_token(payload.token)
+    if not verified_user:
+        auth_service.log_auth_event(
+            event_type="verify_email",
+            status="fail",
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="invalid_or_expired_token",
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Токен подтверждения недействителен или истёк")
+
+    auth_service.log_auth_event(
+        event_type="verify_email",
+        status="success",
+        user_id=int(verified_user["id"]),
+        email=str(verified_user["email"]),
+        ip=client_ip,
+        user_agent=client_agent,
+    )
+    token = auth_service.create_session(
+        user_id=int(verified_user["id"]),
+        ip=client_ip,
+        user_agent=client_agent,
+    )
+    _set_session_cookie(response, token)
+    return AuthResponse(
+        user=AuthUserResponse(**verified_user),
+        message="Email успешно подтверждён.",
+        requires_email_verification=False,
+    )
 
 
 @router.post("/logout")

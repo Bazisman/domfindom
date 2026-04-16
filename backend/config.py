@@ -58,6 +58,8 @@ class AppConfig:
     login_rate_limit_attempts: int
     login_rate_limit_window_minutes: int
     expose_reset_token_in_response: bool
+    require_email_verification: bool
+    email_verification_token_ttl_hours: int
     smtp_host: str
     smtp_port: int
     smtp_user: str
@@ -69,6 +71,8 @@ class AppConfig:
     password_reset_email_subject: str
     family_invite_url_template: str
     family_invite_email_subject: str
+    email_verification_url_template: str
+    email_verification_email_subject: str
 
 
 settings = AppConfig(
@@ -103,6 +107,12 @@ settings = AppConfig(
     expose_reset_token_in_response=_parse_bool(
         os.getenv("FINANCE_APP_EXPOSE_RESET_TOKEN_IN_RESPONSE", "true" if not _is_production() else "false")
     ),
+    require_email_verification=_parse_bool(
+        os.getenv("FINANCE_APP_REQUIRE_EMAIL_VERIFICATION", "true" if _is_production() else "false")
+    ),
+    email_verification_token_ttl_hours=max(
+        1, _parse_int(os.getenv("FINANCE_APP_EMAIL_VERIFICATION_TOKEN_TTL_HOURS", "24"), 24)
+    ),
     smtp_host=os.getenv("FINANCE_APP_SMTP_HOST", "").strip(),
     smtp_port=_parse_int(os.getenv("FINANCE_APP_SMTP_PORT", "587"), 587),
     smtp_user=os.getenv("FINANCE_APP_SMTP_USER", "").strip(),
@@ -125,6 +135,14 @@ settings = AppConfig(
     family_invite_email_subject=os.getenv(
         "FINANCE_APP_FAMILY_INVITE_EMAIL_SUBJECT",
         "Приглашение в семейный бюджет",
+    ).strip(),
+    email_verification_url_template=os.getenv(
+        "FINANCE_APP_EMAIL_VERIFICATION_URL_TEMPLATE",
+        "https://domfindom.ru/login?verify_email_token={token}",
+    ).strip(),
+    email_verification_email_subject=os.getenv(
+        "FINANCE_APP_EMAIL_VERIFICATION_EMAIL_SUBJECT",
+        "РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ email РІ РґРѕРјР°С€РЅРµР№ Р±СѓС…РіР°Р»С‚РµСЂРёРё",
     ).strip(),
 )
 
