@@ -65,6 +65,7 @@ def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboa
     for member in members:
         user_id = int(member["user_id"])
         user_email = str(member["email"] or "")
+        user_display_name = str(member.get("display_name") or "").strip()
         user_db_path = auth_service.ensure_user_finance_db(user_id)
         db_token = core.push_db_name(user_db_path)
         try:
@@ -84,6 +85,7 @@ def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboa
                         **mapped,
                         "owner_user_id": user_id,
                         "owner_email": user_email,
+                        "owner_display_name": user_display_name,
                     }
                 )
         finally:
@@ -115,7 +117,13 @@ def _collect_family_transactions(
 ) -> FamilyTransactionListResponse:
     members = auth_service.list_family_members(family_id)
     safe_limit = max(1, min(limit, 200))
-    member_map: Dict[int, str] = {int(item["user_id"]): str(item["email"] or "") for item in members}
+    member_map: Dict[int, Dict[str, str]] = {
+        int(item["user_id"]): {
+            "email": str(item["email"] or ""),
+            "display_name": str(item.get("display_name") or "").strip(),
+        }
+        for item in members
+    }
 
     if owner_user_id > 0 and owner_user_id not in member_map:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник семьи не найден")
@@ -136,7 +144,8 @@ def _collect_family_transactions(
                     {
                         **mapped,
                         "owner_user_id": user_id,
-                        "owner_email": member_map.get(user_id, ""),
+                        "owner_email": member_map.get(user_id, {}).get("email", ""),
+                        "owner_display_name": member_map.get(user_id, {}).get("display_name", ""),
                     }
                 )
         finally:

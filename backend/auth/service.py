@@ -199,6 +199,7 @@ class AuthService:
                     user_id INTEGER PRIMARY KEY,
                     theme_mode TEXT NOT NULL DEFAULT 'system',
                     workspace_mode TEXT NOT NULL DEFAULT 'personal',
+                    display_name TEXT NOT NULL DEFAULT '',
                     updated_at TEXT DEFAULT (datetime('now')),
                     FOREIGN KEY (user_id) REFERENCES users(id)
                 )
@@ -211,6 +212,13 @@ class AuthService:
                     """
                     ALTER TABLE user_preferences
                     ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'personal'
+                    """
+                )
+            if "display_name" not in preference_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE user_preferences
+                    ADD COLUMN display_name TEXT NOT NULL DEFAULT ''
                     """
                 )
             cursor.execute(
@@ -1004,7 +1012,7 @@ class AuthService:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT theme_mode, workspace_mode
+                SELECT theme_mode, workspace_mode, display_name
                 FROM user_preferences
                 WHERE user_id = ?
                 LIMIT 1
@@ -1013,36 +1021,53 @@ class AuthService:
             )
             row = cursor.fetchone()
         if not row:
-            return {"theme_mode": "system", "workspace_mode": "personal"}
+            return {"theme_mode": "system", "workspace_mode": "personal", "display_name": ""}
         theme_mode = str(row["theme_mode"] or "system")
         if theme_mode not in {"light", "dark", "system"}:
             theme_mode = "system"
         workspace_mode = str(row["workspace_mode"] or "personal")
         if workspace_mode not in {"personal", "family"}:
             workspace_mode = "personal"
-        return {"theme_mode": theme_mode, "workspace_mode": workspace_mode}
+        display_name = str(row["display_name"] or "").strip()
+        if len(display_name) > 80:
+            display_name = display_name[:80].strip()
+        return {"theme_mode": theme_mode, "workspace_mode": workspace_mode, "display_name": display_name}
 
-    def update_user_preferences(self, user_id: int, theme_mode: str = "", workspace_mode: str = "") -> Dict[str, str]:
+    def update_user_preferences(
+        self,
+        user_id: int,
+        theme_mode: str = "",
+        workspace_mode: str = "",
+        display_name: Optional[str] = None,
+    ) -> Dict[str, str]:
         current = self.get_user_preferences(user_id)
         normalized_theme = theme_mode if theme_mode in {"light", "dark", "system"} else str(current.get("theme_mode", "system"))
         normalized_workspace = (
             workspace_mode if workspace_mode in {"personal", "family"} else str(current.get("workspace_mode", "personal"))
         )
+        normalized_display_name = str(display_name).strip() if display_name is not None else str(current.get("display_name", "")).strip()
+        if len(normalized_display_name) > 80:
+            normalized_display_name = normalized_display_name[:80].strip()
         with self._auth_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO user_preferences (user_id, theme_mode, workspace_mode, updated_at)
-                VALUES (?, ?, ?, datetime('now'))
+                INSERT INTO user_preferences (user_id, theme_mode, workspace_mode, display_name, updated_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(user_id) DO UPDATE SET
                     theme_mode = excluded.theme_mode,
                     workspace_mode = excluded.workspace_mode,
+                    display_name = excluded.display_name,
                     updated_at = datetime('now')
                 """,
-                (user_id, normalized_theme, normalized_workspace),
+                (user_id, normalized_theme, normalized_workspace, normalized_display_name),
             )
             conn.commit()
-        return {"theme_mode": normalized_theme, "workspace_mode": normalized_workspace}
+        return {
+            "theme_mode": normalized_theme,
+            "workspace_mode": normalized_workspace,
+            "display_name": normalized_display_name,
+        }
 
     def create_family(self, owner_user_id: int, name: str) -> Dict[str, object]:
         clean_name = (name or "").strip()
@@ -1136,9 +1161,10 @@ class AuthService:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT fm.user_id, u.email, fm.role, fm.status, fm.created_at
+                SELECT fm.user_id, u.email, COALESCE(up.display_name, '') AS display_name, fm.role, fm.status, fm.created_at
                 FROM family_memberships fm
                 JOIN users u ON u.id = fm.user_id
+                LEFT JOIN user_preferences up ON up.user_id = fm.user_id
                 WHERE fm.family_id = ?
                   AND fm.status = 'active'
                 ORDER BY
@@ -1157,6 +1183,7 @@ class AuthService:
             {
                 "user_id": int(row["user_id"]),
                 "email": str(row["email"] or ""),
+                "display_name": str(row["display_name"] or "").strip(),
                 "role": str(row["role"] or "member"),
                 "status": str(row["status"] or "active"),
                 "joined_at": str(row["created_at"] or ""),

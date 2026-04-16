@@ -255,7 +255,13 @@ export function FamilyPage() {
         </div>
 
         {(familiesQuery.data?.families ?? []).length === 0 ? (
-          <div className="transaction-form">
+          <form
+            className="transaction-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onCreateFamily();
+            }}
+          >
             <label className="field">
               <span>Название семьи</span>
               <input
@@ -266,10 +272,10 @@ export function FamilyPage() {
                 value={familyName}
               />
             </label>
-            <button className="primary-button" disabled={busyAction !== ""} onClick={onCreateFamily} type="button">
+            <button className="primary-button" disabled={busyAction !== ""} type="submit">
               {busyAction === "create" ? "Создаем..." : "Создать семейный бюджет"}
             </button>
-          </div>
+          </form>
         ) : (
           <div className="transaction-form">
             <label className="field">
@@ -365,7 +371,7 @@ export function FamilyPage() {
               <option value="mine">Только мои</option>
               {(familyMembersQuery.data?.members ?? []).map((member) => (
                 <option key={member.user_id} value={`user:${member.user_id}`}>
-                  {member.email}
+                  {member.display_name || member.email}
                 </option>
               ))}
             </select>
@@ -379,7 +385,7 @@ export function FamilyPage() {
                   <p>{item.comment || "Без комментария"}</p>
                 </div>
                 <div className="family-page-actions">
-                  <span className="status-chip">{item.owner_email}</span>
+                  <span className="status-chip">{item.owner_display_name || item.owner_email}</span>
                   <strong className={item.type === "income" ? "money plus" : "money minus"}>{formatMoney(item.amount)}</strong>
                 </div>
               </article>
@@ -405,7 +411,8 @@ export function FamilyPage() {
               return (
                 <article className="list-item" key={member.user_id}>
                   <div>
-                    <strong>{member.email}</strong>
+                    <strong>{member.display_name || member.email}</strong>
+                    {member.display_name ? <p>{member.email}</p> : null}
                     <p>Роль: {roleLabel(member.role)}</p>
                   </div>
                   <div className="family-page-actions">

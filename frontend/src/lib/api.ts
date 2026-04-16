@@ -258,6 +258,7 @@ export type UserSession = {
 export type AccountPreferences = {
   theme_mode: "light" | "dark" | "system";
   workspace_mode: "personal" | "family";
+  display_name: string;
 };
 
 export type AccountBackupInfo = {
@@ -290,6 +291,7 @@ export type FamilyItem = {
 export type FamilyMemberItem = {
   user_id: number;
   email: string;
+  display_name: string;
   role: FamilyRole;
   status: string;
   joined_at: string;
@@ -329,6 +331,7 @@ export type FamilyDashboardResponse = {
     status: "actual" | "planned";
     owner_user_id: number;
     owner_email: string;
+    owner_display_name: string;
   }>;
 };
 

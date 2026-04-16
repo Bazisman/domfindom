@@ -26,6 +26,7 @@ class FamilyListResponse(BaseModel):
 class FamilyMemberItemResponse(BaseModel):
     user_id: int
     email: str
+    display_name: str
     role: FamilyRole
     status: str
     joined_at: str
@@ -99,6 +100,7 @@ class FamilyDashboardTransactionResponse(BaseModel):
     status: Literal["actual", "planned"]
     owner_user_id: int
     owner_email: str
+    owner_display_name: str
 
 
 class FamilyDashboardResponse(BaseModel):

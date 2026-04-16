@@ -10,11 +10,13 @@ WorkspaceMode = Literal["personal", "family"]
 class AccountPreferencesResponse(BaseModel):
     theme_mode: ThemeMode
     workspace_mode: WorkspaceMode
+    display_name: str
 
 
 class AccountPreferencesUpdatePayload(BaseModel):
     theme_mode: Optional[ThemeMode] = None
     workspace_mode: Optional[WorkspaceMode] = None
+    display_name: Optional[str] = None
 
 
 class BackupSlotInfoResponse(BaseModel):

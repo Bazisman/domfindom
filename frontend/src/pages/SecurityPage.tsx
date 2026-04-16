@@ -1,13 +1,15 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   changePassword,
   getAccountActivity,
+  getAccountPreferences,
   getActiveSessions,
   revokeOtherSessions,
   revokeSessionById,
+  updateAccountPreferences,
 } from "../lib/api";
 
 const SESSIONS_LIMIT = 8;
@@ -19,9 +21,21 @@ export function SecurityPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [sessionsMessage, setSessionsMessage] = useState<string | null>(null);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+
+
+  const preferencesQuery = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
+  });
+
+  useEffect(() => {
+    setDisplayName(preferencesQuery.data?.display_name ?? "");
+  }, [preferencesQuery.data?.display_name]);
 
   const sessionsQuery = useQuery({
     queryKey: ["auth", "sessions"],
@@ -76,6 +90,19 @@ export function SecurityPage() {
     },
     onError: (mutationError: Error) => {
       setSessionsMessage(mutationError.message);
+    },
+  });
+
+
+
+  const profileMutation = useMutation({
+    mutationFn: updateAccountPreferences,
+    onSuccess: async () => {
+      setProfileMessage("Имя профиля сохранено.");
+      await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
+    },
+    onError: (mutationError: Error) => {
+      setProfileMessage(mutationError.message);
     },
   });
 
@@ -136,8 +163,44 @@ export function SecurityPage() {
     });
   }
 
+
+
+  function onProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProfileMessage(null);
+    profileMutation.mutate({
+      display_name: displayName.trim(),
+    });
+  }
+
   return (
     <main className="grid">
+      <section className="panel panel-form panel-wide">
+        <div className="panel-header">
+          <h2>Профиль</h2>
+          <span>Персонализация имени для семейного бюджета</span>
+        </div>
+
+        <form className="transaction-form" onSubmit={onProfileSubmit}>
+          <label className="field">
+            <span>Ваше имя</span>
+            <input
+              disabled={profileMutation.isPending || preferencesQuery.isLoading}
+              maxLength={80}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="Например, Максим"
+              value={displayName}
+            />
+          </label>
+
+          {profileMessage ? <p className="form-status">{profileMessage}</p> : null}
+
+          <button className="primary-button" disabled={profileMutation.isPending} type="submit">
+            {profileMutation.isPending ? "Сохраняем..." : "Сохранить имя"}
+          </button>
+        </form>
+      </section>
+
       <section className="panel panel-form panel-wide">
         <div className="panel-header">
           <h2>Безопасность</h2>

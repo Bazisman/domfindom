@@ -35,6 +35,7 @@ def update_preferences(
         int(current_user["id"]),
         payload.theme_mode or "",
         payload.workspace_mode or "",
+        payload.display_name,
     )
     return AccountPreferencesResponse(**result)
 

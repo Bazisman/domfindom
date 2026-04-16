@@ -202,7 +202,11 @@ export default function AppShellNext() {
     setThemeMode(nextTheme);
     setAccountError("");
     try {
-      await updateAccountPreferences({ theme_mode: nextTheme, workspace_mode: workspaceMode });
+      await updateAccountPreferences({
+        theme_mode: nextTheme,
+        workspace_mode: workspaceMode,
+        display_name: preferencesQuery.data?.display_name ?? "",
+      });
       await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : "Не удалось сохранить тему.");
@@ -214,7 +218,11 @@ export default function AppShellNext() {
     setAccountError("");
     setAccountMessage("");
     try {
-      await updateAccountPreferences({ workspace_mode: nextMode, theme_mode: themeMode });
+      await updateAccountPreferences({
+        workspace_mode: nextMode,
+        theme_mode: themeMode,
+        display_name: preferencesQuery.data?.display_name ?? "",
+      });
       await queryClient.invalidateQueries({ queryKey: ["account", "preferences"] });
       if (nextMode === "family" && !hasFamily) {
         setAccountMessage("Сначала примите приглашение в семью или создайте семейный бюджет.");
@@ -231,7 +239,11 @@ export default function AppShellNext() {
     setAccountMessage("");
     try {
       const response = await acceptFamilyInviteById(inviteId);
-      await updateAccountPreferences({ workspace_mode: "family", theme_mode: themeMode });
+      await updateAccountPreferences({
+        workspace_mode: "family",
+        theme_mode: themeMode,
+        display_name: preferencesQuery.data?.display_name ?? "",
+      });
       setWorkspaceMode("family");
       setAccountMessage(response.message);
       await Promise.all([
@@ -379,7 +391,8 @@ export default function AppShellNext() {
   }
 
   const userEmail = currentUser?.email ?? "";
-  const displayName = userEmail ? userEmail.split("@")[0] : "Профиль";
+  const profileName = (preferencesQuery.data?.display_name ?? "").trim();
+  const displayName = profileName || (userEmail ? userEmail.split("@")[0] : "Профиль");
   const initials = displayName.slice(0, 2).toUpperCase();
 
   const confirmTitle = useMemo(() => {
