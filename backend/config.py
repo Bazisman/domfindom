@@ -18,6 +18,21 @@ def _parse_int(value: str, default: int) -> int:
         return default
 
 
+def _repair_mojibake_utf8_from_cp1251(value: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return raw
+    if "Р" not in raw and "С" not in raw:
+        return raw
+    try:
+        repaired = raw.encode("cp1251").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return raw
+    before_markers = raw.count("Р") + raw.count("С")
+    after_markers = repaired.count("Р") + repaired.count("С")
+    return repaired if after_markers < before_markers else raw
+
+
 def _is_production() -> bool:
     return os.getenv("FINANCE_APP_ENV", "").strip().lower() in {"prod", "production"}
 
@@ -127,34 +142,34 @@ settings = AppConfig(
         "FINANCE_APP_PASSWORD_RESET_URL_TEMPLATE",
         "https://domfindom.ru/login?reset_token={token}",
     ).strip(),
-    password_reset_email_subject=os.getenv(
+    password_reset_email_subject=_repair_mojibake_utf8_from_cp1251(os.getenv(
         "FINANCE_APP_PASSWORD_RESET_EMAIL_SUBJECT",
         "Восстановление пароля",
-    ).strip(),
+    )).strip(),
     family_invite_url_template=os.getenv(
         "FINANCE_APP_FAMILY_INVITE_URL_TEMPLATE",
         "https://domfindom.ru/login?family_invite_token={token}",
     ).strip(),
-    family_invite_email_subject=os.getenv(
+    family_invite_email_subject=_repair_mojibake_utf8_from_cp1251(os.getenv(
         "FINANCE_APP_FAMILY_INVITE_EMAIL_SUBJECT",
         "Приглашение в семейный бюджет",
-    ).strip(),
+    )).strip(),
     email_verification_url_template=os.getenv(
         "FINANCE_APP_EMAIL_VERIFICATION_URL_TEMPLATE",
         "https://domfindom.ru/login?verify_email_token={token}",
     ).strip(),
-    email_verification_email_subject=os.getenv(
+    email_verification_email_subject=_repair_mojibake_utf8_from_cp1251(os.getenv(
         "FINANCE_APP_EMAIL_VERIFICATION_EMAIL_SUBJECT",
-        "РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ email РІ РґРѕРјР°С€РЅРµР№ Р±СѓС…РіР°Р»С‚РµСЂРёРё",
-    ).strip(),
+        "Подтверждение email в домашней бухгалтерии",
+    )).strip(),
     account_delete_url_template=os.getenv(
         "FINANCE_APP_ACCOUNT_DELETE_URL_TEMPLATE",
         "https://domfindom.ru/login?account_delete_token={token}",
     ).strip(),
-    account_delete_email_subject=os.getenv(
+    account_delete_email_subject=_repair_mojibake_utf8_from_cp1251(os.getenv(
         "FINANCE_APP_ACCOUNT_DELETE_EMAIL_SUBJECT",
         "Удаление аккаунта",
-    ).strip(),
+    )).strip(),
     account_delete_token_ttl_minutes=max(
         5, _parse_int(os.getenv("FINANCE_APP_ACCOUNT_DELETE_TOKEN_TTL_MINUTES", "30"), 30)
     ),
