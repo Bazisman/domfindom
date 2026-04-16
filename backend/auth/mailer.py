@@ -20,6 +20,8 @@ class AuthMailer:
         self.family_invite_email_subject = settings.family_invite_email_subject
         self.email_verification_url_template = settings.email_verification_url_template
         self.email_verification_email_subject = settings.email_verification_email_subject
+        self.account_delete_url_template = settings.account_delete_url_template
+        self.account_delete_email_subject = settings.account_delete_email_subject
 
     def is_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from)
@@ -34,6 +36,10 @@ class AuthMailer:
 
     def _build_email_verification_url(self, token: str) -> str:
         template = self.email_verification_url_template or "{token}"
+        return template.replace("{token}", quote(token, safe=""))
+
+    def _build_account_delete_url(self, token: str) -> str:
+        template = self.account_delete_url_template or "{token}"
         return template.replace("{token}", quote(token, safe=""))
 
     def _deliver_message(self, message: EmailMessage) -> None:
@@ -106,6 +112,24 @@ class AuthMailer:
             "Чтобы завершить создание аккаунта, подтвердите email по ссылке:\n"
             f"{verification_url}\n\n"
             "Если вы не регистрировались, просто проигнорируйте это письмо."
+        )
+        self._deliver_message(message)
+
+    def send_account_delete_email(self, to_email: str, token: str) -> None:
+        if not self.is_configured():
+            return
+
+        delete_url = self._build_account_delete_url(token)
+        message = EmailMessage()
+        message["Subject"] = self.account_delete_email_subject or "Удаление аккаунта"
+        message["From"] = self.smtp_from
+        message["To"] = to_email
+        message.set_content(
+            "Получен запрос на удаление аккаунта.\n\n"
+            "Если это действительно вы, подтвердите удаление по ссылке:\n"
+            f"{delete_url}\n\n"
+            "Ссылка одноразовая и действует ограниченное время.\n"
+            "Если вы не запрашивали удаление, просто проигнорируйте письмо."
         )
         self._deliver_message(message)
 

@@ -43,6 +43,7 @@ _CSRF_EXEMPT_PATHS = {
     "/api/v1/health",
     "/api/v1/auth/login",
     "/api/v1/auth/register",
+    "/api/v1/auth/account-delete/confirm",
     "/api/v1/auth/verify-email",
     "/api/v1/auth/password-reset/request",
     "/api/v1/auth/password-reset/confirm",

@@ -9,6 +9,7 @@ from backend.auth.service import auth_service
 from backend.config import settings
 from backend.schemas.auth import (
     AuthResponse,
+    AccountDeleteConfirmPayload,
     AuthUserResponse,
     ChangePasswordRequest,
     EmailVerificationConfirmPayload,
@@ -263,6 +264,34 @@ def verify_email(payload: EmailVerificationConfirmPayload, request: Request, res
         message="Email успешно подтверждён.",
         requires_email_verification=False,
     )
+
+
+@router.post("/account-delete/confirm")
+def confirm_account_delete(payload: AccountDeleteConfirmPayload, request: Request, response: Response) -> Dict[str, str]:
+    client_ip = request.client.host if request.client else ""
+    client_agent = request.headers.get("user-agent", "")
+
+    deleted_email = auth_service.delete_account_by_token(payload.token)
+    if not deleted_email:
+        auth_service.log_auth_event(
+            event_type="account_delete_confirm",
+            status="fail",
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="invalid_or_expired_token",
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Токен удаления недействителен или истёк")
+
+    auth_service.log_auth_event(
+        event_type="account_delete_confirm",
+        status="success",
+        email=deleted_email,
+        ip=client_ip,
+        user_agent=client_agent,
+        detail="account_deleted",
+    )
+    _clear_session_cookie(response)
+    return {"message": "Аккаунт удалён."}
 
 
 @router.post("/logout")

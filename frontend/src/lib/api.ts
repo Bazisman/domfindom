@@ -514,6 +514,19 @@ export function resetAllAccountData(payload: { confirm_text: string }) {
   });
 }
 
+export function requestAccountDelete() {
+  return request<{ message: string }>("/account/delete/request", {
+    method: "POST",
+  });
+}
+
+export function confirmAccountDelete(payload: { token: string }) {
+  return request<{ message: string }>("/auth/account-delete/confirm", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getAccountActivity(limit = 15) {
   const search = new URLSearchParams();
   search.set("limit", String(limit));

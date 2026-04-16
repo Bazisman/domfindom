@@ -38,6 +38,10 @@ class EmailVerificationConfirmPayload(BaseModel):
     token: str = Field(min_length=16, max_length=512)
 
 
+class AccountDeleteConfirmPayload(BaseModel):
+    token: str = Field(min_length=16, max_length=512)
+
+
 class AuthResponse(BaseModel):
     user: AuthUserResponse
     message: str

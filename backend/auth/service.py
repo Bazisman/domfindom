@@ -170,6 +170,31 @@ class AuthService:
             )
             cursor.execute(
                 """
+                CREATE TABLE IF NOT EXISTS account_deletion_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_account_deletion_tokens_user_id
+                ON account_deletion_tokens(user_id)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_account_deletion_tokens_expires_at
+                ON account_deletion_tokens(expires_at)
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_preferences (
                     user_id INTEGER PRIMARY KEY,
                     theme_mode TEXT NOT NULL DEFAULT 'system',
@@ -272,6 +297,9 @@ class AuthService:
             )
             conn.commit()
         self.cleanup_expired_sessions()
+        self.cleanup_password_reset_tokens()
+        self.cleanup_email_verification_tokens()
+        self.cleanup_account_deletion_tokens()
 
     def close(self) -> None:
         if self._shared_memory_conn is not None:
@@ -575,6 +603,19 @@ class AuthService:
             conn.commit()
             return int(cursor.rowcount)
 
+    def cleanup_account_deletion_tokens(self) -> int:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM account_deletion_tokens
+                WHERE used_at IS NOT NULL OR expires_at < ?
+                """,
+                (_format_utc(_utcnow()),),
+            )
+            conn.commit()
+            return int(cursor.rowcount)
+
     def create_email_verification_token(self, user_id: int) -> Optional[str]:
         user = self.get_user_by_id(user_id)
         if not user or not bool(user["is_active"]):
@@ -647,6 +688,123 @@ class AuthService:
         if not user_row:
             return None
         return self.get_user_public(user_row)
+
+    def create_account_deletion_token(self, user_id: int) -> Optional[str]:
+        user = self.get_user_by_id(user_id)
+        if not user or not bool(user["is_active"]):
+            return None
+        raw_token = secrets.token_urlsafe(48)
+        token_hash = self._token_hash(raw_token)
+        expires_at = _format_utc(_utcnow() + timedelta(minutes=settings.account_delete_token_ttl_minutes))
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE account_deletion_tokens
+                SET used_at = datetime('now')
+                WHERE user_id = ? AND used_at IS NULL
+                """,
+                (user_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO account_deletion_tokens (user_id, token_hash, expires_at, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+                """,
+                (user_id, token_hash, expires_at),
+            )
+            conn.commit()
+        self.cleanup_account_deletion_tokens()
+        return raw_token
+
+    def _delete_user_account_by_id(self, user_id: int, user_email: str) -> bool:
+        normalized_email = self._normalize_email(user_email)
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id
+                FROM families
+                WHERE owner_user_id = ?
+                """,
+                (user_id,),
+            )
+            owned_family_ids = [int(row["id"]) for row in cursor.fetchall()]
+
+            cursor.execute("BEGIN")
+            cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM email_verification_tokens WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM account_deletion_tokens WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM user_preferences WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM user_backup_slot WHERE user_id = ?", (user_id,))
+            cursor.execute(
+                "DELETE FROM auth_events WHERE user_id = ? OR lower(email) = ?",
+                (user_id, normalized_email),
+            )
+            cursor.execute(
+                "DELETE FROM login_attempts WHERE lower(email) = ? OR rate_key LIKE ?",
+                (normalized_email, f"{normalized_email}|%"),
+            )
+
+            if owned_family_ids:
+                marks = ",".join("?" for _ in owned_family_ids)
+                cursor.execute(f"DELETE FROM family_invites WHERE family_id IN ({marks})", owned_family_ids)
+                cursor.execute(f"DELETE FROM family_memberships WHERE family_id IN ({marks})", owned_family_ids)
+                cursor.execute(f"DELETE FROM families WHERE id IN ({marks})", owned_family_ids)
+
+            cursor.execute(
+                "DELETE FROM family_invites WHERE invited_by_user_id = ? OR lower(email) = ?",
+                (user_id, normalized_email),
+            )
+            cursor.execute("DELETE FROM family_memberships WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+
+        user_dir = Path(self.users_data_dir) / str(user_id)
+        if user_dir.exists():
+            try:
+                import shutil
+
+                shutil.rmtree(str(user_dir), ignore_errors=True)
+            except Exception:
+                pass
+        return True
+
+    def delete_account_by_token(self, raw_token: str) -> Optional[str]:
+        token_hash = self._token_hash(raw_token)
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT adt.id AS delete_id, adt.user_id, adt.expires_at, adt.used_at, u.email, u.is_active
+                FROM account_deletion_tokens adt
+                JOIN users u ON u.id = adt.user_id
+                WHERE adt.token_hash = ?
+                LIMIT 1
+                """,
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            if row["used_at"] or _parse_utc(str(row["expires_at"])) < _utcnow() or not bool(row["is_active"]):
+                return None
+            user_id = int(row["user_id"])
+            user_email = str(row["email"] or "")
+            cursor.execute(
+                """
+                UPDATE account_deletion_tokens
+                SET used_at = datetime('now')
+                WHERE user_id = ? AND used_at IS NULL
+                """,
+                (user_id,),
+            )
+            conn.commit()
+
+        self._delete_user_account_by_id(user_id, user_email)
+        self.cleanup_account_deletion_tokens()
+        return user_email
 
     def create_password_reset_token(self, email: str) -> Optional[str]:
         user = self.get_user_by_email(email)

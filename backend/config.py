@@ -73,6 +73,9 @@ class AppConfig:
     family_invite_email_subject: str
     email_verification_url_template: str
     email_verification_email_subject: str
+    account_delete_url_template: str
+    account_delete_email_subject: str
+    account_delete_token_ttl_minutes: int
 
 
 settings = AppConfig(
@@ -144,6 +147,17 @@ settings = AppConfig(
         "FINANCE_APP_EMAIL_VERIFICATION_EMAIL_SUBJECT",
         "РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ email РІ РґРѕРјР°С€РЅРµР№ Р±СѓС…РіР°Р»С‚РµСЂРёРё",
     ).strip(),
+    account_delete_url_template=os.getenv(
+        "FINANCE_APP_ACCOUNT_DELETE_URL_TEMPLATE",
+        "https://domfindom.ru/login?account_delete_token={token}",
+    ).strip(),
+    account_delete_email_subject=os.getenv(
+        "FINANCE_APP_ACCOUNT_DELETE_EMAIL_SUBJECT",
+        "Удаление аккаунта",
+    ).strip(),
+    account_delete_token_ttl_minutes=max(
+        5, _parse_int(os.getenv("FINANCE_APP_ACCOUNT_DELETE_TOKEN_TTL_MINUTES", "30"), 30)
+    ),
 )
 
 

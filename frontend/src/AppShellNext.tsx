@@ -11,6 +11,7 @@ import {
   getPendingFamilyInvites,
   getMe,
   logout,
+  requestAccountDelete,
   resetAllAccountData,
   restoreAccountBackup,
   saveAccountBackup,
@@ -24,8 +25,8 @@ import { PlanningPage } from "./pages/PlanningPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { TransactionsPageNext } from "./pages/TransactionsPageNext";
 
-type BusyAction = "" | "save" | "restore" | "reset" | "logout";
-type ConfirmAction = "logout" | "restore" | "reset" | null;
+type BusyAction = "" | "save" | "restore" | "reset" | "logout" | "delete_request";
+type ConfirmAction = "logout" | "restore" | "reset" | "delete" | null;
 type InviteAction = "" | "accept" | "decline";
 
 function formatBackupTimestamp(value: string): string {
@@ -362,6 +363,19 @@ export default function AppShellNext() {
         setResetConfirmText("");
       }
     }
+
+    if (confirmAction === "delete") {
+      setBusyAction("delete_request");
+      try {
+        const response = await requestAccountDelete();
+        setAccountMessage(response.message);
+      } catch (error) {
+        setAccountError(error instanceof Error ? error.message : "Не удалось отправить письмо для удаления аккаунта.");
+      } finally {
+        setBusyAction("");
+        setConfirmAction(null);
+      }
+    }
   }
 
   const userEmail = currentUser?.email ?? "";
@@ -378,6 +392,9 @@ export default function AppShellNext() {
     if (confirmAction === "reset") {
       return "Обнулить данные";
     }
+    if (confirmAction === "delete") {
+      return "Удалить аккаунт";
+    }
     return "";
   }, [confirmAction]);
 
@@ -391,6 +408,9 @@ export default function AppShellNext() {
     if (confirmAction === "reset") {
       return "Будут удалены все финансовые данные пользователя. Это действие необратимо.";
     }
+    if (confirmAction === "delete") {
+      return "Мы отправим письмо с одноразовой ссылкой подтверждения. Аккаунт удалится только после перехода по ссылке из email.";
+    }
     return "";
   }, [confirmAction]);
 
@@ -403,6 +423,9 @@ export default function AppShellNext() {
     }
     if (confirmAction === "reset") {
       return "Обнулить";
+    }
+    if (confirmAction === "delete") {
+      return "Отправить ссылку";
     }
     return "Подтвердить";
   }, [confirmAction]);
@@ -584,6 +607,9 @@ export default function AppShellNext() {
               </button>
               <button className="account-action danger" disabled={busyAction !== ""} onClick={() => openConfirm("reset")} type="button">
                 Обнулить данные
+              </button>
+              <button className="account-action danger" disabled={busyAction !== ""} onClick={() => openConfirm("delete")} type="button">
+                Удалить аккаунт
               </button>
             </div>
 

@@ -278,6 +278,38 @@ class WebApiTestCase(unittest.TestCase):
             auth_mailer.smtp_host = old_smtp_host
             auth_mailer.smtp_from = old_smtp_from
 
+    def test_account_delete_request_requires_email_channel(self):
+        old_smtp_host = auth_mailer.smtp_host
+        old_smtp_from = auth_mailer.smtp_from
+        try:
+            auth_mailer.smtp_host = ""
+            auth_mailer.smtp_from = ""
+            response = self.client.post("/api/v1/account/delete/request")
+            self.assertEqual(response.status_code, 503)
+        finally:
+            auth_mailer.smtp_host = old_smtp_host
+            auth_mailer.smtp_from = old_smtp_from
+
+    def test_account_delete_confirm_deletes_user_and_revokes_session(self):
+        user_id = self._current_user_id()
+        token = auth_service.create_account_deletion_token(user_id)
+        self.assertIsNotNone(token)
+
+        confirmed = self.client.post(
+            "/api/v1/auth/account-delete/confirm",
+            json={"token": token},
+        )
+        self.assertEqual(confirmed.status_code, 200)
+
+        me_after = self.client.get("/api/v1/auth/me")
+        self.assertEqual(me_after.status_code, 401)
+
+        login_after = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": self._primary_email, "password": "StrongPass123"},
+        )
+        self.assertEqual(login_after.status_code, 401)
+
     def test_session_management_endpoints(self):
         sessions_response = self.client.get("/api/v1/auth/sessions")
         self.assertEqual(sessions_response.status_code, 200)

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from backend.auth.dependencies import require_user
+from backend.auth.mailer import auth_mailer
 from backend.auth.service import auth_service
 from backend.schemas.account import (
     AccountActivityItemResponse,
     AccountActivityResponse,
+    AccountDeleteRequestResponse,
     AccountPreferencesResponse,
     AccountPreferencesUpdatePayload,
     BackupRestoreResponse,
@@ -129,3 +131,66 @@ def reset_all(payload: ResetAllPayload, request: Request, current_user=Depends(r
         user_agent=client_agent,
     )
     return ResetAllResponse(message="Данные очищены. Можно начать заново.")
+
+@router.post("/delete/request", response_model=AccountDeleteRequestResponse)
+def request_account_delete(request: Request, current_user=Depends(require_user)) -> AccountDeleteRequestResponse:
+    user_id = int(current_user["id"])
+    user_email = str(current_user["email"])
+    client_ip = request.client.host if request.client else ""
+    client_agent = request.headers.get("user-agent", "")
+
+    delete_token = auth_service.create_account_deletion_token(user_id)
+    if not delete_token:
+        auth_service.log_auth_event(
+            event_type="account_delete_request",
+            status="fail",
+            user_id=user_id,
+            email=user_email,
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="token_not_created",
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать токен удаления аккаунта.")
+
+    if not auth_mailer.is_configured():
+        auth_service.log_auth_event(
+            event_type="account_delete_request",
+            status="fail",
+            user_id=user_id,
+            email=user_email,
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="smtp_not_configured",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Отправка email временно недоступна. Обратитесь в поддержку.",
+        )
+
+    try:
+        auth_mailer.send_account_delete_email(user_email, delete_token)
+    except Exception:
+        auth_service.log_auth_event(
+            event_type="account_delete_request",
+            status="fail",
+            user_id=user_id,
+            email=user_email,
+            ip=client_ip,
+            user_agent=client_agent,
+            detail="mail_delivery_failed",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Не удалось отправить письмо. Попробуйте позже.",
+        )
+
+    auth_service.log_auth_event(
+        event_type="account_delete_request",
+        status="success",
+        user_id=user_id,
+        email=user_email,
+        ip=client_ip,
+        user_agent=client_agent,
+        detail="token_sent_via_email",
+    )
+    return AccountDeleteRequestResponse(message="Ссылка для удаления аккаунта отправлена на почту.")

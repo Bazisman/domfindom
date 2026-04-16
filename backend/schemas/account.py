@@ -43,6 +43,10 @@ class ResetAllResponse(BaseModel):
     message: str
 
 
+class AccountDeleteRequestResponse(BaseModel):
+    message: str
+
+
 class AccountActivityItemResponse(BaseModel):
     event_type: str
     status: str
