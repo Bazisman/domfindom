@@ -1,6 +1,7 @@
 """
 Ядро приложения - работа с базой данных и бизнес-логика
 """
+import sqlite3
 from utils.logger import app_logger
 from core_runtime import (
     DB_NAME,
