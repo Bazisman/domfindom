@@ -16,6 +16,7 @@ type RecentFeedItem = {
   category: string;
   amount: number;
   comment: string;
+  owner_display_name?: string;
   owner_email?: string;
   owner_user_id?: number;
 };
@@ -103,6 +104,7 @@ export function DashboardPage() {
           category: item.category,
           amount: item.amount,
           comment: item.comment,
+          owner_display_name: item.owner_display_name,
           owner_email: item.owner_email,
           owner_user_id: item.owner_user_id,
         }),
@@ -369,7 +371,9 @@ export function DashboardPage() {
                   <p>{item.comment || "Без комментария"}</p>
                 </div>
                 <div className="family-page-actions">
-                  {item.owner_email ? <span className="status-chip">{item.owner_email}</span> : null}
+                  {item.owner_display_name || item.owner_email ? (
+                    <span className="status-chip">{item.owner_display_name || item.owner_email}</span>
+                  ) : null}
                   <div className={item.type === "income" ? "money plus" : "money minus"}>
                     {formatMoney(item.amount)}
                   </div>
