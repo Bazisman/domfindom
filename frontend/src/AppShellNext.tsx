@@ -94,8 +94,8 @@ export default function AppShellNext() {
   });
 
   const hasFamily = (familiesQuery.data?.families ?? []).length > 0;
-  const showFamilyTab = workspaceMode === "family" && hasFamily;
-  const canOpenFamilyPage = hasFamily;
+  const showFamilyTab = workspaceMode === "family";
+  const canOpenFamilyPage = workspaceMode === "family";
   const familyContextLoading = preferencesQuery.isLoading || familiesQuery.isLoading;
   const pendingInvites = pendingInvitesQuery.data?.invites ?? [];
   const hasPendingInvites = pendingInvites.length > 0;
