@@ -1748,6 +1748,31 @@ body {
   padding: 8px 10px;
 }
 
+@media (max-width: 640px) {
+  .family-member-item {
+    gap: 10px;
+  }
+
+  .family-member-main strong {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .family-member-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .family-member-controls select,
+  .family-member-controls .account-action {
+    width: 100%;
+  }
+
+  .family-member-controls .account-action {
+    flex: 1 1 auto;
+  }
+}
+
 .family-page-actions {
   display: flex;
   gap: 8px;
