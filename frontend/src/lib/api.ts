@@ -363,6 +363,17 @@ export type DuePlannedTransaction = {
   template_name: string | null;
 };
 
+type ValidationErrorItem = {
+  loc?: Array<string | number>;
+  msg?: string;
+  type?: string;
+};
+
+type ApiErrorPayload = {
+  detail?: string | ValidationErrorItem[];
+  message?: string;
+};
+
 const API_BASE =
   import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? "/api/v1";
 
@@ -373,6 +384,53 @@ function getCookie(name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : "";
+}
+
+function normalizeValidationMessage(item: ValidationErrorItem): string {
+  const field = Array.isArray(item.loc) ? String(item.loc[item.loc.length - 1] ?? "") : "";
+  const raw = item.msg ?? "";
+
+  if (field === "email") {
+    return "Проверьте email: укажите корректный адрес почты.";
+  }
+  if (field === "password" || field === "new_password" || field === "current_password") {
+    if (raw.toLowerCase().includes("at least 8")) {
+      return "Пароль должен быть не короче 8 символов.";
+    }
+    return "Проверьте пароль: заполните поле корректно.";
+  }
+  if (field === "token") {
+    return "Ссылка или токен больше не действуют. Запросите новую.";
+  }
+  return raw || "Проверьте правильность заполнения полей.";
+}
+
+function fallbackApiErrorMessage(status: number): string {
+  if (status === 400) {
+    return "Запрос не удалось обработать. Проверьте введенные данные.";
+  }
+  if (status === 401) {
+    return "Неверный email или пароль.";
+  }
+  if (status === 403) {
+    return "Доступ временно недоступен. Проверьте подтверждение email или права доступа.";
+  }
+  if (status === 404) {
+    return "Нужный ресурс не найден.";
+  }
+  if (status === 409) {
+    return "Такая запись уже существует.";
+  }
+  if (status === 422) {
+    return "Проверьте правильность заполнения полей.";
+  }
+  if (status === 429) {
+    return "Слишком много попыток. Подождите немного и попробуйте снова.";
+  }
+  if (status >= 500) {
+    return "Сервис временно недоступен. Попробуйте чуть позже.";
+  }
+  return "Не удалось выполнить запрос. Попробуйте еще раз.";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -395,11 +453,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    let message = `API error ${response.status}`;
+    let message = fallbackApiErrorMessage(response.status);
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload?.detail) {
+      const payload = (await response.json()) as ApiErrorPayload;
+      if (typeof payload?.detail === "string" && payload.detail.trim()) {
         message = payload.detail;
+      } else if (Array.isArray(payload?.detail) && payload.detail.length > 0) {
+        message = normalizeValidationMessage(payload.detail[0]);
+      } else if (typeof payload?.message === "string" && payload.message.trim()) {
+        message = payload.message;
       }
     } catch {
       // noop

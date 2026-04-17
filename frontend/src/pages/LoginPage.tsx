@@ -2,9 +2,65 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { ApiError, acceptFamilyInvite, confirmAccountDelete, confirmPasswordReset, login, register, requestPasswordReset, verifyEmail } from "../lib/api";
+import {
+  ApiError,
+  acceptFamilyInvite,
+  confirmAccountDelete,
+  confirmPasswordReset,
+  login,
+  register,
+  requestPasswordReset,
+  verifyEmail,
+} from "../lib/api";
 
 type AuthMode = "login" | "register" | "reset_request" | "reset_confirm";
+
+function validateEmailInput(value: string): string | null {
+  const normalized = value.trim();
+  if (!normalized) {
+    return "Введите email.";
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    return "Укажите корректный email.";
+  }
+  return null;
+}
+
+function validateStrongPassword(value: string): string | null {
+  if (value.length < 8) {
+    return "Пароль должен быть не короче 8 символов.";
+  }
+  const hasUpper = /[A-Z]/.test(value);
+  const hasLower = /[a-z]/.test(value);
+  const hasDigit = /\d/.test(value);
+  if (!(hasUpper && hasLower && hasDigit)) {
+    return "Пароль должен содержать заглавные и строчные буквы, а также цифры.";
+  }
+  return null;
+}
+
+function normalizeAuthErrorMessage(message: string, fallback: string): string {
+  const normalized = message.trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  const lower = normalized.toLowerCase();
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return "Не удалось связаться с сервером. Проверьте интернет и попробуйте снова.";
+  }
+  if (lower.includes("api error 500")) {
+    return "Сервис временно недоступен. Попробуйте чуть позже.";
+  }
+  if (lower.includes("api error 422")) {
+    return "Проверьте правильность заполнения полей.";
+  }
+  if (lower.includes("invalid credentials")) {
+    return "Неверный email или пароль.";
+  }
+
+  return normalized;
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -45,9 +101,9 @@ export function LoginPage() {
         navigate("/", { replace: true });
       } catch (e) {
         if (e instanceof ApiError) {
-          setError(e.message);
+          setError(normalizeAuthErrorMessage(e.message, "Не удалось подтвердить email."));
         } else {
-          setError("Не удалось подтвердить email");
+          setError("Не удалось подтвердить email.");
         }
       } finally {
         setLoading(false);
@@ -73,13 +129,13 @@ export function LoginPage() {
         setPassword("");
         setNewPassword("");
         setResetToken("");
-        setMessage(response.message || "Аккаунт удалён.");
+        setMessage(response.message || "Аккаунт удален.");
         navigate("/login", { replace: true });
       } catch (e) {
         if (e instanceof ApiError) {
-          setError(e.message);
+          setError(normalizeAuthErrorMessage(e.message, "Не удалось подтвердить удаление аккаунта."));
         } else {
-          setError("Не удалось подтвердить удаление аккаунта");
+          setError("Не удалось подтвердить удаление аккаунта.");
         }
       } finally {
         setLoading(false);
@@ -108,23 +164,52 @@ export function LoginPage() {
     event.preventDefault();
     setMessage(null);
     setError(null);
+
+    if (mode === "login") {
+      const emailError = validateEmailInput(email);
+      if (emailError) {
+        setError(emailError);
+        return;
+      }
+      if (!password.trim()) {
+        setError("Введите пароль.");
+        return;
+      }
+    }
+
+    if (mode === "register") {
+      const emailError = validateEmailInput(email);
+      if (emailError) {
+        setError(emailError);
+        return;
+      }
+      const passwordError = validateStrongPassword(password);
+      if (passwordError) {
+        setError(passwordError);
+        return;
+      }
+    }
+
+    if (mode === "reset_request") {
+      const emailError = validateEmailInput(email);
+      if (emailError) {
+        setError(emailError);
+        return;
+      }
+    }
+
     if (mode === "reset_confirm") {
       if (!resetToken.trim()) {
         setError("Токен сброса не найден. Откройте ссылку из письма заново.");
         return;
       }
-      if (newPassword.length < 8) {
-        setError("Новый пароль должен быть не короче 8 символов.");
-        return;
-      }
-      const hasUpper = /[A-Z]/.test(newPassword);
-      const hasLower = /[a-z]/.test(newPassword);
-      const hasDigit = /\d/.test(newPassword);
-      if (!(hasUpper && hasLower && hasDigit)) {
-        setError("Пароль должен содержать заглавные и строчные буквы, а также цифры.");
+      const passwordError = validateStrongPassword(newPassword);
+      if (passwordError) {
+        setError(passwordError);
         return;
       }
     }
+
     setLoading(true);
     try {
       if (mode === "login") {
@@ -135,13 +220,16 @@ export function LoginPage() {
             void queryClient.invalidateQueries({ queryKey: ["families", "me"] });
             void queryClient.invalidateQueries({ queryKey: ["families", "invites", "pending"] });
           } catch {
-            // do not block login if invite token is invalid/expired
+            // Do not block login if invite token is invalid or expired.
           }
         }
         queryClient.setQueryData(["auth", "me"], response.user);
         void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         navigate("/", { replace: true });
-      } else if (mode === "register") {
+        return;
+      }
+
+      if (mode === "register") {
         const response = await register({ email, password });
         if (response.requires_email_verification) {
           setPassword("");
@@ -155,40 +243,34 @@ export function LoginPage() {
             void queryClient.invalidateQueries({ queryKey: ["families", "me"] });
             void queryClient.invalidateQueries({ queryKey: ["families", "invites", "pending"] });
           } catch {
-            // do not block registration if invite token is invalid/expired
+            // Do not block registration if invite token is invalid or expired.
           }
         }
         queryClient.setQueryData(["auth", "me"], response.user);
         void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
         navigate("/", { replace: true });
-      } else if (mode === "reset_request") {
-        const response = await requestPasswordReset({ email });
-        if (response.reset_token) {
-          setResetToken(response.reset_token);
-          setMode("reset_confirm");
-          setMessage("Токен сброса создан. Укажите новый пароль.");
-        } else {
-          setMessage(response.message);
-        }
-      } else {
-        const response = await confirmPasswordReset({ token: resetToken, new_password: newPassword });
-        queryClient.setQueryData(["auth", "me"], response.user);
-        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-        setMode("login");
-        setPassword("");
-        setNewPassword("");
-        setResetToken("");
-        navigate("/", { replace: true });
+        return;
       }
+
+      if (mode === "reset_request") {
+        const response = await requestPasswordReset({ email });
+        setMessage(response.message || "Ссылка на сброс пароля отправлена на почту.");
+        return;
+      }
+
+      const response = await confirmPasswordReset({ token: resetToken, new_password: newPassword });
+      queryClient.setQueryData(["auth", "me"], response.user);
+      void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      setMode("login");
+      setPassword("");
+      setNewPassword("");
+      setResetToken("");
+      navigate("/", { replace: true });
     } catch (e) {
       if (e instanceof ApiError) {
-        if (e.message === "Invalid credentials" || e.message === "Неверный email или пароль") {
-          setError("Неверный email или пароль");
-        } else {
-          setError(e.message);
-        }
+        setError(normalizeAuthErrorMessage(e.message, "Не удалось выполнить запрос."));
       } else {
-        setError("Не удалось выполнить запрос");
+        setError("Не удалось выполнить запрос. Попробуйте еще раз.");
       }
     } finally {
       setLoading(false);
@@ -213,6 +295,7 @@ export function LoginPage() {
               />
             </label>
           )}
+
           {(mode === "login" || mode === "register") && (
             <label>
               Пароль
@@ -226,6 +309,7 @@ export function LoginPage() {
               />
             </label>
           )}
+
           {mode === "reset_confirm" && (
             <>
               {!hasTokenFromUrl && (
@@ -254,8 +338,10 @@ export function LoginPage() {
               <p className="muted">Минимум 8 символов, заглавные и строчные буквы, цифры.</p>
             </>
           )}
+
           {error ? <div className="auth-error">{error}</div> : null}
           {message ? <div className="auth-message">{message}</div> : null}
+
           <button className="btn btn-primary auth-submit" disabled={loading} type="submit">
             {loading
               ? "Подождите..."
@@ -268,6 +354,7 @@ export function LoginPage() {
                     : "Сохранить новый пароль"}
           </button>
         </form>
+
         <div className="auth-links">
           <button
             className="auth-switch"
@@ -280,6 +367,7 @@ export function LoginPage() {
           >
             {mode === "login" ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти"}
           </button>
+
           {mode !== "reset_request" && mode !== "reset_confirm" && (
             <button
               className="auth-switch"
@@ -293,6 +381,7 @@ export function LoginPage() {
               Забыли пароль?
             </button>
           )}
+
           {(mode === "reset_request" || mode === "reset_confirm") && (
             <button
               className="auth-switch"
