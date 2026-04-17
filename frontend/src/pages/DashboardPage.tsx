@@ -6,7 +6,6 @@ import {
   createTransaction,
   getCategories,
   getDashboard,
-  getFamilyDashboard,
   getFamilyTransactions,
   getMyFamilies,
 } from "../lib/api";
@@ -90,13 +89,6 @@ export function DashboardPage() {
     retry: false,
   });
 
-  const familyDashboardQuery = useQuery({
-    queryKey: ["families", selectedFamilyId, "dashboard"],
-    queryFn: () => getFamilyDashboard(selectedFamilyId as number),
-    enabled: useFamilyFeed,
-    retry: false,
-  });
-
   const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
   const [quickAmount, setQuickAmount] = useState("");
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
@@ -141,15 +133,6 @@ export function DashboardPage() {
   const remainingIncome = Math.max(expectedIncomeTotal - receivedIncome, 0);
   const remainingExpense = plannedExpenseTotal - executedExpense;
   const forecastMonthLabel = getForecastMonthLabel(dashboard.data?.forecast.end_date);
-  const familyBalance = familyDashboardQuery.data?.balance.main_balance ?? 0;
-  const familyIncome = familyDashboardQuery.data?.balance.income ?? 0;
-  const familyExpense = familyDashboardQuery.data?.balance.expense ?? 0;
-  const familyDifference = familyDashboardQuery.data?.balance.difference ?? 0;
-  const summaryBalance = useFamilyFeed ? familyBalance : (dashboard.data?.balance.main_balance ?? 0);
-  const summaryHasError = useFamilyFeed ? familyDashboardQuery.isError : dashboard.isError;
-  const summaryErrorMessage = useFamilyFeed
-    ? getQueryErrorMessage(familyDashboardQuery.error, "Не удалось загрузить семейную сводку")
-    : getQueryErrorMessage(dashboard.error, "Не удалось загрузить сводку");
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -165,7 +148,6 @@ export function DashboardPage() {
       setQuickCategoryId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["budgets"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions", "dashboard"] }),
@@ -263,55 +245,40 @@ export function DashboardPage() {
 
       <main className="grid">
         <section className="panel panel-balance">
-          <p className="panel-label">{useFamilyFeed ? "Текущий семейный баланс" : "Текущий баланс"}</p>
-          <h2>{summaryHasError ? "—" : formatMoney(summaryBalance)}</h2>
+          <p className="panel-label">Текущий баланс</p>
+          <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
           <div className="stats-row">
             <div>
-              <span>{useFamilyFeed ? "Доход семьи за месяц" : "Доход за месяц (получено / план)"}</span>
+              <span>Доход за месяц (получено / план)</span>
               <strong>
-                {useFamilyFeed
-                  ? formatMoney(familyIncome)
-                  : dashboard.data
-                    ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
-                    : "—"}
+                {dashboard.data
+                  ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
+                  : "—"}
               </strong>
               <p className="stat-note">
-                {useFamilyFeed ? "Фактически получено всеми участниками семьи." : `Еще поступит: ${formatMoney(remainingIncome)}`}
+                Еще поступит: {formatMoney(remainingIncome)}
               </p>
             </div>
             <div>
-              <span>{useFamilyFeed ? "Расход семьи за месяц" : "Расход за месяц (потрачено / план)"}</span>
-              <strong className={useFamilyFeed || isExpenseOverPlan ? "money minus" : undefined}>
-                {useFamilyFeed
-                  ? formatMoney(familyExpense)
-                  : dashboard.data
-                    ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
-                    : "—"}
+              <span>Расход за месяц (потрачено / план)</span>
+              <strong className={isExpenseOverPlan ? "money minus" : undefined}>
+                {dashboard.data
+                  ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
+                  : "—"}
               </strong>
-              <p className={useFamilyFeed ? "stat-note" : isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
-                {useFamilyFeed
-                  ? "Фактически потрачено всеми участниками семьи."
-                  : remainingExpense >= 0
-                    ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
-                    : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
+              <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
+                {remainingExpense >= 0
+                  ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
+                  : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
               </p>
             </div>
           </div>
-          {summaryHasError ? <p className="empty">{summaryErrorMessage}</p> : null}
         </section>
 
         <section className="panel">
-          <p className="panel-label">{useFamilyFeed ? "Результат семьи за месяц" : "Баланс на конец месяца"}</p>
-          <h2 className={useFamilyFeed && familyDifference < 0 ? "money minus" : undefined}>
-            {useFamilyFeed ? formatMoney(familyDifference) : dashboard.data ? formatMoney(dashboard.data.forecast.projected_balance) : "—"}
-          </h2>
-          <p className="muted">
-            {useFamilyFeed
-              ? "Доходы семьи минус расходы семьи за текущий месяц."
-              : dashboard.data
-                ? `Прогноз на ${forecastMonthLabel}`
-                : "Нужен backend на FastAPI"}
-          </p>
+          <p className="panel-label">Баланс на конец месяца</p>
+          <h2>{dashboard.data ? formatMoney(dashboard.data.forecast.projected_balance) : "—"}</h2>
+          <p className="muted">{dashboard.data ? `Прогноз на ${forecastMonthLabel}` : "Нужен backend на FastAPI"}</p>
         </section>
 
         <section className="panel panel-full">
