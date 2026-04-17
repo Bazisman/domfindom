@@ -145,6 +145,36 @@ body {
   padding-bottom: 2px;
 }
 
+.mobile-dock {
+  display: none;
+}
+
+.mobile-dock-link {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text);
+  text-decoration: none;
+  text-align: center;
+  padding: 10px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.1;
+  transition:
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth),
+    box-shadow var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+}
+
+.mobile-dock-link.active {
+  background: var(--active-bg);
+  color: var(--active-fg);
+  border-color: var(--active-border);
+  box-shadow: 0 12px 26px rgba(22, 45, 35, 0.2);
+}
+
 .nav-link,
 .toggle,
 .ghost-button,
@@ -1999,4 +2029,54 @@ body {
 [data-theme="dark"] .chip-action.active,
 [data-theme="dark"] .account-pill.active {
   box-shadow: 0 8px 20px rgba(20, 44, 34, 0.38);
+}
+
+[data-theme="dark"] .mobile-dock {
+  background: rgba(15, 22, 28, 0.94);
+  border-color: rgba(230, 237, 243, 0.14);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+}
+
+[data-theme="dark"] .mobile-dock-link {
+  background: rgba(20, 28, 34, 0.88);
+  border-color: rgba(230, 237, 243, 0.16);
+  color: var(--text);
+}
+
+@media (max-width: 820px) {
+  .shell {
+    padding: 16px 16px calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .topbar {
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .topbar-links {
+    display: none;
+  }
+
+  .notifications-menu {
+    margin-left: 0;
+  }
+
+  .mobile-dock {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: rgba(255, 250, 241, 0.94);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 18px 42px rgba(53, 48, 34, 0.16);
+    z-index: 45;
+  }
 }

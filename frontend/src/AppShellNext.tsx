@@ -444,31 +444,29 @@ export default function AppShellNext() {
   }, [confirmAction]);
 
   const resetAllowed = confirmAction !== "reset" || resetConfirmText.trim().toUpperCase() === "СБРОС";
+  const primaryNavItems = [
+    { to: "/", label: "Главная", end: true },
+    { to: "/transactions", label: "Транзакции" },
+    { to: "/categories", label: "Категории" },
+    { to: "/planning", label: "Планирование" },
+    { to: "/accounts", label: "Счета" },
+    ...(showFamilyTab ? [{ to: "/family", label: "Семья" }] : []),
+  ];
 
   return (
     <div className="shell">
       <nav className="topbar">
         <div className="topbar-links" ref={topbarLinksRef}>
-          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} end to="/">
-            Главная
-          </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/transactions">
-            Транзакции
-          </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/categories">
-            Категории
-          </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/planning">
-            Планирование
-          </NavLink>
-          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/accounts">
-            Счета
-          </NavLink>
-          {showFamilyTab ? (
-            <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/family">
-              Семья
+          {primaryNavItems.map((item) => (
+            <NavLink
+              className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+              end={item.end}
+              key={item.to}
+              to={item.to}
+            >
+              {item.label}
             </NavLink>
-          ) : null}
+          ))}
         </div>
 
         <div className="notifications-menu" ref={notificationsMenuRef}>
@@ -700,6 +698,19 @@ export default function AppShellNext() {
         <Route element={<Navigate replace to="/planning" />} path="/budgets" />
         <Route element={<Navigate replace to="/planning" />} path="/recurring" />
       </Routes>
+
+      <nav className="mobile-dock" aria-label="Навигация по разделам">
+        {primaryNavItems.map((item) => (
+          <NavLink
+            className={({ isActive }) => (isActive ? "mobile-dock-link active" : "mobile-dock-link")}
+            end={item.end}
+            key={`mobile-${item.to}`}
+            to={item.to}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }
