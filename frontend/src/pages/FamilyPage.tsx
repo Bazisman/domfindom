@@ -410,8 +410,11 @@ export function FamilyPage() {
               const canManageThisMember = canManageFamilyMembers && !isSelf && member.role !== "owner";
               return (
                 <article className="list-item" key={member.user_id}>
-                  <div>
-                    <strong>{member.display_name || member.email}</strong>
+                  <div className="family-member-card-main">
+                    <div className="family-member-card-title">
+                      <strong>{member.display_name || member.email}</strong>
+                      {member.role === "owner" ? <span className="family-role-badge">Владелец</span> : null}
+                    </div>
                     {member.display_name ? <p>{member.email}</p> : null}
                     <p>Роль: {roleLabel(member.role)}</p>
                   </div>
@@ -430,7 +433,7 @@ export function FamilyPage() {
                       <option value="viewer">Просмотр</option>
                     </select>
                     <button
-                      className="ghost-button"
+                      className="ghost-button family-remove-button"
                       disabled={!canManageThisMember || busyAction !== ""}
                       onClick={() => onRemoveMember(member.user_id)}
                       type="button"
