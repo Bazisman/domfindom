@@ -1779,6 +1779,10 @@ body {
   align-items: center;
 }
 
+.family-member-list-item {
+  align-items: flex-start;
+}
+
 .family-member-card-main {
   display: grid;
   gap: 4px;
@@ -1833,15 +1837,27 @@ body {
 }
 
 @media (max-width: 720px) {
+  .family-member-list-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
   .family-page-actions {
     width: 100%;
     flex-wrap: wrap;
     gap: 10px;
+    align-items: stretch;
   }
 
   .family-page-actions select,
   .family-page-actions .ghost-button {
     width: 100%;
+  }
+
+  .family-page-actions .ghost-button {
+    justify-content: center;
+    min-height: 44px;
   }
 
   .family-role-badge {

@@ -409,7 +409,7 @@ export function FamilyPage() {
               const isSelf = member.user_id === meQuery.data?.id;
               const canManageThisMember = canManageFamilyMembers && !isSelf && member.role !== "owner";
               return (
-                <article className="list-item" key={member.user_id}>
+                <article className="list-item family-member-list-item" key={member.user_id}>
                   <div className="family-member-card-main">
                     <div className="family-member-card-title">
                       <strong>{member.display_name || member.email}</strong>
@@ -438,7 +438,7 @@ export function FamilyPage() {
                       onClick={() => onRemoveMember(member.user_id)}
                       type="button"
                     >
-                      {busyAction === "member_remove" && busyUserId === member.user_id ? "сключаем..." : "сключить"}
+                      {busyAction === "member_remove" && busyUserId === member.user_id ? "Исключаем..." : "Исключить"}
                     </button>
                   </div>
                 </article>
