@@ -486,6 +486,92 @@ body {
   grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
 }
 
+.page-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.reconciliation-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.reconciliation-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reconciliation-stat-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.reconciliation-stat-card span,
+.reconciliation-note,
+.reconciliation-history-main span,
+.reconciliation-history-meta span {
+  color: var(--muted);
+}
+
+.reconciliation-add-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.7fr) auto;
+  align-items: end;
+}
+
+.reconciliation-sources,
+.reconciliation-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reconciliation-source-row,
+.reconciliation-history-item {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.reconciliation-source-row {
+  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.7fr) auto;
+  align-items: end;
+}
+
+.reconciliation-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.reconciliation-history-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.reconciliation-history-main,
+.reconciliation-history-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.reconciliation-history-meta {
+  text-align: right;
+}
+
+.reconciliation-diff.positive {
+  color: var(--green);
+}
+
+.reconciliation-diff.negative {
+  color: var(--red);
+}
+
 .categories-layout {
   display: grid;
   gap: 20px;
@@ -1128,6 +1214,12 @@ body {
   .planning-layout {
     grid-template-columns: 1fr;
   }
+
+  .reconciliation-summary-grid,
+  .reconciliation-add-form,
+  .reconciliation-source-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 981px) {
@@ -1300,6 +1392,14 @@ body {
   .account-card {
     gap: 12px;
     padding: 12px 14px;
+  }
+
+  .reconciliation-history-item {
+    grid-template-columns: 1fr;
+  }
+
+  .reconciliation-history-meta {
+    text-align: left;
   }
 }
 .auth-page {

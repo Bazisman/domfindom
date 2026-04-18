@@ -360,6 +360,50 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(fetched.status_code, 200)
         self.assertEqual(fetched.json()["theme_mode"], "dark")
 
+    def test_reconciliation_flow_creates_adjustment_transaction(self):
+        initial_summary = self.client.get("/api/v1/reconciliation")
+        self.assertEqual(initial_summary.status_code, 200)
+        self.assertEqual(initial_summary.json()["program_balance"], 0)
+        self.assertEqual(initial_summary.json()["real_balance"], 0)
+
+        created_source = self.client.post(
+            "/api/v1/reconciliation/sources",
+            json={"name": "Наличные", "balance": 1500},
+        )
+        self.assertEqual(created_source.status_code, 201)
+        source_id = created_source.json()["id"]
+
+        updated_source = self.client.patch(
+            f"/api/v1/reconciliation/sources/{source_id}",
+            json={"balance": 1700},
+        )
+        self.assertEqual(updated_source.status_code, 200)
+        self.assertEqual(updated_source.json()["balance"], 1700)
+
+        applied = self.client.post("/api/v1/reconciliation/apply")
+        self.assertEqual(applied.status_code, 200)
+        payload = applied.json()
+        self.assertEqual(payload["reconciliation"]["real_balance"], 1700)
+        self.assertEqual(payload["reconciliation"]["program_balance"], 0)
+        self.assertEqual(payload["reconciliation"]["difference"], 1700)
+        self.assertIsNotNone(payload["adjustment_transaction_id"])
+
+        transactions_response = self.client.get("/api/v1/transactions?limit=20&offset=0&period=all")
+        self.assertEqual(transactions_response.status_code, 200)
+        transactions = transactions_response.json()
+        self.assertTrue(any(item["category"] == "Корректировка" and item["type"] == "income" for item in transactions))
+
+        summary_after = self.client.get("/api/v1/reconciliation")
+        self.assertEqual(summary_after.status_code, 200)
+        summary_payload = summary_after.json()
+        self.assertEqual(summary_payload["program_balance"], 1700)
+        self.assertEqual(summary_payload["real_balance"], 1700)
+        self.assertEqual(summary_payload["difference"], 0)
+        self.assertEqual(len(summary_payload["history"]), 1)
+
+        deleted = self.client.delete(f"/api/v1/reconciliation/sources/{source_id}")
+        self.assertEqual(deleted.status_code, 200)
+
     def test_backup_restore_and_reset_all_flow(self):
         created = self.client.post(
             "/api/v1/transactions",

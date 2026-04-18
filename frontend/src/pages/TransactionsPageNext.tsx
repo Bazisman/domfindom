@@ -7,10 +7,16 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  applyReconciliation,
+  createReconciliationSource,
   createTransaction,
+  deleteReconciliationSource,
   deleteTransaction,
   getCategories,
+  getReconciliationSummary,
   getTransactions,
+  updateReconciliationSource,
+  type ReconciliationHistoryItem,
   type TransactionPeriod,
   type TransactionType,
 } from "../lib/api";
@@ -34,6 +40,17 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatReconciliationDate(value: string) {
+  const parsed = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
+}
+
 export function TransactionsPageNext() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<TransactionPeriod>("all");
@@ -49,10 +66,20 @@ export function TransactionsPageNext() {
   const [recurringMonthsAhead, setRecurringMonthsAhead] = useState("12");
   const [recurringWorkingDaysOnly, setRecurringWorkingDaysOnly] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceBalance, setNewSourceBalance] = useState("");
+  const [reconciliationError, setReconciliationError] = useState<string | null>(null);
+  const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
+  const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; balance: string }>>({});
 
   const categories = useQuery({
     queryKey: ["categories"],
     queryFn: getCategories,
+  });
+
+  const reconciliationSummary = useQuery({
+    queryKey: ["reconciliation"],
+    queryFn: getReconciliationSummary,
   });
 
   const transactions = useQuery({
@@ -79,6 +106,21 @@ export function TransactionsPageNext() {
     }
   }, [isRecurring, recurringNameTouched, recurringSuggestedName]);
 
+  useEffect(() => {
+    const sources = reconciliationSummary.data?.sources ?? [];
+    setSourceDrafts((current) => {
+      const next: Record<number, { name: string; balance: string }> = {};
+      for (const source of sources) {
+        const existing = current[source.id];
+        next[source.id] = {
+          name: existing?.name ?? source.name,
+          balance: existing?.balance ?? String(source.balance),
+        };
+      }
+      return next;
+    });
+  }, [reconciliationSummary.data?.sources]);
+
   const visibleTransactions = useMemo(() => {
     const items = transactions.data ?? [];
     if (showPlanned) {
@@ -103,6 +145,7 @@ export function TransactionsPageNext() {
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
+        queryClient.invalidateQueries({ queryKey: ["reconciliation"] }),
       ]);
     },
     onError: (error: Error) => {
@@ -117,9 +160,148 @@ export function TransactionsPageNext() {
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
+        queryClient.invalidateQueries({ queryKey: ["reconciliation"] }),
       ]);
     },
   });
+
+  const createSourceMutation = useMutation({
+    mutationFn: createReconciliationSource,
+    onSuccess: async () => {
+      setNewSourceName("");
+      setNewSourceBalance("");
+      setReconciliationError(null);
+      setReconciliationMessage("Источник сверки добавлен.");
+      await queryClient.invalidateQueries({ queryKey: ["reconciliation"] });
+    },
+    onError: (error: Error) => {
+      setReconciliationMessage(null);
+      setReconciliationError(error.message);
+    },
+  });
+
+  const updateSourceMutation = useMutation({
+    mutationFn: ({ sourceId, payload }: { sourceId: number; payload: { name?: string; balance?: number } }) =>
+      updateReconciliationSource(sourceId, payload),
+    onSuccess: async () => {
+      setReconciliationError(null);
+      await queryClient.invalidateQueries({ queryKey: ["reconciliation"] });
+    },
+    onError: (error: Error) => {
+      setReconciliationMessage(null);
+      setReconciliationError(error.message);
+    },
+  });
+
+  const deleteSourceMutation = useMutation({
+    mutationFn: deleteReconciliationSource,
+    onSuccess: async () => {
+      setReconciliationError(null);
+      setReconciliationMessage("Источник сверки удален.");
+      await queryClient.invalidateQueries({ queryKey: ["reconciliation"] });
+    },
+    onError: (error: Error) => {
+      setReconciliationMessage(null);
+      setReconciliationError(error.message);
+    },
+  });
+
+  const applyReconciliationMutation = useMutation({
+    mutationFn: applyReconciliation,
+    onSuccess: async (response) => {
+      setReconciliationError(null);
+      setReconciliationMessage(response.message);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["reconciliation"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setReconciliationMessage(null);
+      setReconciliationError(error.message);
+    },
+  });
+
+  const reconciliationDifference = reconciliationSummary.data?.difference ?? 0;
+  const reconciliationDifferenceText =
+    reconciliationDifference > 0
+      ? `Фактических денег на ${formatMoney(Math.abs(reconciliationDifference))} больше`
+      : reconciliationDifference < 0
+        ? `Фактических денег на ${formatMoney(Math.abs(reconciliationDifference))} меньше`
+        : "Фактический баланс совпадает с программой";
+
+  function updateSourceDraft(sourceId: number, field: "name" | "balance", value: string) {
+    setSourceDrafts((current) => ({
+      ...current,
+      [sourceId]: {
+        name: field === "name" ? value : current[sourceId]?.name ?? "",
+        balance: field === "balance" ? value : current[sourceId]?.balance ?? "",
+      },
+    }));
+  }
+
+  function commitSourceChanges(sourceId: number, initialName: string, initialBalance: number) {
+    const draft = sourceDrafts[sourceId];
+    if (!draft) {
+      return;
+    }
+    const nextName = draft.name.trim();
+    const normalizedBalance = Number(draft.balance.replace(",", ".").trim());
+    const updates: { name?: string; balance?: number } = {};
+
+    if (nextName && nextName !== initialName) {
+      updates.name = nextName;
+    }
+    if (!Number.isNaN(normalizedBalance) && normalizedBalance !== initialBalance) {
+      updates.balance = normalizedBalance;
+    }
+    if (Object.keys(updates).length === 0) {
+      return;
+    }
+
+    setReconciliationMessage(null);
+    setReconciliationError(null);
+    updateSourceMutation.mutate({ sourceId, payload: updates });
+  }
+
+  function submitNewSource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newSourceName.trim();
+    if (!name) {
+      setReconciliationMessage(null);
+      setReconciliationError("Введите название источника.");
+      return;
+    }
+    const balance = Number(newSourceBalance.replace(",", ".").trim() || "0");
+    if (Number.isNaN(balance)) {
+      setReconciliationMessage(null);
+      setReconciliationError("Введите корректную сумму источника.");
+      return;
+    }
+    createSourceMutation.mutate({ name, balance });
+  }
+
+  function renderHistoryItem(item: ReconciliationHistoryItem) {
+    const differenceClass =
+      item.difference > 0 ? "reconciliation-diff positive" : item.difference < 0 ? "reconciliation-diff negative" : "reconciliation-diff";
+    const differenceLabel =
+      item.difference > 0 ? `+${formatMoney(item.difference)}` : item.difference < 0 ? `-${formatMoney(Math.abs(item.difference))}` : formatMoney(0);
+
+    return (
+      <article className="reconciliation-history-item" key={item.id}>
+        <div className="reconciliation-history-main">
+          <strong>{formatReconciliationDate(item.created_at)}</strong>
+          <span>Факт: {formatMoney(item.real_balance)}</span>
+          <span>Программа: {formatMoney(item.program_balance)}</span>
+        </div>
+        <div className="reconciliation-history-meta">
+          <strong className={differenceClass}>{differenceLabel}</strong>
+          {item.adjustment_transaction_id ? <span>Корректировка #{item.adjustment_transaction_id}</span> : <span>Без корректировки</span>}
+        </div>
+      </article>
+    );
+  }
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -164,8 +346,122 @@ export function TransactionsPageNext() {
   }
 
   return (
-    <main className="transactions-layout">
-      <section className="panel panel-form">
+    <main className="page-stack">
+      <section className="panel reconciliation-panel">
+        <div className="panel-header">
+          <h2>Сверка денег</h2>
+          <span>
+            {reconciliationSummary.data?.last_reconciliation
+              ? `Последняя: ${formatReconciliationDate(reconciliationSummary.data.last_reconciliation.created_at)}`
+              : "Сверок пока не было"}
+          </span>
+        </div>
+
+        <div className="reconciliation-summary-grid">
+          <article className="reconciliation-stat-card">
+            <span>Баланс в программе</span>
+            <strong>{formatMoney(reconciliationSummary.data?.program_balance ?? 0)}</strong>
+          </article>
+          <article className="reconciliation-stat-card">
+            <span>Фактический баланс</span>
+            <strong>{formatMoney(reconciliationSummary.data?.real_balance ?? 0)}</strong>
+          </article>
+          <article className="reconciliation-stat-card">
+            <span>Разница</span>
+            <strong className={reconciliationDifference > 0 ? "money plus" : reconciliationDifference < 0 ? "money minus" : ""}>
+              {reconciliationDifference > 0
+                ? `+${formatMoney(reconciliationDifference)}`
+                : reconciliationDifference < 0
+                  ? `-${formatMoney(Math.abs(reconciliationDifference))}`
+                  : formatMoney(0)}
+            </strong>
+          </article>
+        </div>
+
+        <p className="reconciliation-note">{reconciliationDifferenceText}</p>
+
+        <form className="reconciliation-add-form" onSubmit={submitNewSource}>
+          <label className="field">
+            <span>Источник</span>
+            <input onChange={(event) => setNewSourceName(event.target.value)} placeholder="Наличные, карта, банк" value={newSourceName} />
+          </label>
+          <label className="field">
+            <span>Сумма</span>
+            <input inputMode="decimal" onChange={(event) => setNewSourceBalance(event.target.value)} placeholder="0" value={newSourceBalance} />
+          </label>
+          <button className="primary-button" disabled={createSourceMutation.isPending} type="submit">
+            {createSourceMutation.isPending ? "Добавляем..." : "Добавить источник"}
+          </button>
+        </form>
+
+        <div className="reconciliation-sources">
+          {(reconciliationSummary.data?.sources ?? []).map((source) => {
+            const draft = sourceDrafts[source.id] ?? { name: source.name, balance: String(source.balance) };
+            return (
+              <article className="reconciliation-source-row" key={source.id}>
+                <label className="field">
+                  <span>Название</span>
+                  <input
+                    onBlur={() => commitSourceChanges(source.id, source.name, source.balance)}
+                    onChange={(event) => updateSourceDraft(source.id, "name", event.target.value)}
+                    value={draft.name}
+                  />
+                </label>
+                <label className="field">
+                  <span>Сумма</span>
+                  <input
+                    inputMode="decimal"
+                    onBlur={() => commitSourceChanges(source.id, source.name, source.balance)}
+                    onChange={(event) => updateSourceDraft(source.id, "balance", event.target.value)}
+                    value={draft.balance}
+                  />
+                </label>
+                <button
+                  className="ghost-button"
+                  disabled={deleteSourceMutation.isPending}
+                  onClick={() => deleteSourceMutation.mutate(source.id)}
+                  type="button"
+                >
+                  Удалить
+                </button>
+              </article>
+            );
+          })}
+
+          {!reconciliationSummary.isLoading && !reconciliationSummary.data?.sources.length && (
+            <p className="empty">Добавьте источники фактических денег для сверки: наличные, карты, счета в банке.</p>
+          )}
+        </div>
+
+        <div className="reconciliation-actions">
+          <button
+            className="primary-button"
+            disabled={applyReconciliationMutation.isPending || reconciliationSummary.isLoading}
+            onClick={() => applyReconciliationMutation.mutate()}
+            type="button"
+          >
+            {applyReconciliationMutation.isPending ? "Сверяем..." : "Пересчитать и сохранить сверку"}
+          </button>
+          {reconciliationMessage ? <p className="form-status form-status-success">{reconciliationMessage}</p> : null}
+          {reconciliationError ? <p className="form-error">{reconciliationError}</p> : null}
+        </div>
+
+        <div className="reconciliation-history">
+          <div className="panel-header">
+            <h3>История сверок</h3>
+            <span>{reconciliationSummary.data?.history.length ?? 0}</span>
+          </div>
+          <div className="reconciliation-history-list">
+            {(reconciliationSummary.data?.history ?? []).map(renderHistoryItem)}
+            {!reconciliationSummary.isLoading && !reconciliationSummary.data?.history.length && (
+              <p className="empty">История сверок появится после первого сохранения.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <div className="transactions-layout">
+        <section className="panel panel-form">
         <div className="panel-header">
           <h2>Новая транзакция</h2>
           <span>{type === "income" ? "Доход" : "Расход"}</span>
@@ -310,9 +606,9 @@ export function TransactionsPageNext() {
             {createMutation.isPending ? "Сохраняем..." : "Добавить транзакцию"}
           </button>
         </form>
-      </section>
+        </section>
 
-      <section className="panel panel-list">
+        <section className="panel panel-list">
         <div className="panel-header">
           <h2>История транзакций</h2>
           <div className="toolbar-group">
@@ -375,7 +671,8 @@ export function TransactionsPageNext() {
             </p>
           )}
         </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

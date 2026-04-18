@@ -66,6 +66,38 @@ export type Transaction = {
 export type TransactionType = "income" | "expense";
 export type TransactionPeriod = "all" | "month" | "last_month" | "year";
 
+export type ReconciliationSource = {
+  id: number;
+  name: string;
+  balance: number;
+  is_active: boolean;
+};
+
+export type ReconciliationHistoryItem = {
+  id: number;
+  real_balance: number;
+  program_balance: number;
+  difference: number;
+  adjustment_transaction_id: number | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type ReconciliationSummary = {
+  program_balance: number;
+  real_balance: number;
+  difference: number;
+  last_reconciliation: ReconciliationHistoryItem | null;
+  sources: ReconciliationSource[];
+  history: ReconciliationHistoryItem[];
+};
+
+export type ReconciliationApplyResponse = {
+  message: string;
+  reconciliation: ReconciliationHistoryItem;
+  adjustment_transaction_id: number | null;
+};
+
 export type TransactionCreatePayload = {
   type: TransactionType;
   category_id?: number;
@@ -851,5 +883,35 @@ export function createTransaction(payload: TransactionCreatePayload) {
 export function deleteTransaction(transactionId: number) {
   return request<{ message: string }>(`/transactions/${transactionId}`, {
     method: "DELETE",
+  });
+}
+
+export function getReconciliationSummary() {
+  return request<ReconciliationSummary>("/reconciliation");
+}
+
+export function createReconciliationSource(payload: { name: string; balance: number }) {
+  return request<ReconciliationSource>("/reconciliation/sources", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateReconciliationSource(sourceId: number, payload: { name?: string; balance?: number }) {
+  return request<ReconciliationSource>(`/reconciliation/sources/${sourceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteReconciliationSource(sourceId: number) {
+  return request<{ message: string }>(`/reconciliation/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
+export function applyReconciliation() {
+  return request<ReconciliationApplyResponse>("/reconciliation/apply", {
+    method: "POST",
   });
 }
