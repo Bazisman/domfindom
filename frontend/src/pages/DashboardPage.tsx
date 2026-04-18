@@ -57,9 +57,13 @@ export function DashboardPage() {
     pointerId: number;
     startX: number;
     startScrollLeft: number;
+    lastClientX: number;
+    lastDirection: -1 | 0 | 1;
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
   const balanceSettleStartRef = useRef<number | null>(null);
+  const balanceScrollIdleTimeoutRef = useRef<number | null>(null);
+  const balanceVirtualIndexRef = useRef(0);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -153,6 +157,7 @@ export function DashboardPage() {
   const forecastMonthLabel = getForecastMonthLabel(dashboard.data?.forecast.end_date);
   const familyBalance = familyDashboardQuery.data?.balance;
   const showFamilyBalanceSlide = useFamilyFeed && familyBalance !== undefined;
+  const balanceLoopSlides = showFamilyBalanceSlide ? [1, 0, 1, 0] : [0];
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -221,9 +226,23 @@ export function DashboardPage() {
   }, [selectedCategory?.id]);
 
   useEffect(() => {
+    if (balanceSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(balanceSettleFrameRef.current);
+      balanceSettleFrameRef.current = null;
+    }
+    if (balanceScrollIdleTimeoutRef.current !== null) {
+      window.clearTimeout(balanceScrollIdleTimeoutRef.current);
+      balanceScrollIdleTimeoutRef.current = null;
+    }
+    balanceSettleStartRef.current = null;
+    balanceDragStateRef.current = null;
     setActiveBalanceSlide(0);
     if (balanceCarouselRef.current) {
-      balanceCarouselRef.current.scrollTo({ left: 0, behavior: "auto" });
+      const track = balanceCarouselRef.current;
+      const slideWidth = track.clientWidth || 1;
+      const startIndex = showFamilyBalanceSlide ? 1 : 0;
+      balanceVirtualIndexRef.current = startIndex;
+      track.scrollTo({ left: slideWidth * startIndex, behavior: "auto" });
     }
   }, [showFamilyBalanceSlide, selectedFamilyId]);
 
@@ -231,6 +250,9 @@ export function DashboardPage() {
     return () => {
       if (balanceSettleFrameRef.current !== null) {
         window.cancelAnimationFrame(balanceSettleFrameRef.current);
+      }
+      if (balanceScrollIdleTimeoutRef.current !== null) {
+        window.clearTimeout(balanceScrollIdleTimeoutRef.current);
       }
     };
   }, []);
@@ -246,14 +268,47 @@ export function DashboardPage() {
       if (!track) {
         return;
       }
-      const nextIndex = track.scrollLeft > track.clientWidth * 0.5 ? 1 : 0;
-      setActiveBalanceSlide(nextIndex);
+      const slideWidth = track.clientWidth || 1;
+      const nearestVirtualIndex = Math.max(
+        0,
+        Math.min(balanceLoopSlides.length - 1, Math.round(track.scrollLeft / slideWidth)),
+      );
+      const nextLogicalIndex = balanceLoopSlides[nearestVirtualIndex] ?? 0;
+      balanceVirtualIndexRef.current = nearestVirtualIndex;
+      setActiveBalanceSlide(nextLogicalIndex);
+
+      if (isBalanceDragging || balanceSettleFrameRef.current !== null) {
+        return;
+      }
+      if (balanceScrollIdleTimeoutRef.current !== null) {
+        window.clearTimeout(balanceScrollIdleTimeoutRef.current);
+      }
+      balanceScrollIdleTimeoutRef.current = window.setTimeout(() => {
+        const currentTrack = balanceCarouselRef.current;
+        if (!currentTrack) {
+          return;
+        }
+        const currentSlideWidth = currentTrack.clientWidth || 1;
+        const currentVirtualIndex = Math.max(
+          0,
+          Math.min(balanceLoopSlides.length - 1, Math.round(currentTrack.scrollLeft / currentSlideWidth)),
+        );
+        const logicalIndex = balanceLoopSlides[currentVirtualIndex] ?? 0;
+        const preferredVirtualIndex = logicalIndex === 0 ? 1 : 2;
+        if (currentVirtualIndex !== preferredVirtualIndex) {
+          currentTrack.scrollTo({
+            left: currentSlideWidth * preferredVirtualIndex,
+            behavior: "auto",
+          });
+        }
+        balanceVirtualIndexRef.current = preferredVirtualIndex;
+      }, 120);
     }
 
     syncActiveSlide();
     node.addEventListener("scroll", syncActiveSlide, { passive: true });
     return () => node.removeEventListener("scroll", syncActiveSlide);
-  }, [showFamilyBalanceSlide]);
+  }, [isBalanceDragging, showFamilyBalanceSlide]);
 
   function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -296,10 +351,21 @@ export function DashboardPage() {
     if (!track) {
       return;
     }
+    if (balanceSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(balanceSettleFrameRef.current);
+      balanceSettleFrameRef.current = null;
+    }
+    if (balanceScrollIdleTimeoutRef.current !== null) {
+      window.clearTimeout(balanceScrollIdleTimeoutRef.current);
+      balanceScrollIdleTimeoutRef.current = null;
+    }
+    balanceSettleStartRef.current = null;
     balanceDragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startScrollLeft: track.scrollLeft,
+      lastClientX: event.clientX,
+      lastDirection: 0,
     };
     event.preventDefault();
     setIsBalanceDragging(true);
@@ -313,8 +379,59 @@ export function DashboardPage() {
       return;
     }
     const deltaX = event.clientX - dragState.startX;
+    const stepX = event.clientX - dragState.lastClientX;
+    if (stepX !== 0) {
+      dragState.lastDirection = stepX < 0 ? 1 : -1;
+      dragState.lastClientX = event.clientX;
+    }
     event.preventDefault();
     track.scrollLeft = dragState.startScrollLeft - deltaX;
+  }
+
+  function animateBalanceTrackTo(targetVirtualIndex: number) {
+    const track = balanceCarouselRef.current;
+    if (!track) {
+      return;
+    }
+    const slideWidth = track.clientWidth || 1;
+    const startLeft = track.scrollLeft;
+    const targetLeft = targetVirtualIndex * slideWidth;
+    const targetLogicalIndex = balanceLoopSlides[targetVirtualIndex] ?? 0;
+    const preferredVirtualIndex = targetLogicalIndex === 0 ? 1 : 2;
+    const settleTrack = track;
+    if (balanceSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(balanceSettleFrameRef.current);
+    }
+    balanceSettleStartRef.current = null;
+
+    function animate(timestamp: number) {
+      if (balanceSettleStartRef.current === null) {
+        balanceSettleStartRef.current = timestamp;
+      }
+      const elapsed = timestamp - balanceSettleStartRef.current;
+      const progress = Math.min(elapsed / 820, 1);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      settleTrack.scrollLeft = startLeft + (targetLeft - startLeft) * eased;
+
+      if (progress < 1) {
+        balanceSettleFrameRef.current = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      settleTrack.scrollLeft = targetLeft;
+      if (targetVirtualIndex !== preferredVirtualIndex) {
+        settleTrack.scrollTo({
+          left: slideWidth * preferredVirtualIndex,
+          behavior: "auto",
+        });
+      }
+      balanceVirtualIndexRef.current = preferredVirtualIndex;
+      setActiveBalanceSlide(targetLogicalIndex);
+      balanceSettleFrameRef.current = null;
+      balanceSettleStartRef.current = null;
+    }
+
+    balanceSettleFrameRef.current = window.requestAnimationFrame(animate);
   }
 
   function finishBalanceDrag(event: PointerEvent<HTMLDivElement>) {
@@ -328,64 +445,32 @@ export function DashboardPage() {
     if (track.hasPointerCapture(event.pointerId)) {
       track.releasePointerCapture(event.pointerId);
     }
+    const totalDeltaX = event.clientX - dragState.startX;
+    const direction =
+      dragState.lastDirection !== 0
+        ? dragState.lastDirection
+        : totalDeltaX <= -6
+          ? 1
+          : totalDeltaX >= 6
+            ? -1
+            : 0;
     const slideWidth = track.clientWidth || 1;
-    const nextIndex = Math.round(track.scrollLeft / slideWidth);
-    const startLeft = track.scrollLeft;
-    const targetLeft = nextIndex * slideWidth;
-    const delta = targetLeft - startLeft;
-    const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
-    const needsOvershoot = direction !== 0 && Math.abs(delta) < 72;
-    const overshootLeft = needsOvershoot ? targetLeft + direction * 28 : targetLeft;
-    const firstPhaseDuration = needsOvershoot ? 320 : 720;
-    const secondPhaseDuration = needsOvershoot ? 320 : 0;
-    const settleTrack = track;
-    if (balanceSettleFrameRef.current !== null) {
-      window.cancelAnimationFrame(balanceSettleFrameRef.current);
+    const currentVirtualIndex = Math.max(
+      0,
+      Math.min(balanceLoopSlides.length - 1, balanceVirtualIndexRef.current),
+    );
+    const targetVirtualIndex =
+      direction === 0
+        ? currentVirtualIndex
+        : Math.max(0, Math.min(balanceLoopSlides.length - 1, currentVirtualIndex + direction));
+    animateBalanceTrackTo(targetVirtualIndex);
+  }
+
+  function handleBalanceDotClick(logicalIndex: number) {
+    if (!showFamilyBalanceSlide) {
+      return;
     }
-    balanceSettleStartRef.current = null;
-
-    function animateBetween(
-      fromLeft: number,
-      toLeft: number,
-      duration: number,
-      timestamp: number,
-      onComplete?: () => void,
-    ) {
-      if (balanceSettleStartRef.current === null) {
-        balanceSettleStartRef.current = timestamp;
-      }
-      const elapsed = timestamp - balanceSettleStartRef.current;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      settleTrack.scrollLeft = fromLeft + (toLeft - fromLeft) * eased;
-
-      if (progress < 1) {
-        balanceSettleFrameRef.current = window.requestAnimationFrame((nextTimestamp) => {
-          animateBetween(fromLeft, toLeft, duration, nextTimestamp, onComplete);
-        });
-        return;
-      }
-
-      settleTrack.scrollLeft = toLeft;
-      balanceSettleStartRef.current = null;
-      if (onComplete) {
-        onComplete();
-        return;
-      }
-      balanceSettleFrameRef.current = null;
-    }
-
-    balanceSettleFrameRef.current = window.requestAnimationFrame((timestamp) => {
-      animateBetween(startLeft, overshootLeft, firstPhaseDuration, timestamp, () => {
-        if (!needsOvershoot) {
-          balanceSettleFrameRef.current = null;
-          return;
-        }
-        balanceSettleFrameRef.current = window.requestAnimationFrame((nextTimestamp) => {
-          animateBetween(overshootLeft, targetLeft, secondPhaseDuration, nextTimestamp);
-        });
-      });
-    });
+    animateBalanceTrackTo(logicalIndex === 0 ? 1 : 2);
   }
 
   return (
@@ -410,6 +495,28 @@ export function DashboardPage() {
               onPointerCancel={finishBalanceDrag}
               ref={balanceCarouselRef}
             >
+              {showFamilyBalanceSlide ? (
+                <article className="balance-slide">
+                  <p className="panel-label">Текущий баланс семьи</p>
+                  <h2>{formatMoney(familyBalance.main_balance)}</h2>
+                  <div className="stats-row">
+                    <div>
+                      <span>Доход семьи</span>
+                      <strong className="money plus">{formatMoney(familyBalance.income)}</strong>
+                      <p className="stat-note">Сумма по всем участникам семьи</p>
+                    </div>
+                    <div>
+                      <span>Расход семьи</span>
+                      <strong className="money minus">{formatMoney(familyBalance.expense)}</strong>
+                      <p className="stat-note">
+                        {familyDashboardQuery.data
+                          ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count} участ.`
+                          : "Семейный режим"}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ) : null}
               <article className="balance-slide">
                 <p className="panel-label">Текущий баланс</p>
                 <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
@@ -465,6 +572,36 @@ export function DashboardPage() {
                   </div>
                 </article>
               ) : null}
+              {showFamilyBalanceSlide ? (
+                <article className="balance-slide">
+                  <p className="panel-label">Текущий баланс</p>
+                  <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
+                  <div className="stats-row">
+                    <div>
+                      <span>Доход за месяц (получено / план)</span>
+                      <strong>
+                        {dashboard.data
+                          ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
+                          : "—"}
+                      </strong>
+                      <p className="stat-note">Еще поступит: {formatMoney(remainingIncome)}</p>
+                    </div>
+                    <div>
+                      <span>Расход за месяц (потрачено / план)</span>
+                      <strong className={isExpenseOverPlan ? "money minus" : undefined}>
+                        {dashboard.data
+                          ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
+                          : "—"}
+                      </strong>
+                      <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
+                        {remainingExpense >= 0
+                          ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
+                          : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ) : null}
             </div>
 
             {showFamilyBalanceSlide ? (
@@ -472,13 +609,13 @@ export function DashboardPage() {
                 <button
                   aria-label="Личный баланс"
                   className={activeBalanceSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
-                  onClick={() => balanceCarouselRef.current?.scrollTo({ left: 0, behavior: "smooth" })}
+                  onClick={() => handleBalanceDotClick(0)}
                   type="button"
                 />
                 <button
                   aria-label="Баланс семьи"
                   className={activeBalanceSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
-                  onClick={() => balanceCarouselRef.current?.scrollTo({ left: balanceCarouselRef.current.clientWidth, behavior: "smooth" })}
+                  onClick={() => handleBalanceDotClick(1)}
                   type="button"
                 />
               </div>
