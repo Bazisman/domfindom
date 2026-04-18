@@ -676,7 +676,8 @@ export default function AppShellNext() {
         </div>
       ) : null}
 
-      <Routes>
+      <main className="shell-content">
+        <Routes>
         <Route element={<DashboardPage />} path="/" />
         <Route element={<TransactionsPageNext />} path="/transactions" />
         <Route element={<CategoriesPage />} path="/categories" />
@@ -697,7 +698,8 @@ export default function AppShellNext() {
         <Route element={<SecurityPage />} path="/security" />
         <Route element={<Navigate replace to="/planning" />} path="/budgets" />
         <Route element={<Navigate replace to="/planning" />} path="/recurring" />
-      </Routes>
+        </Routes>
+      </main>
 
       <nav className="mobile-dock" aria-label="Навигация по разделам">
         {primaryNavItems.map((item) => (
