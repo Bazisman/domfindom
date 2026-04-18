@@ -72,6 +72,7 @@ export type TransactionPage = {
 
 export type TransactionType = "income" | "expense";
 export type TransactionPeriod = "all" | "month" | "last_month" | "year";
+export type SummaryPeriod = TransactionPeriod | "custom";
 
 export type ReconciliationSource = {
   id: number;
@@ -382,6 +383,27 @@ export type FamilyTransactionListResponse = {
   offset: number;
   total: number;
   transactions: FamilyDashboardResponse["recent_transactions"];
+};
+
+export type CategorySummaryItem = {
+  category: string;
+  total: number;
+  share_percent: number;
+  color: string;
+  icon: string;
+};
+
+export type CategorySummaryResponse = {
+  scope: "personal" | "family";
+  family_id: number | null;
+  family_name: string | null;
+  type: "income" | "expense";
+  period: SummaryPeriod;
+  start_date: string | null;
+  end_date: string | null;
+  total: number;
+  categories_count: number;
+  items: CategorySummaryItem[];
 };
 
 export class ApiError extends Error {
@@ -758,6 +780,28 @@ export function getTransactionsPage(params?: {
   search.set("period", params?.period ?? "all");
   search.set("include_planned", params?.includePlanned === false ? "false" : "true");
   return request<TransactionPage>(`/transactions/page?${search.toString()}`);
+}
+
+export function getCategorySummary(params?: {
+  type?: "income" | "expense";
+  period?: SummaryPeriod;
+  startDate?: string;
+  endDate?: string;
+  familyId?: number;
+}) {
+  const search = new URLSearchParams();
+  search.set("type", params?.type ?? "expense");
+  search.set("period", params?.period ?? "month");
+  if (params?.startDate) {
+    search.set("start_date", params.startDate);
+  }
+  if (params?.endDate) {
+    search.set("end_date", params.endDate);
+  }
+  if (params?.familyId !== undefined) {
+    search.set("family_id", String(params.familyId));
+  }
+  return request<CategorySummaryResponse>(`/reports/category-summary?${search.toString()}`);
 }
 
 export function getCategories() {

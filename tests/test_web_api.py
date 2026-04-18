@@ -832,6 +832,87 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_category_summary_supports_personal_and_family_scope(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья сводка"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"summary-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+        second_user_id = int(second_register.json()["user"]["id"])
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+        invite_token = str(invite_response.json()["invite_token"])
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite_token},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
+
+        owner_expense = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 1000.0,
+                "comment": "Owner summary expense",
+                "date": "2026-04-05",
+            },
+        )
+        self.assertEqual(owner_expense.status_code, 201)
+
+        member_expense = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 500.0,
+                "comment": "Member summary expense",
+                "date": "2026-04-11",
+            },
+        )
+        self.assertEqual(member_expense.status_code, 201)
+
+        owner_db_token = core.push_db_name(auth_service.get_user_db_path(self._current_user_id()))
+        try:
+            core.add_planned_transaction(
+                "expense",
+                expense_category,
+                700.0,
+                "Owner future planned summary",
+                "2026-04-20",
+            )
+        finally:
+            core.pop_db_name(owner_db_token)
+
+        personal_summary = self.client.get("/api/v1/reports/category-summary?type=expense&period=month")
+        self.assertEqual(personal_summary.status_code, 200)
+        self.assertEqual(personal_summary.json()["scope"], "personal")
+        self.assertEqual(personal_summary.json()["total"], 1000.0)
+        self.assertEqual(personal_summary.json()["categories_count"], 1)
+        self.assertEqual(personal_summary.json()["items"][0]["category"], expense_category)
+
+        family_summary = self.client.get(f"/api/v1/reports/category-summary?type=expense&period=month&family_id={family_id}")
+        self.assertEqual(family_summary.status_code, 200)
+        self.assertEqual(family_summary.json()["scope"], "family")
+        self.assertEqual(family_summary.json()["total"], 1500.0)
+        self.assertEqual(family_summary.json()["family_id"], family_id)
+        self.assertEqual(family_summary.json()["items"][0]["category"], expense_category)
+
+        second_client.close()
+
     def test_dashboard_endpoint_returns_core_sections(self):
         response = self.client.get("/api/v1/dashboard")
         payload = response.json()

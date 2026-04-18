@@ -23,6 +23,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { FamilyPage } from "./pages/FamilyPage";
 import { PlanningPage } from "./pages/PlanningPage";
 import { SecurityPage } from "./pages/SecurityPage";
+import { SummaryPage } from "./pages/SummaryPage";
 import { TransactionsPageNext } from "./pages/TransactionsPageNext";
 
 type BusyAction = "" | "save" | "restore" | "reset" | "logout" | "delete_request";
@@ -453,11 +454,19 @@ export default function AppShellNext() {
     ...(showFamilyTab ? [{ to: "/family", label: "Семья" }] : []),
   ];
 
+  const visibleNavItems = [
+    primaryNavItems[0],
+    primaryNavItems[1],
+    primaryNavItems[2],
+    { to: "/summary", label: "Сводка" },
+    ...primaryNavItems.slice(3),
+  ];
+
   return (
     <div className="shell">
       <nav className="topbar">
         <div className="topbar-links" ref={topbarLinksRef}>
-          {primaryNavItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
               end={item.end}
@@ -681,6 +690,7 @@ export default function AppShellNext() {
         <Route element={<DashboardPage />} path="/" />
         <Route element={<TransactionsPageNext />} path="/transactions" />
         <Route element={<CategoriesPage />} path="/categories" />
+        <Route element={<SummaryPage />} path="/summary" />
         <Route element={<PlanningPage />} path="/planning" />
         <Route element={<AccountsPage />} path="/accounts" />
         <Route
@@ -702,7 +712,7 @@ export default function AppShellNext() {
       </main>
 
       <nav className="mobile-dock" aria-label="Навигация по разделам">
-        {primaryNavItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             className={({ isActive }) => (isActive ? "mobile-dock-link active" : "mobile-dock-link")}
             end={item.end}
