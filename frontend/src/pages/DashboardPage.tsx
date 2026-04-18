@@ -239,12 +239,38 @@ export function DashboardPage() {
     setAutoCapitalBusy(false);
   }
 
-  function maybeInterceptIncomeSubmission(payload: Parameters<typeof createTransaction>[0]) {
-    if (payload.type !== "income" || !autoCapitalEnabled || defaultCapitalAccount) {
+  async function maybeInterceptIncomeSubmission(payload: Parameters<typeof createTransaction>[0]) {
+    if (payload.type !== "income") {
       return false;
     }
 
-    setPendingIncomePayload(payload);
+    const [latestSettings, latestAccounts] = await Promise.all([
+      queryClient.fetchQuery({
+        queryKey: ["settings"],
+        queryFn: getSettings,
+      }),
+      queryClient.fetchQuery({
+        queryKey: ["accounts"],
+        queryFn: getAccounts,
+      }),
+    ]);
+
+    const latestAutoCapitalEnabled = Boolean(latestSettings.auto_capital_enabled && (latestSettings.auto_capital_percent ?? 0) > 0);
+    const latestCapitalAccounts = latestAccounts.filter((item) => item.type === "capital" && item.is_active);
+    const latestDefaultCapitalAccount =
+      latestCapitalAccounts.find((item) => item.id === latestSettings.default_capital_account_id) ??
+      latestCapitalAccounts.find((item) => item.is_default) ??
+      null;
+
+    if (!latestAutoCapitalEnabled || latestDefaultCapitalAccount) {
+      return false;
+    }
+
+    setPendingIncomePayload({
+      ...payload,
+      auto_capital_percent: latestSettings.auto_capital_percent,
+      capital_account_id: undefined,
+    });
     setAutoCapitalModalOpen(true);
     setAutoCapitalAccountName("Копилка");
     setAutoCapitalDontAskAgain(false);
@@ -422,7 +448,7 @@ export function DashboardPage() {
     return () => node.removeEventListener("scroll", syncActiveSlide);
   }, [isDesktopBalanceMode, showFamilyBalanceSlide]);
 
-  function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
+  async function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setQuickError(null);
     setQuickSuccess(null);
@@ -456,7 +482,7 @@ export function DashboardPage() {
       capital_account_id: transactionType === "income" ? defaultCapitalAccount?.id : undefined,
     };
 
-    if (maybeInterceptIncomeSubmission(payload)) {
+    if (await maybeInterceptIncomeSubmission(payload)) {
       return;
     }
 

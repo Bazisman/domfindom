@@ -263,12 +263,38 @@ export function TransactionsPageNext() {
     setAutoCapitalBusy(false);
   }
 
-  function maybeInterceptIncomeSubmission(payload: Parameters<typeof createTransaction>[0]) {
-    if (payload.type !== "income" || !autoCapitalEnabled || defaultCapitalAccount) {
+  async function maybeInterceptIncomeSubmission(payload: Parameters<typeof createTransaction>[0]) {
+    if (payload.type !== "income") {
       return false;
     }
 
-    setPendingIncomePayload(payload);
+    const [latestSettings, latestAccounts] = await Promise.all([
+      queryClient.fetchQuery({
+        queryKey: ["settings"],
+        queryFn: getSettings,
+      }),
+      queryClient.fetchQuery({
+        queryKey: ["accounts"],
+        queryFn: getAccounts,
+      }),
+    ]);
+
+    const latestAutoCapitalEnabled = Boolean(latestSettings.auto_capital_enabled && (latestSettings.auto_capital_percent ?? 0) > 0);
+    const latestCapitalAccounts = latestAccounts.filter((item) => item.type === "capital" && item.is_active);
+    const latestDefaultCapitalAccount =
+      latestCapitalAccounts.find((item) => item.id === latestSettings.default_capital_account_id) ??
+      latestCapitalAccounts.find((item) => item.is_default) ??
+      null;
+
+    if (!latestAutoCapitalEnabled || latestDefaultCapitalAccount) {
+      return false;
+    }
+
+    setPendingIncomePayload({
+      ...payload,
+      auto_capital_percent: latestSettings.auto_capital_percent,
+      capital_account_id: undefined,
+    });
     setAutoCapitalModalOpen(true);
     setAutoCapitalAccountName("Копилка");
     setAutoCapitalDontAskAgain(false);
@@ -424,7 +450,7 @@ export function TransactionsPageNext() {
     );
   }
 
-  function submitForm(event: FormEvent<HTMLFormElement>) {
+  async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
 
@@ -467,7 +493,7 @@ export function TransactionsPageNext() {
         : undefined,
     };
 
-    if (maybeInterceptIncomeSubmission(payload)) {
+    if (await maybeInterceptIncomeSubmission(payload)) {
       return;
     }
 
