@@ -97,15 +97,15 @@ class TransactionService:
                         except Exception as ex:
                             app_logger.debug(f"РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ РІРєР»Р°РґРєРё: {ex}")
     
-    def get_balance(self) -> Balance:
-        """РџРѕР»СѓС‡Р°РµС‚ Р±Р°Р»Р°РЅСЃ РѕСЃРЅРѕРІРЅРѕРіРѕ СЃС‡С‘С‚Р°"""
+    def get_balance(self, force_update: bool = False) -> Balance:
+        """Получает баланс основного счёта"""
         try:
-            main_balance, income, expense = core.get_balance()
+            main_balance, income, expense = core.get_balance(force_update=force_update)
             return Balance(main_balance=main_balance or 0.0, income=income or 0.0, expense=expense or 0.0)
         except Exception as e:
-            app_logger.error(f"РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ Р±Р°Р»Р°РЅСЃР°: {e}", exc_info=True)
+            app_logger.error(f"Ошибка получения баланса: {e}", exc_info=True)
             return Balance()
-    
+
     def get_transactions(self, limit: int = 100, period: str = "all", offset: int = 0) -> List[Transaction]:
         """РџРѕР»СѓС‡Р°РµС‚ СЃРїРёСЃРѕРє С‚СЂР°РЅР·Р°РєС†РёР№ СЃ РїРѕРґРґРµСЂР¶РєРѕР№ РїР°РіРёРЅР°С†РёРё"""
         try:

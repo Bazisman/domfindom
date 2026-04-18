@@ -69,7 +69,7 @@ def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboa
         user_db_path = auth_service.ensure_user_finance_db(user_id)
         db_token = core.push_db_name(user_db_path)
         try:
-            balance = transaction_service.get_balance()
+            balance = transaction_service.get_balance(force_update=True)
             stats = transaction_service.get_monthly_stats(now.year, now.month)
             main_balance += float(balance.main_balance)
             income += float(stats.get("income", 0.0) or 0.0)

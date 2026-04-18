@@ -612,6 +612,82 @@ class WebApiTestCase(unittest.TestCase):
         second_client.close()
         third_client.close()
 
+    def test_family_dashboard_sums_each_member_balance_without_cache_bleed(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья баланс"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"balance-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+        invite_token = str(invite_response.json()["invite_token"])
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite_token},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
+
+        owner_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 100000.0,
+                "comment": "Owner income",
+                "date": "2026-04-01",
+            },
+        )
+        self.assertEqual(owner_income.status_code, 201)
+
+        owner_expense = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 10000.0,
+                "comment": "Owner expense",
+                "date": "2026-04-02",
+            },
+        )
+        self.assertEqual(owner_expense.status_code, 201)
+
+        member_expense = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 20000.0,
+                "comment": "Member expense",
+                "date": "2026-04-11",
+            },
+        )
+        self.assertEqual(member_expense.status_code, 201)
+
+        dashboard_response = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(dashboard_response.status_code, 200)
+        payload = dashboard_response.json()
+
+        self.assertEqual(payload["balance"]["main_balance"], 70000.0)
+        self.assertEqual(payload["balance"]["income"], 100000.0)
+        self.assertEqual(payload["balance"]["expense"], 30000.0)
+        self.assertEqual(payload["balance"]["difference"], 70000.0)
+
+        second_client.close()
+
     def test_dashboard_endpoint_returns_core_sections(self):
         response = self.client.get("/api/v1/dashboard")
         payload = response.json()
