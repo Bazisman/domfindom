@@ -905,6 +905,48 @@ body {
   margin-top: 14px;
 }
 
+.auto-capital-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auto-capital-toggle-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auto-capital-info {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.auto-capital-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auto-capital-info-row strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.auto-capital-info-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.auto-capital-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
 .panel-list .panel-header {
   margin-bottom: 2px;
 }
@@ -1606,6 +1648,8 @@ body {
 
   .panel h2 {
     font-size: clamp(1.55rem, 7vw, 2.1rem);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
   }
 
   .field-row,
@@ -1653,6 +1697,39 @@ body {
 
   .reconciliation-history-meta {
     text-align: left;
+  }
+
+  .auto-capital-form {
+    gap: 12px;
+  }
+
+  .auto-capital-toggle-row {
+    gap: 10px;
+  }
+
+  .auto-capital-toggle-row .toggle {
+    min-width: 0;
+    padding-inline: 12px;
+  }
+
+  .auto-capital-info {
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .auto-capital-info-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .auto-capital-info-row strong {
+    text-align: left;
+  }
+
+  .auto-capital-note {
+    font-size: 0.9rem;
   }
 }
 .auth-page {

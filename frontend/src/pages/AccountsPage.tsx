@@ -474,8 +474,8 @@ export function AccountsPage() {
             <h2>Автоотчисления</h2>
           </div>
 
-          <form className="transaction-form">
-            <div className="toggle-row">
+          <form className="transaction-form auto-capital-form">
+            <div className="toggle-row auto-capital-toggle-row">
               <button
                 className={autoCapitalEnabled ? "toggle active" : "toggle"}
                 onClick={() => {
@@ -514,18 +514,23 @@ export function AccountsPage() {
               />
             </label>
 
-            <p className="muted">
-              Деньги будут уходить на счёт капитала по умолчанию: <strong>{familyTarget?.name ?? defaultCapitalAccountName}</strong>.
-            </p>
+            <div className="auto-capital-info">
+              <div className="auto-capital-info-row">
+                <span className="auto-capital-info-label">По умолчанию</span>
+                <strong>{familyTarget?.name ?? defaultCapitalAccountName}</strong>
+              </div>
 
-            {hasFamily ? (
-              <p className="muted">Семейные счета и цель для семейных отчислений можно настроить в разделе семьи.</p>
-            ) : null}
-            {familyTarget ? (
-              <p className="muted">
-                В режиме семьи автоотчисления идут в семейный счёт: <strong>{familyTarget.name}</strong>.
-              </p>
-            ) : null}
+              {familyTarget ? (
+                <div className="auto-capital-info-row">
+                  <span className="auto-capital-info-label">В семье</span>
+                  <strong>{familyTarget.name}</strong>
+                </div>
+              ) : null}
+
+              {hasFamily ? (
+                <p className="auto-capital-note">Семейную цель для отчислений можно настроить в разделе семьи.</p>
+              ) : null}
+            </div>
             {settingsError && <p className="form-error">{settingsError}</p>}
             {!settingsError && !updateSettingsMutation.isPending && settingsSavedNotice && (
               <p className="form-status form-status-success">Сохранено</p>
