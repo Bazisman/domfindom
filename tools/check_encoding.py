@@ -22,6 +22,7 @@ DEFAULT_EXTENSIONS = {
 SKIP_DIRS = {
     ".git",
     ".archive",
+    "archive",
     "node_modules",
     "dist",
     "__pycache__",
@@ -30,9 +31,7 @@ SKIP_DIRS = {
     "backups",
 }
 
-KNOWN_LEGACY_NON_UTF8 = {
-    "docs/sessions/2026-04-11.md",
-}
+KNOWN_LEGACY_NON_UTF8 = set()
 
 UTF8_BOM = b"\xef\xbb\xbf"
 

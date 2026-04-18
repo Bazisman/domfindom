@@ -1,48 +1,61 @@
-# Encoding Policy
+# Политика кодировки
 
-## Standard
-- All text files in the repository must be `UTF-8` and `LF`.
-- UTF-8 must be **without BOM**.
-- This is enforced by:
-  - `.editorconfig`
-  - `.gitattributes`
-  - `.vscode/settings.json`
-  - `.githooks/pre-commit`
-  - `tools/check_encoding.py`
+> Обновлено: 2026-04-18
 
-## Required Check Before Build/Deploy
-- Run:
-  - `python tools/check_encoding.py`
-- If the check fails, deployment is blocked until files are fixed.
-- Frontend build also runs this check automatically via `npm run build`.
+## Стандарт
 
-## Safe Editing Rules (PowerShell)
-- For writing files from shell, always specify UTF-8 explicitly:
-  - `Set-Content -Encoding utf8NoBOM ...`
-  - `Out-File -Encoding utf8NoBOM ...`
-- Avoid ad-hoc recoding between `cp1251` and `utf8`.
-- If text is damaged, restore from Git/history and re-apply intended changes.
+Все текстовые файлы проекта должны быть:
+- `UTF-8`;
+- без BOM;
+- с нормальными переносами строк.
 
-## Local Setup (One Time)
-1. Configure Git hooks:
-   - `powershell -ExecutionPolicy Bypass -File tools/install_git_hooks.ps1`
-2. Verify:
-   - `git config --get core.hooksPath` should return `.githooks`
-3. Run a manual check:
-   - `python tools/check_encoding.py --root .`
+## Чем это защищено
 
-## What the checker blocks
-- Files that are not decodable as UTF-8.
-- Files with UTF-8 BOM.
-- Files with common mojibake signatures (`utf8->cp1251`, `utf8->latin1`).
-- Files that already contain replacement markers (U+FFFD replacement character).
+- `.editorconfig`
+- `.gitattributes`
+- `.vscode/settings.json`
+- `.githooks/pre-commit`
+- `tools/check_encoding.py`
 
-## Incident Protocol
-When mojibake is found:
-1. Freeze deployment for the affected files.
-2. Identify the exact broken files.
-3. Restore or rewrite text in UTF-8.
-4. Run `python tools/check_encoding.py`.
-5. Rebuild frontend/backend.
-6. Deploy and verify user-visible pages.
-7. Log incident in `docs/sessions/`.
+## Обязательная проверка
+
+Перед сборкой и выкладкой:
+
+```bash
+python tools/check_encoding.py --root .
+```
+
+Если проверка не проходит, выкладка блокируется до исправления файлов.
+
+## Безопасные правила работы
+
+- Не полагаться на случайную перекодировку между `cp1251`, `utf8`, `latin1` и похожими вариантами.
+- Если текст поврежден, его нужно восстановить или переписать в нормальном UTF-8, а не угадывать конвертацию.
+- Для старого PowerShell безопаснее явная запись через .NET UTF-8 без BOM.
+
+Пример:
+
+```powershell
+[System.IO.File]::WriteAllText(
+  $path,
+  $content,
+  (New-Object System.Text.UTF8Encoding($false))
+)
+```
+
+## Что ловит checker
+
+- файлы, которые не декодируются как UTF-8;
+- файлы с UTF-8 BOM;
+- типичные следы mojibake;
+- символ замены `U+FFFD`.
+
+## Что делать при инциденте
+
+1. Остановить выкладку затронутых файлов.
+2. Найти конкретный поврежденный файл.
+3. Восстановить текст в нормальном UTF-8.
+4. Снова прогнать `python tools/check_encoding.py --root .`.
+5. Пересобрать frontend или backend при необходимости.
+6. Проверить пользовательские страницы.
+7. Зафиксировать инцидент в `docs/WORK_LOG.md`.

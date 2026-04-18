@@ -1,122 +1,74 @@
-# Публикация web-версии
+# Руководство по выкладке
 
-## Что уже подготовлено
+> Обновлено: 2026-04-18
+> Production: `domfindom.ru`
 
-- backend берёт `host`, `port`, `reload`, `CORS` и путь к БД из переменных окружения
-- frontend по умолчанию ходит в API через относительный путь `/api/v1`
-- для локальной разработки в `Vite` включён proxy на backend
+## Текущая схема production
 
-## Минимальная схема продакшена
+Проект работает на REG.RU shared hosting.
 
-1. VPS или другой Linux-сервер
-2. backend `FastAPI` на `127.0.0.1:8000`
-3. frontend как собранная статика из `frontend/dist`
-4. `Nginx`:
-   - раздаёт frontend
-   - проксирует `/api/` на backend
-5. домен + HTTPS
+Схема:
+- backend-репозиторий расположен в `~/finance-app`;
+- backend запускается через `Passenger` и `passenger_wsgi.py`;
+- frontend собирается локально;
+- содержимое `frontend/dist` выкладывается в `/var/www/u3480024/data/www/domfindom.ru`.
 
-## Переменные окружения backend
+## Что делать перед выкладкой
 
-Пример:
+1. Проверить кодировку:
 
-```env
-FINANCE_APP_DB_NAME=/opt/finance-app/data/finance.db
-FINANCE_APP_BACKEND_HOST=127.0.0.1
-FINANCE_APP_BACKEND_PORT=8000
-FINANCE_APP_BACKEND_RELOAD=false
-FINANCE_APP_CORS_ORIGINS=https://your-domain.example,https://www.your-domain.example
+```bash
+python tools/check_encoding.py --root .
 ```
 
-## Сборка frontend
+2. Собрать frontend:
 
-```powershell
+```bash
 cd frontend
-npm install
 npm run build
 ```
 
-Результат будет в `frontend/dist`.
-
-## Запуск backend
-
-```powershell
-python run_web_backend.py
-```
-
-Для продакшена лучше запускать как сервис без `reload`.
-
-## Рекомендуемая Nginx-схема
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.example www.your-domain.example;
-
-    root /opt/finance-app/frontend/dist;
-    index index.html;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location / {
-        try_files $uri /index.html;
-    }
-}
-```
-
-После этого можно выпустить HTTPS через Let's Encrypt.
-
-## Что тебе нужно сделать вручную
-
-1. Купить и настроить домен
-2. Поднять сервер
-3. Установить Python, Node.js и Nginx
-4. Скопировать проект на сервер
-5. Заполнить `.env`
-6. Собрать frontend
-7. Настроить systemd или другой менеджер процессов для backend
-8. Настроить HTTPS
-
-## Что ещё желательно сделать до публичного запуска
-
-- добавить авторизацию
-- подумать о переходе с `SQLite` на `PostgreSQL`
-- настроить регулярные бэкапы базы
-- добавить отдельный production-лог
-
-## REG.RU shared hosting / Passenger
-
-Фактический production-способ для `domfindom.ru`:
-
-- сайт создан в REG.RU ISPmanager
-- frontend собирается локально командой `npm run build`
-- содержимое `frontend/dist` загружается в `/var/www/u3480024/data/www/domfindom.ru`
-- backend запускается не вручную через `uvicorn`, а через Passenger-файл `passenger_wsgi.py`
-- FastAPI адаптирован к Passenger через `a2wsgi`
-
-После обновления кода на сервере:
+3. Если изменения затрагивали backend-логику, прогнать релевантные тесты:
 
 ```bash
-cd ~/finance-app
-git pull
-source .venv/bin/activate
-python -m pip install -r requirements-web.txt
-cp ~/finance-app/passenger_wsgi.py /var/www/u3480024/data/www/domfindom.ru/passenger_wsgi.py
-touch /var/www/u3480024/data/www/domfindom.ru/.restart-app
+python -m unittest tests.test_web_api tests.test_financial_logic -v
 ```
 
-В ISPmanager для сайта `domfindom.ru`:
-- включить `Python`
-- выбрать `python-3.8.6` или `python-3.8.8`
-- включить SSL и редирект `HTTP -> HTTPS`
+## Выкладка backend
 
-Проверка:
+На сервере:
+
+```bash
+cd /var/www/u3480024/data/finance-app
+git pull --ff-only
+```
+
+Если менялись Python-зависимости:
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements-web.txt
+```
+
+## Выкладка frontend
+
+Стандартный рабочий путь:
+- локально собрать `frontend/dist`;
+- упаковать `frontend/dist` в архив;
+- загрузить архив на хост;
+- распаковать поверх текущей статики в `/var/www/u3480024/data/www/domfindom.ru`.
+
+## Перезапуск приложения
+
+После обновления backend или frontend:
+
+```bash
+touch /var/www/u3480024/data/www/domfindom.ru/tmp/restart.txt
+```
+
+Это текущая основная проверенная точка перезапуска.
+
+## Проверка после выкладки
 
 ```bash
 curl -L https://domfindom.ru/api/v1/health
@@ -128,6 +80,13 @@ curl -L https://domfindom.ru/api/v1/health
 {"status":"ok"}
 ```
 
-Важно:
-- `python run_web_backend.py` остается удобным локальным/dev-запуском, но не production-способом для REG.RU.
-- `nohup` и cron для `uvicorn` считаются запасным временным вариантом, а не основным решением.
+После этого вручную проверить минимум:
+- вход в аккаунт;
+- экран, который менялся;
+- если менялись письма — соответствующий email-flow.
+
+## Правило протокола
+
+После заметной выкладки:
+- обновить `docs/WORK_LOG.md`;
+- если был крупный инцидент, можно отдельно зафиксировать его в архиве.
