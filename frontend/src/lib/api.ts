@@ -396,6 +396,28 @@ export type FamilyDashboardResponse = {
   }>;
 };
 
+export type FamilyCapitalContributionItem = {
+  id: number;
+  family_id: number;
+  source_user_id: number;
+  source_transaction_id: number;
+  target_owner_user_id: number;
+  target_capital_account_id: number;
+  amount: number;
+  date: string;
+  comment: string;
+  source_email: string;
+  source_display_name: string;
+  target_owner_email: string;
+  target_owner_display_name: string;
+  target_account_name: string;
+};
+
+export type FamilyCapitalContributionListResponse = {
+  family_id: number;
+  items: FamilyCapitalContributionItem[];
+};
+
 export type FamilyTransactionListResponse = {
   family_id: number;
   family_name: string;
@@ -699,6 +721,10 @@ export function getFamilyMembers(familyId: number) {
 
 export function getFamilyDashboard(familyId: number) {
   return request<FamilyDashboardResponse>(`/families/${familyId}/dashboard`);
+}
+
+export function getFamilyCapitalHistory(familyId: number) {
+  return request<FamilyCapitalContributionListResponse>(`/families/${familyId}/capital-history`);
 }
 
 export function updateFamilyCapitalTarget(payload: {

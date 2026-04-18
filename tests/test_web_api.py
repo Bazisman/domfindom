@@ -1028,6 +1028,85 @@ class WebApiTestCase(unittest.TestCase):
         self.assertTrue(any(item["to_account_id"] == capital_id and item["amount"] == 100.0 for item in owner_transfers))
         member_client.close()
 
+    def test_family_capital_target_can_use_another_members_account_and_history_is_shared(self):
+        member_email = f"family-shared-{uuid4().hex[:8]}@example.com"
+        member_client = TestClient(app)
+        register_member = member_client.post(
+            "/api/v1/auth/register",
+            json={"email": member_email, "password": "MemberPass123"},
+        )
+        self.assertEqual(register_member.status_code, 201)
+
+        create_family = self.client.post("/api/v1/families", json={"name": "РЎРµРјСЊСЏ РѕР±С‰РёР№ С‡С‘С‚"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        invite = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": member_email},
+        )
+        self.assertEqual(invite.status_code, 200)
+        accept = member_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite.json()["invite_token"]},
+        )
+        self.assertEqual(accept.status_code, 200)
+
+        self.assertEqual(self.client.put("/api/v1/account/preferences", json={"workspace_mode": "family"}).status_code, 200)
+        self.assertEqual(member_client.put("/api/v1/account/preferences", json={"workspace_mode": "family"}).status_code, 200)
+
+        member_capital = member_client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Озон Насти", "balance": 0.0, "color": "#2255aa"},
+        )
+        self.assertEqual(member_capital.status_code, 201)
+        member_capital_id = int(member_capital.json()["id"])
+
+        publish_member_capital = member_client.patch(
+            f"/api/v1/accounts/{member_capital_id}",
+            json={"family_visible": True, "family_default_target": True},
+        )
+        self.assertEqual(publish_member_capital.status_code, 200)
+
+        set_owner_target = self.client.put(
+            f"/api/v1/families/{family_id}/capital-target",
+            json={
+                "target_owner_user_id": int(register_member.json()["user"]["id"]),
+                "target_capital_account_id": member_capital_id,
+            },
+        )
+        self.assertEqual(set_owner_target.status_code, 200)
+        self.assertEqual(set_owner_target.json()["target_capital_account_id"], member_capital_id)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        owner_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 1000.0,
+                "comment": "Р”РѕС…РѕРґ РІ РћР·РѕРЅ РќР°СЃС‚Рё",
+                "date": "2026-04-18",
+            },
+        )
+        self.assertEqual(owner_income.status_code, 201)
+
+        member_accounts = member_client.get("/api/v1/accounts")
+        self.assertEqual(member_accounts.status_code, 200)
+        member_capital_after = next(item for item in member_accounts.json() if item["id"] == member_capital_id)
+        self.assertEqual(member_capital_after["balance"], 100.0)
+
+        owner_history = self.client.get(f"/api/v1/families/{family_id}/capital-history")
+        self.assertEqual(owner_history.status_code, 200)
+        owner_items = owner_history.json()["items"]
+        self.assertTrue(any(item["target_capital_account_id"] == member_capital_id and item["target_account_name"] == "Озон Насти" for item in owner_items))
+
+        member_history = member_client.get(f"/api/v1/families/{family_id}/capital-history")
+        self.assertEqual(member_history.status_code, 200)
+        member_items = member_history.json()["items"]
+        self.assertTrue(any(item["target_capital_account_id"] == member_capital_id and item["source_transaction_id"] == int(owner_income.json()["id"]) for item in member_items))
+        member_client.close()
+
     def test_family_transactions_support_period_offset_and_planned_toggle(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья лента"})
         self.assertEqual(create_family.status_code, 201)

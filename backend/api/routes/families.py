@@ -10,6 +10,8 @@ from backend.auth.service import auth_service
 from backend.schemas.families import (
     FamilyActionResponse,
     FamilyCapitalAccountItemResponse,
+    FamilyCapitalContributionItemResponse,
+    FamilyCapitalContributionListResponse,
     FamilyCapitalSelectionResponse,
     FamilyCapitalTargetUpdatePayload,
     FamilyCreatePayload,
@@ -63,6 +65,16 @@ def _run_in_user_db(user_id: int, action):
         return action()
     finally:
         core.pop_db_name(token)
+
+
+def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
+    def _action():
+        for account in core.get_capital_accounts(include_inactive=False):
+            if int(account["id"]) == capital_account_id:
+                return account
+        return None
+
+    return _run_in_user_db(owner_user_id, _action)
 
 
 def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
@@ -167,6 +179,26 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
             target_capital_account_id=int(current_target["capital_account_id"]) if current_target else None,
         ),
         recent_transactions=[FamilyDashboardTransactionResponse(**item) for item in top_transactions],
+    )
+
+
+def _collect_family_capital_history(family_id: int) -> FamilyCapitalContributionListResponse:
+    items = auth_service.list_family_capital_contributions_for_family(family_id=family_id, limit=120)
+    response_items = []
+    for item in items:
+        target_account = _get_active_capital_account(
+            int(item["target_owner_user_id"]),
+            int(item["target_capital_account_id"]),
+        )
+        response_items.append(
+            FamilyCapitalContributionItemResponse(
+                **item,
+                target_account_name=str(target_account["name"] or "") if target_account else "",
+            )
+        )
+    return FamilyCapitalContributionListResponse(
+        family_id=family_id,
+        items=response_items,
     )
 
 
@@ -345,6 +377,15 @@ def list_family_transactions(
         period=period,
         include_planned=include_planned,
     )
+
+
+@router.get("/{family_id}/capital-history", response_model=FamilyCapitalContributionListResponse)
+def list_family_capital_history(family_id: int, current_user=Depends(require_user)) -> FamilyCapitalContributionListResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СЃРµРјСЊРё")
+
+    _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
+    return _collect_family_capital_history(family_id)
 
 
 @router.post("/{family_id}/invites", response_model=FamilyInviteCreateResponse)

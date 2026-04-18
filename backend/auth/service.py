@@ -1628,6 +1628,61 @@ class AuthService:
             for row in rows
         ]
 
+    def list_family_capital_contributions_for_family(
+        self,
+        family_id: int,
+        limit: int = 100,
+    ) -> List[Dict[str, object]]:
+        safe_limit = max(1, min(limit, 300))
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fcc.id,
+                       fcc.family_id,
+                       fcc.source_user_id,
+                       fcc.source_transaction_id,
+                       fcc.target_owner_user_id,
+                       fcc.target_capital_account_id,
+                       fcc.amount,
+                       fcc.date,
+                       fcc.comment,
+                       src.email AS source_email,
+                       COALESCE(src_up.display_name, '') AS source_display_name,
+                       tgt.email AS target_owner_email,
+                       COALESCE(tgt_up.display_name, '') AS target_owner_display_name
+                FROM family_capital_contributions fcc
+                JOIN users src ON src.id = fcc.source_user_id
+                LEFT JOIN user_preferences src_up ON src_up.user_id = fcc.source_user_id
+                JOIN users tgt ON tgt.id = fcc.target_owner_user_id
+                LEFT JOIN user_preferences tgt_up ON tgt_up.user_id = fcc.target_owner_user_id
+                WHERE fcc.family_id = ?
+                  AND fcc.reversed_at IS NULL
+                ORDER BY fcc.date DESC, fcc.id DESC
+                LIMIT ?
+                """,
+                (family_id, safe_limit),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "family_id": int(row["family_id"]),
+                "source_user_id": int(row["source_user_id"]),
+                "source_transaction_id": int(row["source_transaction_id"]),
+                "target_owner_user_id": int(row["target_owner_user_id"]),
+                "target_capital_account_id": int(row["target_capital_account_id"]),
+                "amount": float(row["amount"] or 0),
+                "date": str(row["date"] or ""),
+                "comment": str(row["comment"] or ""),
+                "source_email": str(row["source_email"] or ""),
+                "source_display_name": str(row["source_display_name"] or "").strip(),
+                "target_owner_email": str(row["target_owner_email"] or ""),
+                "target_owner_display_name": str(row["target_owner_display_name"] or "").strip(),
+            }
+            for row in rows
+        ]
+
     def update_family_member_role(self, family_id: int, user_id: int, role: str) -> bool:
         normalized_role = role if role in {"member", "viewer"} else "member"
         with self._auth_connection() as conn:

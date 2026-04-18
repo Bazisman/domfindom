@@ -109,6 +109,28 @@ class FamilyCapitalSelectionResponse(BaseModel):
     target_capital_account_id: Optional[int] = None
 
 
+class FamilyCapitalContributionItemResponse(BaseModel):
+    id: int
+    family_id: int
+    source_user_id: int
+    source_transaction_id: int
+    target_owner_user_id: int
+    target_capital_account_id: int
+    amount: float
+    date: str
+    comment: str
+    source_email: str
+    source_display_name: str
+    target_owner_email: str
+    target_owner_display_name: str
+    target_account_name: str = ""
+
+
+class FamilyCapitalContributionListResponse(BaseModel):
+    family_id: int
+    items: List[FamilyCapitalContributionItemResponse]
+
+
 class FamilyCapitalTargetUpdatePayload(BaseModel):
     target_owner_user_id: Optional[int] = None
     target_capital_account_id: Optional[int] = None

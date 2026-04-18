@@ -5,14 +5,15 @@ import {
   createAccount,
   createTransfer,
   deleteAccount,
-  getAccountPreferences,
   getAccounts,
+  getFamilyCapitalHistory,
   getFamilyDashboard,
   getMe,
   getMyFamilies,
   getSettings,
   getTransfers,
   updateAccount,
+  updateFamilyCapitalTarget,
   updateSettings,
   type Account,
 } from "../lib/api";
@@ -63,6 +64,7 @@ export function AccountsPage() {
   const [settingsSavedNotice, setSettingsSavedNotice] = useState(false);
   const [autoCapitalEnabled, setAutoCapitalEnabled] = useState(true);
   const [autoCapitalPercent, setAutoCapitalPercent] = useState("10");
+  const [selectedTargetKey, setSelectedTargetKey] = useState("");
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const lastSavedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
   const lastRequestedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
@@ -108,14 +110,6 @@ export function AccountsPage() {
     refetchOnMount: "always",
   });
 
-  const preferences = useQuery({
-    queryKey: ["account", "preferences"],
-    queryFn: getAccountPreferences,
-    enabled: isReady,
-    retry: 2,
-    refetchOnMount: "always",
-  });
-
   const accountsError = accounts.error instanceof Error ? accounts.error.message : null;
   const transfersError = transfers.error instanceof Error ? transfers.error.message : null;
   const isAccountsPending = me.isPending || (isReady && accounts.isPending);
@@ -125,7 +119,15 @@ export function AccountsPage() {
   const familyDashboard = useQuery({
     queryKey: ["families", selectedFamilyId, "dashboard", "accounts-page"],
     queryFn: () => getFamilyDashboard(selectedFamilyId as number),
-    enabled: isReady && selectedFamilyId !== null && preferences.data?.workspace_mode === "family",
+    enabled: isReady && selectedFamilyId !== null,
+    retry: 2,
+    refetchOnMount: "always",
+  });
+
+  const familyCapitalHistory = useQuery({
+    queryKey: ["families", selectedFamilyId, "capital-history"],
+    queryFn: () => getFamilyCapitalHistory(selectedFamilyId as number),
+    enabled: isReady && selectedFamilyId !== null,
     retry: 2,
     refetchOnMount: "always",
   });
@@ -140,8 +142,8 @@ export function AccountsPage() {
     [accounts.data],
   );
 
-  const totalCapital = useMemo(
-    () => capitalAccounts.reduce((sum, account) => sum + account.balance, 0),
+  const ownCapital = useMemo(
+    () => capitalAccounts.filter((item) => item.is_active).reduce((sum, account) => sum + account.balance, 0),
     [capitalAccounts],
   );
 
@@ -165,6 +167,16 @@ export function AccountsPage() {
     );
   }, [familyDashboard.data]);
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
+  const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
+
+  useEffect(() => {
+    const target = familyDashboard.data?.current_member_capital_target;
+    if (target?.target_owner_user_id && target?.target_capital_account_id) {
+      setSelectedTargetKey(`${target.target_owner_user_id}:${target.target_capital_account_id}`);
+      return;
+    }
+    setSelectedTargetKey("");
+  }, [familyDashboard.data?.current_member_capital_target]);
 
   useEffect(() => {
     if (!settings.data) {
@@ -284,6 +296,26 @@ export function AccountsPage() {
     onError: (error: Error) => {
       lastRequestedSettingsRef.current = null;
       setSettingsSavedNotice(false);
+      setSettingsError(error.message);
+    },
+  });
+
+  const updateFamilyTargetMutation = useMutation({
+    mutationFn: ({ ownerUserId, capitalAccountId }: { ownerUserId: number | null; capitalAccountId: number | null }) =>
+      updateFamilyCapitalTarget({
+        familyId: selectedFamilyId as number,
+        targetOwnerUserId: ownerUserId,
+        targetCapitalAccountId: capitalAccountId,
+      }),
+    onSuccess: async () => {
+      setSettingsError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard", "accounts-page"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "capital-history"] }),
+      ]);
+    },
+    onError: (error: Error) => {
       setSettingsError(error.message);
     },
   });
@@ -449,6 +481,19 @@ export function AccountsPage() {
       amount,
       date: transferForm.date,
       comment: transferForm.comment,
+    });
+  }
+
+  function saveFamilyTarget() {
+    if (selectedFamilyId === null) {
+      return;
+    }
+    const [ownerRaw, accountRaw] = selectedTargetKey.split(":");
+    const ownerUserId = ownerRaw ? Number(ownerRaw) : null;
+    const capitalAccountId = accountRaw ? Number(accountRaw) : null;
+    updateFamilyTargetMutation.mutate({
+      ownerUserId: Number.isFinite(ownerUserId ?? NaN) ? ownerUserId : null,
+      capitalAccountId: Number.isFinite(capitalAccountId ?? NaN) ? capitalAccountId : null,
     });
   }
 
@@ -738,6 +783,32 @@ export function AccountsPage() {
                 );
               })}
             </div>
+
+            <div className="transaction-form">
+              <label className="field">
+                <span>Куда отправлять мои семейные отчисления</span>
+                <select onChange={(event) => setSelectedTargetKey(event.target.value)} value={selectedTargetKey}>
+                  <option value="">Не выбрано</option>
+                  {familyVisibleAccounts.map((account) => (
+                    <option
+                      key={`${account.owner_user_id}:${account.capital_account_id}`}
+                      value={`${account.owner_user_id}:${account.capital_account_id}`}
+                    >
+                      {(account.owner_display_name || account.owner_email) + " - " + account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                className="primary-button"
+                disabled={updateFamilyTargetMutation.isPending}
+                onClick={saveFamilyTarget}
+                type="button"
+              >
+                {updateFamilyTargetMutation.isPending ? "Сохраняем..." : "Сохранить цель отчислений"}
+              </button>
+            </div>
           </section>
         )}
 
@@ -746,17 +817,23 @@ export function AccountsPage() {
             <h2>Мои деньги</h2>
           </div>
 
-          <div className="summary-grid summary-grid-2 accounts-summary-grid">
+          <div className="summary-grid summary-grid-3 accounts-summary-grid">
             <article className="summary-card summary-card-main account-summary-card account-summary-card-main">
-              <p className="panel-label">Основной счёт</p>
+              <p className="panel-label">Деньги на руках</p>
               <h3>{mainAccount ? formatMoney(mainAccount.balance) : "—"}</h3>
               <p className="muted">Деньги на руках и доступный повседневный баланс.</p>
             </article>
 
             <article className="summary-card account-summary-card">
-              <p className="panel-label">Весь капитал</p>
-              <h3>{formatMoney(totalCapital)}</h3>
-              <p className="muted">Сумма всех отдельных счетов капитала.</p>
+              <p className="panel-label">Мои счета капитала</p>
+              <h3>{formatMoney(ownCapital)}</h3>
+              <p className="muted">Сумма ваших личных накопительных счетов.</p>
+            </article>
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">Семейный капитал</p>
+              <h3>{formatMoney(familyCapitalBalance)}</h3>
+              <p className="muted">Общий капитал, опубликованный для семейного бюджета.</p>
             </article>
           </div>
 
@@ -847,6 +924,40 @@ export function AccountsPage() {
             </div>
           </div>
         </section>
+
+        {!!familyVisibleAccounts.length && (
+          <section className="panel panel-list">
+            <div className="panel-header">
+              <h2>История семейного капитала</h2>
+            </div>
+
+            <div className="transaction-table">
+              {(familyCapitalHistory.data?.items ?? []).map((item) => (
+                <article className="transaction-row" key={item.id}>
+                  <div className="transaction-main">
+                    <strong>
+                      {(item.source_display_name || item.source_email || "Участник")} → {item.target_account_name || "Семейный счет"}
+                    </strong>
+                    <p>{item.comment || "Автоотчисление в семейный капитал"}</p>
+                    <p className="muted">
+                      Получатель: {item.target_owner_display_name || item.target_owner_email || "Семья"}
+                    </p>
+                  </div>
+                  <div className="transaction-meta">
+                    <span className="transaction-date">{item.date}</span>
+                    <strong className="money">{formatMoney(item.amount)}</strong>
+                  </div>
+                </article>
+              ))}
+
+              {!familyCapitalHistory.data?.items?.length && (
+                <p className="empty">
+                  {familyCapitalHistory.isLoading ? "Загружаем историю семейного капитала..." : "Движений семейного капитала пока нет."}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="panel panel-list">
           <div className="panel-header">
