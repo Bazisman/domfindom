@@ -347,119 +347,6 @@ export function TransactionsPageNext() {
 
   return (
     <main className="page-stack transactions-page-stack">
-      <section className="panel reconciliation-panel">
-        <div className="panel-header">
-          <h2>Сверка денег</h2>
-          <span>
-            {reconciliationSummary.data?.last_reconciliation
-              ? `Последняя: ${formatReconciliationDate(reconciliationSummary.data.last_reconciliation.created_at)}`
-              : "Сверок пока не было"}
-          </span>
-        </div>
-
-        <div className="summary-grid summary-grid-3 reconciliation-summary-grid">
-          <article className="summary-card reconciliation-stat-card">
-            <span>Баланс в программе</span>
-            <strong>{formatMoney(reconciliationSummary.data?.program_balance ?? 0)}</strong>
-          </article>
-          <article className="summary-card reconciliation-stat-card">
-            <span>Фактический баланс</span>
-            <strong>{formatMoney(reconciliationSummary.data?.real_balance ?? 0)}</strong>
-          </article>
-          <article className="summary-card reconciliation-stat-card">
-            <span>Разница</span>
-            <strong className={reconciliationDifference > 0 ? "money plus" : reconciliationDifference < 0 ? "money minus" : ""}>
-              {reconciliationDifference > 0
-                ? `+${formatMoney(reconciliationDifference)}`
-                : reconciliationDifference < 0
-                  ? `-${formatMoney(Math.abs(reconciliationDifference))}`
-                  : formatMoney(0)}
-            </strong>
-          </article>
-        </div>
-
-        <p className="reconciliation-note">{reconciliationDifferenceText}</p>
-
-        <form className="reconciliation-add-form" onSubmit={submitNewSource}>
-          <label className="field">
-            <span>Источник</span>
-            <input onChange={(event) => setNewSourceName(event.target.value)} placeholder="Наличные, карта, банк" value={newSourceName} />
-          </label>
-          <label className="field">
-            <span>Сумма</span>
-            <input inputMode="decimal" onChange={(event) => setNewSourceBalance(event.target.value)} placeholder="0" value={newSourceBalance} />
-          </label>
-          <button className="primary-button" disabled={createSourceMutation.isPending} type="submit">
-            {createSourceMutation.isPending ? "Добавляем..." : "Добавить источник"}
-          </button>
-        </form>
-
-        <div className="reconciliation-sources">
-          {(reconciliationSummary.data?.sources ?? []).map((source) => {
-            const draft = sourceDrafts[source.id] ?? { name: source.name, balance: String(source.balance) };
-            return (
-              <article className="reconciliation-source-row" key={source.id}>
-                <label className="field">
-                  <span>Название</span>
-                  <input
-                    onBlur={() => commitSourceChanges(source.id, source.name, source.balance)}
-                    onChange={(event) => updateSourceDraft(source.id, "name", event.target.value)}
-                    value={draft.name}
-                  />
-                </label>
-                <label className="field">
-                  <span>Сумма</span>
-                  <input
-                    inputMode="decimal"
-                    onBlur={() => commitSourceChanges(source.id, source.name, source.balance)}
-                    onChange={(event) => updateSourceDraft(source.id, "balance", event.target.value)}
-                    value={draft.balance}
-                  />
-                </label>
-                <button
-                  className="ghost-button"
-                  disabled={deleteSourceMutation.isPending}
-                  onClick={() => deleteSourceMutation.mutate(source.id)}
-                  type="button"
-                >
-                  Удалить
-                </button>
-              </article>
-            );
-          })}
-
-          {!reconciliationSummary.isLoading && !reconciliationSummary.data?.sources.length && (
-            <p className="empty">Добавьте источники фактических денег для сверки: наличные, карты, счета в банке.</p>
-          )}
-        </div>
-
-        <div className="reconciliation-actions">
-          <button
-            className="primary-button"
-            disabled={applyReconciliationMutation.isPending || reconciliationSummary.isLoading}
-            onClick={() => applyReconciliationMutation.mutate()}
-            type="button"
-          >
-            {applyReconciliationMutation.isPending ? "Сверяем..." : "Пересчитать и сохранить сверку"}
-          </button>
-          {reconciliationMessage ? <p className="form-status form-status-success">{reconciliationMessage}</p> : null}
-          {reconciliationError ? <p className="form-error">{reconciliationError}</p> : null}
-        </div>
-
-        <div className="reconciliation-history">
-          <div className="panel-header">
-            <h3>История сверок</h3>
-            <span>{reconciliationSummary.data?.history.length ?? 0}</span>
-          </div>
-          <div className="reconciliation-history-list">
-            {(reconciliationSummary.data?.history ?? []).map(renderHistoryItem)}
-            {!reconciliationSummary.isLoading && !reconciliationSummary.data?.history.length && (
-              <p className="empty">История сверок появится после первого сохранения.</p>
-            )}
-          </div>
-        </div>
-      </section>
-
       <div className="transactions-layout transactions-layout-stack">
         <section className="panel panel-form">
         <div className="panel-header">
@@ -606,6 +493,119 @@ export function TransactionsPageNext() {
             {createMutation.isPending ? "Сохраняем..." : "Добавить транзакцию"}
           </button>
         </form>
+        </section>
+
+        <section className="panel reconciliation-panel">
+          <div className="panel-header">
+            <h2>Сверка денег</h2>
+            <span>
+              {reconciliationSummary.data?.last_reconciliation
+                ? `Последняя: ${formatReconciliationDate(reconciliationSummary.data.last_reconciliation.created_at)}`
+                : "Сверок пока не было"}
+            </span>
+          </div>
+
+          <div className="summary-grid summary-grid-3 reconciliation-summary-grid">
+            <article className="summary-card reconciliation-stat-card">
+              <span>Баланс в программе</span>
+              <strong>{formatMoney(reconciliationSummary.data?.program_balance ?? 0)}</strong>
+            </article>
+            <article className="summary-card reconciliation-stat-card">
+              <span>Фактический баланс</span>
+              <strong>{formatMoney(reconciliationSummary.data?.real_balance ?? 0)}</strong>
+            </article>
+            <article className="summary-card reconciliation-stat-card">
+              <span>Разница</span>
+              <strong className={reconciliationDifference > 0 ? "money plus" : reconciliationDifference < 0 ? "money minus" : ""}>
+                {reconciliationDifference > 0
+                  ? `+${formatMoney(reconciliationDifference)}`
+                  : reconciliationDifference < 0
+                    ? `-${formatMoney(Math.abs(reconciliationDifference))}`
+                    : formatMoney(0)}
+              </strong>
+            </article>
+          </div>
+
+          <p className="reconciliation-note">{reconciliationDifferenceText}</p>
+
+          <form className="reconciliation-add-form" onSubmit={submitNewSource}>
+            <label className="field">
+              <span>Источник</span>
+              <input onChange={(event) => setNewSourceName(event.target.value)} placeholder="Наличные, карта, банк" value={newSourceName} />
+            </label>
+            <label className="field">
+              <span>Сумма</span>
+              <input inputMode="decimal" onChange={(event) => setNewSourceBalance(event.target.value)} placeholder="0" value={newSourceBalance} />
+            </label>
+            <button className="primary-button" disabled={createSourceMutation.isPending} type="submit">
+              {createSourceMutation.isPending ? "Добавляем..." : "Добавить источник"}
+            </button>
+          </form>
+
+          <div className="reconciliation-sources">
+            {(reconciliationSummary.data?.sources ?? []).map((source) => {
+              const draft = sourceDrafts[source.id] ?? { name: source.name, balance: String(source.balance) };
+              return (
+                <article className="reconciliation-source-row" key={source.id}>
+                  <label className="field">
+                    <span>Название</span>
+                    <input
+                      onBlur={() => commitSourceChanges(source.id, source.name, source.balance)}
+                      onChange={(event) => updateSourceDraft(source.id, "name", event.target.value)}
+                      value={draft.name}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Сумма</span>
+                    <input
+                      inputMode="decimal"
+                      onBlur={() => commitSourceChanges(source.id, source.name, source.balance)}
+                      onChange={(event) => updateSourceDraft(source.id, "balance", event.target.value)}
+                      value={draft.balance}
+                    />
+                  </label>
+                  <button
+                    className="ghost-button"
+                    disabled={deleteSourceMutation.isPending}
+                    onClick={() => deleteSourceMutation.mutate(source.id)}
+                    type="button"
+                  >
+                    Удалить
+                  </button>
+                </article>
+              );
+            })}
+
+            {!reconciliationSummary.isLoading && !reconciliationSummary.data?.sources.length && (
+              <p className="empty">Добавьте источники фактических денег для сверки: наличные, карты, счета в банке.</p>
+            )}
+          </div>
+
+          <div className="reconciliation-actions">
+            <button
+              className="primary-button"
+              disabled={applyReconciliationMutation.isPending || reconciliationSummary.isLoading}
+              onClick={() => applyReconciliationMutation.mutate()}
+              type="button"
+            >
+              {applyReconciliationMutation.isPending ? "Сверяем..." : "Пересчитать и сохранить сверку"}
+            </button>
+            {reconciliationMessage ? <p className="form-status form-status-success">{reconciliationMessage}</p> : null}
+            {reconciliationError ? <p className="form-error">{reconciliationError}</p> : null}
+          </div>
+
+          <div className="reconciliation-history">
+            <div className="panel-header">
+              <h3>История сверок</h3>
+              <span>{reconciliationSummary.data?.history.length ?? 0}</span>
+            </div>
+            <div className="reconciliation-history-list">
+              {(reconciliationSummary.data?.history ?? []).map(renderHistoryItem)}
+              {!reconciliationSummary.isLoading && !reconciliationSummary.data?.history.length && (
+                <p className="empty">История сверок появится после первого сохранения.</p>
+              )}
+            </div>
+          </div>
         </section>
 
         <section className="panel panel-list">
