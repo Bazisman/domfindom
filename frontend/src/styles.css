@@ -920,7 +920,7 @@ body {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--panel);
 }
 
 .auto-capital-info-row {
@@ -945,6 +945,10 @@ body {
   color: var(--muted);
   font-size: 0.95rem;
   line-height: 1.45;
+}
+
+[data-theme="dark"] .auto-capital-info {
+  background: rgba(22, 31, 37, 0.84);
 }
 
 .panel-list .panel-header {
