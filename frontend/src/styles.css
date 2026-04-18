@@ -486,6 +486,12 @@ body {
   grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
 }
 
+.transactions-sidebar {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
 .page-stack {
   display: grid;
   gap: 20px;
@@ -737,6 +743,7 @@ body {
   align-items: start;
 }
 
+.transactions-sidebar,
 .panel {
   min-width: 0;
 }
