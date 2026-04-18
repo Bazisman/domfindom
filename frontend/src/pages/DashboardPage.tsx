@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -53,6 +53,12 @@ export function DashboardPage() {
   const quickEntryFormRef = useRef<HTMLFormElement | null>(null);
   const quickAmountInputRef = useRef<HTMLInputElement | null>(null);
   const balanceCarouselRef = useRef<HTMLDivElement | null>(null);
+  const balanceDragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startScrollLeft: number;
+    moved: boolean;
+  } | null>(null);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -104,6 +110,7 @@ export function DashboardPage() {
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
+  const [isBalanceDragging, setIsBalanceDragging] = useState(false);
 
   const visibleTransactions = useMemo(() => {
     if (useFamilyFeed) {
@@ -272,6 +279,50 @@ export function DashboardPage() {
     });
   }
 
+  function handleBalancePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!showFamilyBalanceSlide || event.pointerType !== "mouse") {
+      return;
+    }
+    const track = balanceCarouselRef.current;
+    if (!track) {
+      return;
+    }
+    balanceDragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: track.scrollLeft,
+      moved: false,
+    };
+    setIsBalanceDragging(true);
+    track.setPointerCapture(event.pointerId);
+  }
+
+  function handleBalancePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const track = balanceCarouselRef.current;
+    const dragState = balanceDragStateRef.current;
+    if (!track || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - dragState.startX;
+    if (Math.abs(deltaX) > 4) {
+      dragState.moved = true;
+    }
+    track.scrollLeft = dragState.startScrollLeft - deltaX;
+  }
+
+  function finishBalanceDrag(event: PointerEvent<HTMLDivElement>) {
+    const track = balanceCarouselRef.current;
+    const dragState = balanceDragStateRef.current;
+    if (!track || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    balanceDragStateRef.current = null;
+    setIsBalanceDragging(false);
+    if (track.hasPointerCapture(event.pointerId)) {
+      track.releasePointerCapture(event.pointerId);
+    }
+  }
+
   return (
     <>
       <header className="hero">
@@ -286,7 +337,14 @@ export function DashboardPage() {
       <main className="grid">
         <section className="panel panel-balance">
           <div className="balance-carousel" data-has-family-slide={showFamilyBalanceSlide ? "true" : "false"}>
-            <div className="balance-carousel-track" ref={balanceCarouselRef}>
+            <div
+              className={isBalanceDragging ? "balance-carousel-track is-dragging" : "balance-carousel-track"}
+              onPointerDown={handleBalancePointerDown}
+              onPointerMove={handleBalancePointerMove}
+              onPointerUp={finishBalanceDrag}
+              onPointerCancel={finishBalanceDrag}
+              ref={balanceCarouselRef}
+            >
               <article className="balance-slide">
                 <p className="panel-label">Текущий баланс</p>
                 <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>

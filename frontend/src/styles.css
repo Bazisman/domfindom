@@ -349,10 +349,16 @@ body {
   scrollbar-width: none;
   -ms-overflow-style: none;
   touch-action: pan-x;
+  cursor: grab;
 }
 
 .balance-carousel-track::-webkit-scrollbar {
   display: none;
+}
+
+.balance-carousel-track.is-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .balance-slide {
