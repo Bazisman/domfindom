@@ -653,6 +653,8 @@ export function getFamilyTransactions(params: {
   familyId: number;
   ownerUserId?: number;
   limit?: number;
+  offset?: number;
+  period?: TransactionPeriod;
   includePlanned?: boolean;
 }) {
   const search = new URLSearchParams();
@@ -660,6 +662,8 @@ export function getFamilyTransactions(params: {
     search.set("owner_user_id", String(params.ownerUserId));
   }
   search.set("limit", String(params.limit ?? 80));
+  search.set("offset", String(params.offset ?? 0));
+  search.set("period", params.period ?? "all");
   search.set("include_planned", params.includePlanned ? "true" : "false");
   return request<FamilyTransactionListResponse>(`/families/${params.familyId}/transactions?${search.toString()}`);
 }
@@ -723,11 +727,13 @@ export function getTransactions(params?: {
   limit?: number;
   offset?: number;
   period?: TransactionPeriod;
+  includePlanned?: boolean;
 }) {
   const search = new URLSearchParams();
   search.set("limit", String(params?.limit ?? 20));
   search.set("offset", String(params?.offset ?? 0));
   search.set("period", params?.period ?? "all");
+  search.set("include_planned", params?.includePlanned === false ? "false" : "true");
   return request<Transaction[]>(`/transactions?${search.toString()}`);
 }
 

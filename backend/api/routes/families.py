@@ -113,10 +113,13 @@ def _collect_family_transactions(
     family_name: str,
     owner_user_id: int = 0,
     limit: int = 50,
+    offset: int = 0,
+    period: str = "all",
     include_planned: bool = False,
 ) -> FamilyTransactionListResponse:
     members = auth_service.list_family_members(family_id)
     safe_limit = max(1, min(limit, 200))
+    safe_offset = max(0, offset)
     member_map: Dict[int, Dict[str, str]] = {
         int(item["user_id"]): {
             "email": str(item["email"] or ""),
@@ -135,7 +138,7 @@ def _collect_family_transactions(
         user_db_path = auth_service.ensure_user_finance_db(user_id)
         db_token = core.push_db_name(user_db_path)
         try:
-            rows = transaction_service.get_transactions(limit=300, period="all", offset=0)
+            rows = transaction_service.get_transactions(limit=500, period=period, offset=0)
             for row in rows:
                 if not include_planned and row.status == "planned":
                     continue
@@ -158,7 +161,10 @@ def _collect_family_transactions(
         family_name=family_name,
         owner_user_id=owner_user_id if owner_user_id > 0 else None,
         limit=safe_limit,
-        transactions=[FamilyDashboardTransactionResponse(**item) for item in items[:safe_limit]],
+        transactions=[
+            FamilyDashboardTransactionResponse(**item)
+            for item in items[safe_offset:safe_offset + safe_limit]
+        ],
     )
 
 
@@ -214,6 +220,8 @@ def list_family_transactions(
     family_id: int,
     owner_user_id: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    period: str = Query(default="all"),
     include_planned: bool = Query(default=False),
     current_user=Depends(require_user),
 ) -> FamilyTransactionListResponse:
@@ -227,6 +235,8 @@ def list_family_transactions(
         family_name=family_name,
         owner_user_id=owner_user_id,
         limit=limit,
+        offset=offset,
+        period=period,
         include_planned=include_planned,
     )
 

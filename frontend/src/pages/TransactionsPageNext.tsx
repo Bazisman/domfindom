@@ -8,6 +8,10 @@ import {
 
 import {
   applyReconciliation,
+  getAccountPreferences,
+  getFamilyTransactions,
+  getMe,
+  getMyFamilies,
   createAccount,
   createReconciliationSource,
   createTransaction,
@@ -22,6 +26,7 @@ import {
   updateReconciliationSource,
   updateSettings,
   type ReconciliationHistoryItem,
+  type Transaction,
   type TransactionPeriod,
   type TransactionType,
 } from "../lib/api";
@@ -34,6 +39,14 @@ const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
   { value: "last_month", label: "Прошлый месяц" },
   { value: "year", label: "Этот год" },
 ];
+
+const PAGE_SIZE = 20;
+
+type FeedTransaction = Transaction & {
+  owner_user_id?: number;
+  owner_email?: string;
+  owner_display_name?: string;
+};
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -60,7 +73,8 @@ function formatReconciliationDate(value: string) {
 
 export function TransactionsPageNext() {
   const queryClient = useQueryClient();
-  const [period, setPeriod] = useState<TransactionPeriod>("all");
+  const [period, setPeriod] = useState<TransactionPeriod>("month");
+  const [page, setPage] = useState(0);
   const [type, setType] = useState<TransactionType>("expense");
   const [showPlanned, setShowPlanned] = useState(false);
   const [categoryId, setCategoryId] = useState<string>("");
@@ -100,15 +114,53 @@ export function TransactionsPageNext() {
     queryFn: getSettings,
   });
 
+  const me = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: getMe,
+    retry: false,
+  });
+
+  const families = useQuery({
+    queryKey: ["families", "me"],
+    queryFn: getMyFamilies,
+    retry: false,
+  });
+
+  const preferences = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
+    retry: false,
+  });
+
   const reconciliationSummary = useQuery({
     queryKey: ["reconciliation"],
     queryFn: getReconciliationSummary,
   });
 
+  const selectedFamilyId = families.data?.families?.[0]?.id ?? null;
+  const useFamilyFeed = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
+  const pageOffset = page * PAGE_SIZE;
+
   const transactions = useQuery({
-    queryKey: ["transactions", period],
-    queryFn: () => getTransactions({ limit: 100, period }),
+    queryKey: ["transactions", period, page, showPlanned],
+    queryFn: () => getTransactions({ limit: PAGE_SIZE + 1, offset: pageOffset, period, includePlanned: showPlanned }),
     placeholderData: keepPreviousData,
+    enabled: !useFamilyFeed,
+  });
+
+  const familyTransactions = useQuery({
+    queryKey: ["families", selectedFamilyId, "transactions", period, page, showPlanned],
+    queryFn: () =>
+      getFamilyTransactions({
+        familyId: selectedFamilyId as number,
+        limit: PAGE_SIZE + 1,
+        offset: pageOffset,
+        period,
+        includePlanned: showPlanned,
+      }),
+    placeholderData: keepPreviousData,
+    enabled: useFamilyFeed,
+    retry: false,
   });
 
   const filteredCategories = useMemo(() => {
@@ -150,13 +202,23 @@ export function TransactionsPageNext() {
     });
   }, [reconciliationSummary.data?.sources]);
 
-  const visibleTransactions = useMemo(() => {
-    const items = transactions.data ?? [];
-    if (showPlanned) {
-      return items;
+  useEffect(() => {
+    setPage(0);
+  }, [period, showPlanned, useFamilyFeed, selectedFamilyId]);
+
+  const rawTransactions = useMemo<FeedTransaction[]>(() => {
+    if (useFamilyFeed) {
+      return (familyTransactions.data?.transactions ?? []).map((item) => ({
+        ...item,
+      }));
     }
-    return items.filter((item) => item.status !== "planned");
-  }, [showPlanned, transactions.data]);
+    return (transactions.data ?? []).map((item) => ({
+      ...item,
+    }));
+  }, [useFamilyFeed, familyTransactions.data?.transactions, transactions.data]);
+
+  const visibleTransactions = useMemo(() => rawTransactions.slice(0, PAGE_SIZE), [rawTransactions]);
+  const hasNextPage = rawTransactions.length > PAGE_SIZE;
 
   const createMutation = useMutation({
     mutationFn: createTransaction,
@@ -174,6 +236,8 @@ export function TransactionsPageNext() {
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
         queryClient.invalidateQueries({ queryKey: ["reconciliation"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions"] }),
       ]);
     },
     onError: (error: Error) => {
@@ -189,6 +253,8 @@ export function TransactionsPageNext() {
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
         queryClient.invalidateQueries({ queryKey: ["reconciliation"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions"] }),
       ]);
     },
   });
@@ -779,6 +845,7 @@ export function TransactionsPageNext() {
         <div className="panel-header">
           <h2>История транзакций</h2>
           <div className="toolbar-group">
+            {selectedFamilyId !== null ? <span>{useFamilyFeed ? "Совместные операции семьи" : "Личные операции"}</span> : null}
             <label className="filter-check">
               <input
                 checked={showPlanned}
@@ -803,13 +870,16 @@ export function TransactionsPageNext() {
 
         <div className="transaction-table">
           {visibleTransactions.map((item) => (
-            <article className="transaction-row" key={item.id}>
+            <article className="transaction-row" key={`${item.owner_user_id ?? "self"}-${item.id}`}>
               <div className="transaction-main">
                 <div className="transaction-title-row">
                   <strong>{item.category}</strong>
                   {item.status === "planned" && <span className="status-chip">Не исполнено</span>}
                 </div>
                 <p>{item.comment || "Без комментария"}</p>
+                {useFamilyFeed && (item.owner_display_name || item.owner_email) ? (
+                  <p className="muted">Участник: {item.owner_display_name || item.owner_email}</p>
+                ) : null}
               </div>
               <div className="transaction-meta">
                 <span className="transaction-date">{item.date}</span>
@@ -817,26 +887,49 @@ export function TransactionsPageNext() {
                   {formatMoney(item.amount)}
                 </strong>
               </div>
-              <button
-                className="ghost-button"
-                disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(item.id)}
-                type="button"
-              >
-                Удалить
-              </button>
+              {!useFamilyFeed || item.owner_user_id === me.data?.id ? (
+                <button
+                  className="ghost-button"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => deleteMutation.mutate(item.id)}
+                  type="button"
+                >
+                  Удалить
+                </button>
+              ) : (
+                <span className="muted">Только просмотр</span>
+              )}
             </article>
           ))}
 
           {!visibleTransactions.length && (
             <p className="empty">
-              {transactions.isLoading
+              {(useFamilyFeed ? familyTransactions.isLoading : transactions.isLoading)
                 ? "Загружаем транзакции..."
                 : showPlanned
                   ? "Транзакций пока нет для выбранного периода."
                   : "Исполненных транзакций пока нет для выбранного периода."}
             </p>
           )}
+        </div>
+        <div className="toolbar-group">
+          <button
+            className="ghost-button"
+            disabled={page === 0}
+            onClick={() => setPage((current) => Math.max(current - 1, 0))}
+            type="button"
+          >
+            Назад
+          </button>
+          <span className="muted">Страница {page + 1}</span>
+          <button
+            className="ghost-button"
+            disabled={!hasNextPage}
+            onClick={() => setPage((current) => current + 1)}
+            type="button"
+          >
+            Вперед
+          </button>
         </div>
         </section>
       </div>

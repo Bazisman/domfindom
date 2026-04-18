@@ -116,8 +116,8 @@ class TransactionService:
             
             if period == "month":
                 start = today.replace(day=1).strftime("%Y-%m-%d")
-                end = today.strftime("%Y-%m-%d")
-                raw = core.get_transactions_by_period(start, end, limit)
+                end = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime("%Y-%m-%d")
+                raw = core.get_transactions_by_period(start, end, limit, offset)
             elif period == "last_month":
                 if today.month == 1:
                     start = today.replace(year=today.year-1, month=12, day=1)
@@ -128,12 +128,13 @@ class TransactionService:
                 raw = core.get_transactions_by_period(
                     start.strftime("%Y-%m-%d"), 
                     end.strftime("%Y-%m-%d"),
-                    limit
+                    limit,
+                    offset,
                 )
             elif period == "year":
                 start = today.replace(month=1, day=1).strftime("%Y-%m-%d")
-                end = today.strftime("%Y-%m-%d")
-                raw = core.get_transactions_by_period(start, end, limit)
+                end = today.replace(month=12, day=31).strftime("%Y-%m-%d")
+                raw = core.get_transactions_by_period(start, end, limit, offset)
             else:  # all
                 raw = core.get_last_transactions(limit, offset)
             
@@ -693,4 +694,3 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ СЃС‚Р°С‚СѓСЃР° Р±СЋРґР¶РµС‚Р°: {e}", exc_info=True)
             return {'spent': 0, 'budget': 0, 'remaining': 0, 'percent': 0}
-

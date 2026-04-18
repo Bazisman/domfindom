@@ -732,6 +732,99 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_transactions_support_period_offset_and_planned_toggle(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья лента"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"feed-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+        second_user_id = int(second_register.json()["user"]["id"])
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+        invite_token = str(invite_response.json()["invite_token"])
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite_token},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
+
+        owner_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 5000.0,
+                "comment": "Owner feed income",
+                "date": "2026-04-05",
+            },
+        )
+        self.assertEqual(owner_income.status_code, 201)
+
+        member_expense = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 1200.0,
+                "comment": "Member feed expense",
+                "date": "2026-04-11",
+            },
+        )
+        self.assertEqual(member_expense.status_code, 201)
+
+        second_db_token = core.push_db_name(auth_service.get_user_db_path(second_user_id))
+        try:
+            core.add_planned_transaction(
+                "expense",
+                expense_category,
+                700.0,
+                "Member future planned",
+                "2026-04-20",
+            )
+        finally:
+            core.pop_db_name(second_db_token)
+
+        current_month = self.client.get(
+            f"/api/v1/families/{family_id}/transactions?period=month&limit=5&offset=0"
+        )
+        self.assertEqual(current_month.status_code, 200)
+        current_payload = current_month.json()
+        current_comments = [item["comment"] for item in current_payload["transactions"]]
+        self.assertIn("Owner feed income", current_comments)
+        self.assertIn("Member feed expense", current_comments)
+        self.assertNotIn("Member future planned", current_comments)
+
+        paged = self.client.get(
+            f"/api/v1/families/{family_id}/transactions?period=month&limit=1&offset=1"
+        )
+        self.assertEqual(paged.status_code, 200)
+        self.assertEqual(len(paged.json()["transactions"]), 1)
+        self.assertEqual(paged.json()["transactions"][0]["comment"], "Owner feed income")
+
+        with_planned = self.client.get(
+            f"/api/v1/families/{family_id}/transactions?period=month&limit=10&offset=0&include_planned=true"
+        )
+        self.assertEqual(with_planned.status_code, 200)
+        planned_items = [item for item in with_planned.json()["transactions"] if item["comment"] == "Member future planned"]
+        self.assertEqual(len(planned_items), 1)
+        self.assertEqual(planned_items[0]["status"], "planned")
+
+        second_client.close()
+
     def test_dashboard_endpoint_returns_core_sections(self):
         response = self.client.get("/api/v1/dashboard")
         payload = response.json()

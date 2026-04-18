@@ -18,6 +18,39 @@ from models import Transaction
 router = APIRouter()
 
 
+def _list_transactions_window(limit: int, offset: int, period: str, include_planned: bool) -> List[Transaction]:
+    if include_planned:
+        return transaction_service.get_transactions(limit=limit, offset=offset, period=period)
+
+    safe_limit = max(1, min(limit, 500))
+    safe_offset = max(0, offset)
+    batch_size = min(max(safe_limit * 3, 100), 500)
+    raw_offset = 0
+    skipped = 0
+    collected: List[Transaction] = []
+
+    while len(collected) < safe_limit:
+        batch = transaction_service.get_transactions(limit=batch_size, offset=raw_offset, period=period)
+        if not batch:
+            break
+
+        for item in batch:
+            if item.status == "planned":
+                continue
+            if skipped < safe_offset:
+                skipped += 1
+                continue
+            collected.append(item)
+            if len(collected) >= safe_limit:
+                break
+
+        if len(batch) < batch_size:
+            break
+        raw_offset += len(batch)
+
+    return collected
+
+
 def _resolve_category_name(payload: TransactionCreateRequest) -> str:
     if payload.category_name:
         return payload.category_name
@@ -42,8 +75,9 @@ def list_transactions(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     period: str = Query(default="all"),
+    include_planned: bool = Query(default=True),
 ) -> List[TransactionResponse]:
-    transactions = transaction_service.get_transactions(limit=limit, offset=offset, period=period)
+    transactions = _list_transactions_window(limit=limit, offset=offset, period=period, include_planned=include_planned)
     return [TransactionResponse(**row_to_transaction_response(item)) for item in transactions]
 
 

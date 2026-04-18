@@ -104,7 +104,7 @@ def get_transactions_count(get_connection):
         return cursor.fetchone()[0]
 
 
-def get_transactions_by_period(get_connection, start_date, end_date, limit=500):
+def get_transactions_by_period(get_connection, start_date, end_date, limit=500, offset=0):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -113,9 +113,9 @@ def get_transactions_by_period(get_connection, start_date, end_date, limit=500):
             FROM transactions
             WHERE date BETWEEN ? AND ?
             ORDER BY date DESC, id DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (start_date, end_date, limit),
+            (start_date, end_date, limit, offset),
         )
         return cursor.fetchall()
 

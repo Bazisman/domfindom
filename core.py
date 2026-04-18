@@ -240,12 +240,13 @@ def get_transactions_count():
     return _tx_get_transactions_count(get_connection)
 
 
-def get_transactions_by_period(start_date, end_date, limit=500):
+def get_transactions_by_period(start_date, end_date, limit=500, offset=0):
     return _tx_get_transactions_by_period(
         get_connection,
         start_date,
         end_date,
         limit=limit,
+        offset=offset,
     )
 
 
@@ -723,7 +724,6 @@ def get_budget_status(category_id: int = None):
 if __name__ == "__main__":
     init_db()
     app_logger.info("База данных инициализирована")
-
 
 
 
