@@ -6,6 +6,7 @@ import {
   createTransfer,
   deleteAccount,
   getAccounts,
+  getMe,
   getMyFamilies,
   getSettings,
   getTransfers,
@@ -66,25 +67,35 @@ export function AccountsPage() {
   const settingsSavedNoticeTimeoutRef = useRef<number | null>(null);
   const accountFormPanelRef = useRef<HTMLElement | null>(null);
   const accountNameInputRef = useRef<HTMLInputElement | null>(null);
+  const me = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: getMe,
+    retry: false,
+  });
+  const isReady = Boolean(me.data?.id);
 
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: getAccounts,
+    enabled: isReady,
   });
 
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
+    enabled: isReady,
   });
 
   const families = useQuery({
     queryKey: ["families", "me"],
     queryFn: getMyFamilies,
+    enabled: isReady,
   });
 
   const transfers = useQuery({
     queryKey: ["transfers", "all"],
     queryFn: () => getTransfers({ limit: 20 }),
+    enabled: isReady,
   });
 
   const capitalAccounts = useMemo(
