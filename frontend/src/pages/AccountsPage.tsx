@@ -611,14 +611,14 @@ export function AccountsPage() {
             <h2>Мои деньги</h2>
           </div>
 
-          <div className="accounts-summary-grid">
-            <article className="account-summary-card account-summary-card-main">
+          <div className="summary-grid summary-grid-2 accounts-summary-grid">
+            <article className="summary-card summary-card-main account-summary-card account-summary-card-main">
               <p className="panel-label">Основной счёт</p>
               <h3>{mainAccount ? formatMoney(mainAccount.balance) : "—"}</h3>
               <p className="muted">Деньги на руках и доступный повседневный баланс.</p>
             </article>
 
-            <article className="account-summary-card">
+            <article className="summary-card account-summary-card">
               <p className="panel-label">Весь капитал</p>
               <h3>{formatMoney(totalCapital)}</h3>
               <p className="muted">Сумма всех отдельных счетов капитала.</p>

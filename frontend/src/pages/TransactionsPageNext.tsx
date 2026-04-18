@@ -357,16 +357,16 @@ export function TransactionsPageNext() {
           </span>
         </div>
 
-        <div className="reconciliation-summary-grid">
-          <article className="reconciliation-stat-card">
+        <div className="summary-grid summary-grid-3 reconciliation-summary-grid">
+          <article className="summary-card reconciliation-stat-card">
             <span>Баланс в программе</span>
             <strong>{formatMoney(reconciliationSummary.data?.program_balance ?? 0)}</strong>
           </article>
-          <article className="reconciliation-stat-card">
+          <article className="summary-card reconciliation-stat-card">
             <span>Фактический баланс</span>
             <strong>{formatMoney(reconciliationSummary.data?.real_balance ?? 0)}</strong>
           </article>
-          <article className="reconciliation-stat-card">
+          <article className="summary-card reconciliation-stat-card">
             <span>Разница</span>
             <strong className={reconciliationDifference > 0 ? "money plus" : reconciliationDifference < 0 ? "money minus" : ""}>
               {reconciliationDifference > 0

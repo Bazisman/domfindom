@@ -496,19 +496,48 @@ body {
   gap: 18px;
 }
 
-.reconciliation-summary-grid {
+.summary-grid {
   display: grid;
   gap: 12px;
+}
+
+.summary-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.summary-grid-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.reconciliation-stat-card {
+.summary-card {
   display: grid;
   gap: 6px;
   padding: 16px 18px;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.5);
+}
+
+.summary-card h3,
+.summary-card strong,
+.planning-section-head h2 {
+  margin: 0;
+}
+
+.summary-card-main {
+  background: linear-gradient(160deg, rgba(255,255,255,0.92), rgba(230,246,239,0.96));
+}
+
+[data-theme="dark"] .summary-card {
+  background: rgba(22, 31, 37, 0.84);
+}
+
+[data-theme="dark"] .summary-card-main {
+  background: linear-gradient(160deg, rgba(26, 34, 40, 0.95), rgba(18, 48, 39, 0.85));
+}
+
+.reconciliation-summary-grid {
+  gap: 12px;
 }
 
 .reconciliation-stat-card span,
@@ -609,33 +638,20 @@ body {
 }
 
 .planning-summary-grid {
-  display: grid;
   gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 18px;
 }
 
 .planning-summary-card {
-  display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  padding: 18px;
   transition:
     transform var(--dur-mid) var(--ease-smooth),
     box-shadow var(--dur-mid) var(--ease-smooth),
     border-color var(--dur-mid) var(--ease-smooth);
 }
 
-.planning-summary-card h3,
-.planning-summary-card strong,
-.planning-section-head h2 {
-  margin: 0;
-}
-
 .planning-summary-main {
-  background: linear-gradient(160deg, rgba(255,255,255,0.92), rgba(230,246,239,0.96));
+  background: inherit;
 }
 
 .planning-summary-stats {
@@ -723,17 +739,11 @@ body {
 }
 
 .accounts-summary-grid {
-  display: grid;
   gap: 16px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 18px;
 }
 
 .account-summary-card {
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  padding: 18px;
   transition:
     transform var(--dur-mid) var(--ease-smooth),
     box-shadow var(--dur-mid) var(--ease-smooth),
@@ -746,7 +756,7 @@ body {
 }
 
 .account-summary-card-main {
-  background: linear-gradient(160deg, rgba(255,255,255,0.92), rgba(230,246,239,0.96));
+  background: inherit;
 }
 
 .account-section {

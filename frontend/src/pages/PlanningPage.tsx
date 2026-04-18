@@ -355,8 +355,8 @@ export function PlanningPage() {
           <span>Будущие деньги</span>
         </div>
 
-        <div className="planning-summary-grid">
-          <article className="planning-summary-card planning-summary-main">
+        <div className="summary-grid summary-grid-3 planning-summary-grid">
+          <article className="summary-card summary-card-main planning-summary-card planning-summary-main">
             <span className="panel-label">Прогноз на конец месяца</span>
             <h3>{formatMoney(dashboard.data?.forecast.projected_balance ?? 0)}</h3>
             <p className="muted">
@@ -364,7 +364,7 @@ export function PlanningPage() {
             </p>
           </article>
 
-          <article className="planning-summary-card">
+          <article className="summary-card planning-summary-card">
             <span className="panel-label">Запланированные доходы</span>
             <strong className="money plus">
               {formatMoney(
@@ -388,7 +388,7 @@ export function PlanningPage() {
             </div>
           </article>
 
-          <article className="planning-summary-card">
+          <article className="summary-card planning-summary-card">
             <span className="panel-label">Запланированные расходы</span>
             <strong className="money minus">
               {formatMoney(dashboard.data?.forecast.combined_pending_expense ?? 0)}
