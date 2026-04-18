@@ -72,31 +72,44 @@ export function AccountsPage() {
     queryFn: getMe,
     retry: false,
   });
-  const isReady = Boolean(me.data?.id);
+  const isReady = me.status === "success" && Boolean(me.data?.id);
 
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: getAccounts,
     enabled: isReady,
+    retry: 2,
+    refetchOnMount: "always",
   });
 
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
     enabled: isReady,
+    retry: 2,
+    refetchOnMount: "always",
   });
 
   const families = useQuery({
     queryKey: ["families", "me"],
     queryFn: getMyFamilies,
     enabled: isReady,
+    retry: 2,
+    refetchOnMount: "always",
   });
 
   const transfers = useQuery({
     queryKey: ["transfers", "all"],
     queryFn: () => getTransfers({ limit: 20 }),
     enabled: isReady,
+    retry: 2,
+    refetchOnMount: "always",
   });
+
+  const accountsError = accounts.error instanceof Error ? accounts.error.message : null;
+  const transfersError = transfers.error instanceof Error ? transfers.error.message : null;
+  const isAccountsPending = me.isPending || (isReady && accounts.isPending);
+  const isTransfersPending = me.isPending || (isReady && transfers.isPending);
 
   const capitalAccounts = useMemo(
     () => (accounts.data ?? []).filter((item) => item.type === "capital"),
@@ -743,8 +756,10 @@ export function AccountsPage() {
                 </article>
               ))}
 
-              {!accounts.data?.length && (
-                <p className="empty">{accounts.isLoading ? "Загружаем счета..." : "Счета пока не найдены."}</p>
+              {accountsError && <p className="form-error">{accountsError}</p>}
+
+              {!accountsError && !accounts.data?.length && (
+                <p className="empty">{isAccountsPending ? "Загружаем счета..." : "Счета пока не найдены."}</p>
               )}
 
               {!!accounts.data?.length && !capitalAccounts.length && (
@@ -775,8 +790,10 @@ export function AccountsPage() {
               </article>
             ))}
 
-            {!transfers.data?.length && (
-              <p className="empty">{transfers.isLoading ? "Загружаем переводы..." : "Переводов пока нет."}</p>
+            {transfersError && <p className="form-error">{transfersError}</p>}
+
+            {!transfersError && !transfers.data?.length && (
+              <p className="empty">{isTransfersPending ? "Загружаем переводы..." : "Переводов пока нет."}</p>
             )}
           </div>
         </section>
