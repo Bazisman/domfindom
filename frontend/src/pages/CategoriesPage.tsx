@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -41,6 +41,8 @@ export function CategoriesPage() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [formState, setFormState] = useState(getInitialFormState);
   const [formError, setFormError] = useState<string | null>(null);
+  const formPanelRef = useRef<HTMLElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const categories = useQuery({
     queryKey: ["categories"],
@@ -102,6 +104,16 @@ export function CategoriesPage() {
     setFormError(null);
   }
 
+  function moveToEditForm() {
+    requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        nameInputRef.current?.focus();
+        nameInputRef.current?.select();
+      }, 180);
+    });
+  }
+
   function fillFormFromCategory(category: Category) {
     setEditingCategoryId(category.id);
     setFormState({
@@ -110,6 +122,7 @@ export function CategoriesPage() {
       color: category.color,
     });
     setFormError(null);
+    moveToEditForm();
   }
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
@@ -138,16 +151,25 @@ export function CategoriesPage() {
 
   return (
     <main className="categories-layout">
-      <section className="panel panel-form">
+      <section
+        className={editingCategoryId !== null ? "panel panel-form editing-panel" : "panel panel-form"}
+        ref={formPanelRef}
+      >
         <div className="panel-header">
           <h2>{editingCategoryId ? "Редактирование категории" : "Новая категория"}</h2>
           <span>{editingCategoryId ? "Изменение" : "Создание"}</span>
         </div>
 
         <form className="transaction-form" onSubmit={submitForm}>
+          {editingCategoryId !== null && (
+            <div className="editing-banner" role="status">
+              <strong>Сейчас редактируется:</strong> {formState.name || "категория"}
+            </div>
+          )}
           <label className="field">
             <span>Название</span>
             <input
+              ref={nameInputRef}
               onChange={(event) =>
                 setFormState((current) => ({ ...current, name: event.target.value }))
               }

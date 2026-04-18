@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
 
 import {
   createAccount,
@@ -64,6 +63,8 @@ export function AccountsPage() {
   const lastSavedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
   const lastRequestedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
   const settingsSavedNoticeTimeoutRef = useRef<number | null>(null);
+  const accountFormPanelRef = useRef<HTMLElement | null>(null);
+  const accountNameInputRef = useRef<HTMLInputElement | null>(null);
 
   const accounts = useQuery({
     queryKey: ["accounts"],
@@ -300,6 +301,16 @@ export function AccountsPage() {
     setAccountError(null);
   }
 
+  function moveToAccountEditForm() {
+    requestAnimationFrame(() => {
+      accountFormPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        accountNameInputRef.current?.focus();
+        accountNameInputRef.current?.select();
+      }, 180);
+    });
+  }
+
   function fillAccountForm(account: Account) {
     if (account.type !== "capital") {
       return;
@@ -311,6 +322,7 @@ export function AccountsPage() {
       color: account.color ?? ACCOUNT_COLORS[0],
     });
     setAccountError(null);
+    moveToAccountEditForm();
   }
 
   function submitAccountForm(event: FormEvent<HTMLFormElement>) {
@@ -451,15 +463,24 @@ export function AccountsPage() {
           </form>
         </section>
 
-        <section className="panel panel-form">
+        <section
+          className={editingAccountId !== null ? "panel panel-form editing-panel" : "panel panel-form"}
+          ref={accountFormPanelRef}
+        >
           <div className="panel-header">
             <h2>{editingAccountId !== null ? "Редактирование счёта" : "Новый счёт капитала"}</h2>
           </div>
 
           <form className="transaction-form" onSubmit={submitAccountForm}>
+            {editingAccountId !== null && (
+              <div className="editing-banner" role="status">
+                <strong>Сейчас редактируется:</strong> {accountForm.name || "счёт"}
+              </div>
+            )}
             <label className="field">
               <span>Название</span>
               <input
+                ref={accountNameInputRef}
                 onChange={(event) => setAccountForm((current) => ({ ...current, name: event.target.value }))}
                 placeholder="Например, Сбер вклад"
                 value={accountForm.name}

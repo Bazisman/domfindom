@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -37,6 +37,8 @@ export function BudgetsPage() {
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [formState, setFormState] = useState(getInitialFormState);
   const [formError, setFormError] = useState<string | null>(null);
+  const formPanelRef = useRef<HTMLElement | null>(null);
+  const amountInputRef = useRef<HTMLInputElement | null>(null);
 
   const categories = useQuery({
     queryKey: ["categories"],
@@ -125,6 +127,16 @@ export function BudgetsPage() {
     setFormError(null);
   }
 
+  function moveToEditForm() {
+    requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        amountInputRef.current?.focus();
+        amountInputRef.current?.select();
+      }, 180);
+    });
+  }
+
   function startEdit(budgetId: number) {
     const budget = budgets.data?.find((item) => item.id === budgetId);
     if (!budget) {
@@ -138,6 +150,7 @@ export function BudgetsPage() {
       period: budget.period,
     });
     setFormError(null);
+    moveToEditForm();
   }
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
@@ -172,13 +185,22 @@ export function BudgetsPage() {
 
   return (
     <main className="categories-layout">
-      <section className="panel panel-form">
+      <section
+        className={editingBudgetId !== null ? "panel panel-form editing-panel" : "panel panel-form"}
+        ref={formPanelRef}
+      >
         <div className="panel-header">
           <h2>{editingBudgetId ? "Редактирование бюджета" : "Новый бюджет"}</h2>
           <span>{editingBudgetId ? "Лимит" : "План"}</span>
         </div>
 
         <form className="transaction-form" onSubmit={submitForm}>
+          {editingBudgetId !== null && (
+            <div className="editing-banner" role="status">
+              <strong>Сейчас редактируется:</strong> {budgets.data?.find((item) => item.id === editingBudgetId)?.category_name ?? "бюджет"}
+            </div>
+          )}
+
           <label className="field">
             <span>Категория</span>
             <select
@@ -201,6 +223,7 @@ export function BudgetsPage() {
             <label className="field">
               <span>Лимит</span>
               <input
+                ref={amountInputRef}
                 inputMode="decimal"
                 onChange={(event) =>
                   setFormState((current) => ({ ...current, amount: event.target.value }))

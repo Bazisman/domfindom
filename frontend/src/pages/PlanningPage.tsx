@@ -81,6 +81,8 @@ export function PlanningPage() {
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [budgetForm, setBudgetForm] = useState(getBudgetInitialForm);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const budgetFormPanelRef = useRef<HTMLElement | null>(null);
+  const budgetAmountInputRef = useRef<HTMLInputElement | null>(null);
 
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
   const [recurringForm, setRecurringForm] = useState(getRecurringInitialForm);
@@ -245,6 +247,16 @@ export function PlanningPage() {
     });
   }
 
+  function moveToBudgetEditForm() {
+    requestAnimationFrame(() => {
+      budgetFormPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        budgetAmountInputRef.current?.focus();
+        budgetAmountInputRef.current?.select();
+      }, 180);
+    });
+  }
+
   function startBudgetEdit(budgetId: number) {
     const budget = budgets.data?.find((item) => item.id === budgetId);
     if (!budget) {
@@ -258,6 +270,7 @@ export function PlanningPage() {
       period: budget.period,
     });
     setBudgetError(null);
+    moveToBudgetEditForm();
   }
 
   function startRecurringEdit(templateId: number) {
@@ -699,12 +712,20 @@ export function PlanningPage() {
         </div>
 
         <>
-          <section className="panel panel-form">
+          <section
+            className={editingBudgetId !== null ? "panel panel-form editing-panel" : "panel panel-form"}
+            ref={budgetFormPanelRef}
+          >
             <div className="panel-header">
               <h2>{editingBudgetId ? "Редактирование бюджета" : "Новый бюджет"}</h2>
             </div>
 
             <form className="transaction-form" onSubmit={submitBudgetForm}>
+              {editingBudgetId !== null && (
+                <div className="editing-banner" role="status">
+                  <strong>Сейчас редактируется:</strong> {budgets.data?.find((item) => item.id === editingBudgetId)?.category_name ?? "бюджет"}
+                </div>
+              )}
               <label className="field">
                 <span>Категория</span>
                 <select
@@ -727,6 +748,7 @@ export function PlanningPage() {
                 <label className="field">
                   <span>Лимит</span>
                   <input
+                    ref={budgetAmountInputRef}
                     inputMode="decimal"
                     onChange={(event) =>
                       setBudgetForm((current) => ({ ...current, amount: event.target.value }))
