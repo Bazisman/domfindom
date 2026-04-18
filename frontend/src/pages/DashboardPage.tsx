@@ -142,7 +142,6 @@ export function DashboardPage() {
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
   const [isBalanceDragging, setIsBalanceDragging] = useState(false);
   const [balanceDragOffset, setBalanceDragOffset] = useState(0);
-  const [isDesktopBalanceMode, setIsDesktopBalanceMode] = useState(false);
 
   const visibleTransactions = useMemo(() => {
     if (useFamilyFeed) {
@@ -387,24 +386,6 @@ export function DashboardPage() {
   }, [selectedCategory?.id]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia("(pointer: fine)");
-    const syncMode = () => setIsDesktopBalanceMode(mediaQuery.matches);
-    syncMode();
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", syncMode);
-      return () => mediaQuery.removeEventListener("change", syncMode);
-    }
-
-    mediaQuery.addListener(syncMode);
-    return () => mediaQuery.removeListener(syncMode);
-  }, []);
-
-  useEffect(() => {
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
       balanceSettleFrameRef.current = null;
@@ -413,13 +394,7 @@ export function DashboardPage() {
     balanceDragStateRef.current = null;
     setActiveBalanceSlide(0);
     setBalanceDragOffset(0);
-
-    if (!showFamilyBalanceSlide || isDesktopBalanceMode) {
-      return;
-    }
-
-    balanceCarouselRef.current?.scrollTo({ left: 0, behavior: "auto" });
-  }, [isDesktopBalanceMode, selectedFamilyId, showFamilyBalanceSlide]);
+  }, [selectedFamilyId, showFamilyBalanceSlide]);
 
   useEffect(() => {
     return () => {
@@ -428,25 +403,6 @@ export function DashboardPage() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    const node = balanceCarouselRef.current;
-    if (!node || !showFamilyBalanceSlide || isDesktopBalanceMode) {
-      return;
-    }
-
-    function syncActiveSlide() {
-      const track = balanceCarouselRef.current;
-      if (!track) {
-        return;
-      }
-      setActiveBalanceSlide(track.scrollLeft > track.clientWidth * 0.5 ? 1 : 0);
-    }
-
-    syncActiveSlide();
-    node.addEventListener("scroll", syncActiveSlide, { passive: true });
-    return () => node.removeEventListener("scroll", syncActiveSlide);
-  }, [isDesktopBalanceMode, showFamilyBalanceSlide]);
 
   async function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -490,7 +446,7 @@ export function DashboardPage() {
   }
 
   function handleBalancePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (!showFamilyBalanceSlide || !isDesktopBalanceMode || event.pointerType !== "mouse") {
+    if (!showFamilyBalanceSlide) {
       return;
     }
     const viewport = balanceCarouselRef.current;
@@ -594,19 +550,8 @@ export function DashboardPage() {
     if (!showFamilyBalanceSlide) {
       return;
     }
-    if (isDesktopBalanceMode) {
-      const nextDirection = logicalIndex === normalizeCarouselIndex(activeBalanceSlide + 1, 2) ? 1 : -1;
-      animateDesktopBalanceFlight(logicalIndex === activeBalanceSlide ? 0 : nextDirection);
-      return;
-    }
-    if (logicalIndex === 0) {
-      balanceCarouselRef.current?.scrollTo({ left: 0, behavior: "smooth" });
-      return;
-    }
-    balanceCarouselRef.current?.scrollTo({
-      left: balanceCarouselRef.current?.clientWidth ?? 0,
-      behavior: "smooth",
-    });
+    const nextDirection = logicalIndex === normalizeCarouselIndex(activeBalanceSlide + 1, 2) ? 1 : -1;
+    animateDesktopBalanceFlight(logicalIndex === activeBalanceSlide ? 0 : nextDirection);
   }
 
   function renderPersonalBalanceSlide(key: string) {
@@ -689,7 +634,7 @@ export function DashboardPage() {
       <main className="grid">
         <section className="panel panel-balance">
           <div className="balance-carousel" data-has-family-slide={showFamilyBalanceSlide ? "true" : "false"}>
-            {showFamilyBalanceSlide && isDesktopBalanceMode ? (
+            {showFamilyBalanceSlide ? (
               <div
                 className="balance-carousel-viewport"
                 onPointerDown={handleBalancePointerDown}
@@ -710,10 +655,7 @@ export function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <div className="balance-carousel-track" ref={balanceCarouselRef}>
-                {renderPersonalBalanceSlide("mobile-balance-personal")}
-                {showFamilyBalanceSlide ? renderFamilyBalanceSlide("mobile-balance-family") : null}
-              </div>
+              renderPersonalBalanceSlide("balance-personal-single")
             )}
 
             {showFamilyBalanceSlide ? (
