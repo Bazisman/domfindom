@@ -6,6 +6,7 @@ import {
   createTransaction,
   getCategories,
   getDashboard,
+  getFamilyDashboard,
   getFamilyTransactions,
   getMyFamilies,
 } from "../lib/api";
@@ -51,6 +52,7 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const quickEntryFormRef = useRef<HTMLFormElement | null>(null);
   const quickAmountInputRef = useRef<HTMLInputElement | null>(null);
+  const balanceCarouselRef = useRef<HTMLDivElement | null>(null);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -89,11 +91,19 @@ export function DashboardPage() {
     retry: false,
   });
 
+  const familyDashboardQuery = useQuery({
+    queryKey: ["families", selectedFamilyId, "dashboard", "home-balance"],
+    queryFn: () => getFamilyDashboard(selectedFamilyId as number),
+    enabled: useFamilyFeed,
+    retry: false,
+  });
+
   const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
   const [quickAmount, setQuickAmount] = useState("");
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
+  const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
 
   const visibleTransactions = useMemo(() => {
     if (useFamilyFeed) {
@@ -133,6 +143,8 @@ export function DashboardPage() {
   const remainingIncome = Math.max(expectedIncomeTotal - receivedIncome, 0);
   const remainingExpense = plannedExpenseTotal - executedExpense;
   const forecastMonthLabel = getForecastMonthLabel(dashboard.data?.forecast.end_date);
+  const familyBalance = familyDashboardQuery.data?.balance;
+  const showFamilyBalanceSlide = useFamilyFeed && familyBalance !== undefined;
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -150,6 +162,7 @@ export function DashboardPage() {
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions", "dashboard"] }),
       ]);
     },
@@ -199,6 +212,33 @@ export function DashboardPage() {
     };
   }, [selectedCategory?.id]);
 
+  useEffect(() => {
+    setActiveBalanceSlide(0);
+    if (balanceCarouselRef.current) {
+      balanceCarouselRef.current.scrollTo({ left: 0, behavior: "auto" });
+    }
+  }, [showFamilyBalanceSlide, selectedFamilyId]);
+
+  useEffect(() => {
+    const node = balanceCarouselRef.current;
+    if (!node || !showFamilyBalanceSlide) {
+      return;
+    }
+
+    function syncActiveSlide() {
+      const track = balanceCarouselRef.current;
+      if (!track) {
+        return;
+      }
+      const nextIndex = track.scrollLeft > track.clientWidth * 0.5 ? 1 : 0;
+      setActiveBalanceSlide(nextIndex);
+    }
+
+    syncActiveSlide();
+    node.addEventListener("scroll", syncActiveSlide, { passive: true });
+    return () => node.removeEventListener("scroll", syncActiveSlide);
+  }, [showFamilyBalanceSlide]);
+
   function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setQuickError(null);
@@ -245,33 +285,81 @@ export function DashboardPage() {
 
       <main className="grid">
         <section className="panel panel-balance">
-          <p className="panel-label">Текущий баланс</p>
-          <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
-          <div className="stats-row">
-            <div>
-              <span>Доход за месяц (получено / план)</span>
-              <strong>
-                {dashboard.data
-                  ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
-                  : "—"}
-              </strong>
-              <p className="stat-note">
-                Еще поступит: {formatMoney(remainingIncome)}
-              </p>
+          <div className="balance-carousel" data-has-family-slide={showFamilyBalanceSlide ? "true" : "false"}>
+            <div className="balance-carousel-track" ref={balanceCarouselRef}>
+              <article className="balance-slide">
+                <p className="panel-label">Текущий баланс</p>
+                <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
+                <div className="stats-row">
+                  <div>
+                    <span>Доход за месяц (получено / план)</span>
+                    <strong>
+                      {dashboard.data
+                        ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
+                        : "—"}
+                    </strong>
+                    <p className="stat-note">
+                      Еще поступит: {formatMoney(remainingIncome)}
+                    </p>
+                  </div>
+                  <div>
+                    <span>Расход за месяц (потрачено / план)</span>
+                    <strong className={isExpenseOverPlan ? "money minus" : undefined}>
+                      {dashboard.data
+                        ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
+                        : "—"}
+                    </strong>
+                    <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
+                      {remainingExpense >= 0
+                        ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
+                        : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              {showFamilyBalanceSlide ? (
+                <article className="balance-slide">
+                  <p className="panel-label">Текущий баланс семьи</p>
+                  <h2>{formatMoney(familyBalance.main_balance)}</h2>
+                  <div className="stats-row">
+                    <div>
+                      <span>Доход семьи</span>
+                      <strong className="money plus">{formatMoney(familyBalance.income)}</strong>
+                      <p className="stat-note">
+                        Сумма по всем участникам семьи
+                      </p>
+                    </div>
+                    <div>
+                      <span>Расход семьи</span>
+                      <strong className="money minus">{formatMoney(familyBalance.expense)}</strong>
+                      <p className="stat-note">
+                        {familyDashboardQuery.data
+                          ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count} участ.`
+                          : "Семейный режим"}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ) : null}
             </div>
-            <div>
-              <span>Расход за месяц (потрачено / план)</span>
-              <strong className={isExpenseOverPlan ? "money minus" : undefined}>
-                {dashboard.data
-                  ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
-                  : "—"}
-              </strong>
-              <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
-                {remainingExpense >= 0
-                  ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
-                  : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
-              </p>
-            </div>
+
+            {showFamilyBalanceSlide ? (
+              <div className="balance-carousel-nav" aria-label="Переключение карточек баланса">
+                <button
+                  aria-label="Личный баланс"
+                  className={activeBalanceSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                  onClick={() => balanceCarouselRef.current?.scrollTo({ left: 0, behavior: "smooth" })}
+                  type="button"
+                />
+                <button
+                  aria-label="Баланс семьи"
+                  className={activeBalanceSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                  onClick={() => balanceCarouselRef.current?.scrollTo({ left: balanceCarouselRef.current.clientWidth, behavior: "smooth" })}
+                  type="button"
+                />
+              </div>
+            ) : null}
           </div>
         </section>
 

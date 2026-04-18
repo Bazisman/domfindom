@@ -336,6 +336,63 @@ body {
   background: linear-gradient(160deg, rgba(255,255,255,0.9), rgba(230,246,239,0.95));
 }
 
+.balance-carousel {
+  display: grid;
+  gap: 14px;
+}
+
+.balance-carousel-track {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-x;
+}
+
+.balance-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.balance-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.balance-carousel-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.balance-carousel-dot {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(29, 42, 35, 0.18);
+  cursor: pointer;
+  transition:
+    transform var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.balance-carousel-dot.active {
+  background: var(--active-bg);
+  transform: scale(1.1);
+}
+
+[data-theme="dark"] .balance-carousel-dot {
+  background: rgba(230, 237, 243, 0.24);
+}
+
+[data-theme="dark"] .balance-carousel-dot.active {
+  background: rgba(123, 203, 166, 0.92);
+}
+
 .panel h2,
 .panel h3 {
   margin: 10px 0 0;
