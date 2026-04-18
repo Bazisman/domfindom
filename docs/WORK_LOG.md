@@ -16,10 +16,13 @@
 
 - В web-версии реализована сверка денег по мотивам старой desktop-логики: отдельные источники фактических денег, итог, разница, история сверок и автоматическая корректирующая транзакция `Корректировка` при расхождении.
 - Для сверки добавлен backend API и встроенная панель в верхней части страницы `Транзакции`, чтобы сценарий жил рядом с операциями, как и в старой версии.
+- Сверка выложена на `domfindom.ru`: коммит отправлен в `origin/main`, свежий `frontend/dist` загружен на сервер, выполнен restart через `tmp/restart.txt`.
 - Проверено:
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_reconciliation_flow_creates_adjustment_transaction -v`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_account_preferences_can_be_read_and_updated -v`
   - `python tools/check_encoding.py --root .`
   - `npm run build`
+  - `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`
 
 - На мобильной версии нижняя навигация переведена в более жесткий app-bar сценарий: фиксирована по нижнему краю экрана на всю ширину, без эффекта отдельной плавающей карточки поверх страницы.
 - Для мобильного layout добавлена безопасная нижняя зона под контент и мобильные панели, чтобы вкладки, уведомления и кнопки не уходили под нижнее меню.
