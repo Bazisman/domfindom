@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -38,6 +38,8 @@ export function RecurringPage() {
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
   const [form, setForm] = useState(getInitialForm);
   const [formError, setFormError] = useState<string | null>(null);
+  const formPanelRef = useRef<HTMLElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const categories = useQuery({
     queryKey: ["categories"],
@@ -116,6 +118,16 @@ export function RecurringPage() {
     setFormError(null);
   }
 
+  function moveToEditForm() {
+    requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        nameInputRef.current?.focus();
+        nameInputRef.current?.select();
+      }, 180);
+    });
+  }
+
   function startEdit(templateId: number) {
     const template = recurringTemplates.data?.find((item) => item.id === templateId);
     if (!template) {
@@ -134,6 +146,7 @@ export function RecurringPage() {
       workingDaysOnly: template.working_days_only,
     });
     setFormError(null);
+    moveToEditForm();
   }
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
@@ -183,12 +196,21 @@ export function RecurringPage() {
 
   return (
     <main className="categories-layout">
-      <section className="panel panel-form">
+      <section
+        className={editingTemplateId !== null ? "panel panel-form editing-panel" : "panel panel-form"}
+        ref={formPanelRef}
+      >
         <div className="panel-header">
           <h2>{editingTemplateId ? "Редактирование шаблона" : "Новая регулярная операция"}</h2>
         </div>
 
         <form className="transaction-form" onSubmit={submitForm}>
+          {editingTemplateId !== null && (
+            <div className="editing-banner" role="status">
+              <strong>Сейчас редактируется:</strong> {form.name || "шаблон"}
+            </div>
+          )}
+
           <div className="toggle-row">
             <button
               className={form.type === "expense" ? "toggle active" : "toggle"}
@@ -209,6 +231,7 @@ export function RecurringPage() {
           <label className="field">
             <span>Название</span>
             <input
+              ref={nameInputRef}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
               placeholder="Например, Зарплата или Ипотека"
               value={form.name}

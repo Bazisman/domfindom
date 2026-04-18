@@ -834,6 +834,26 @@ body {
   position: static;
 }
 
+.editing-panel {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.editing-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+.editing-banner strong {
+  color: var(--accent);
+}
+
 .accounts-summary-grid {
   gap: 16px;
   margin-top: 18px;
