@@ -5,7 +5,9 @@ import {
   createAccount,
   createTransfer,
   deleteAccount,
+  getAccountPreferences,
   getAccounts,
+  getFamilyDashboard,
   getMe,
   getMyFamilies,
   getSettings,
@@ -106,10 +108,27 @@ export function AccountsPage() {
     refetchOnMount: "always",
   });
 
+  const preferences = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
+    enabled: isReady,
+    retry: 2,
+    refetchOnMount: "always",
+  });
+
   const accountsError = accounts.error instanceof Error ? accounts.error.message : null;
   const transfersError = transfers.error instanceof Error ? transfers.error.message : null;
   const isAccountsPending = me.isPending || (isReady && accounts.isPending);
   const isTransfersPending = me.isPending || (isReady && transfers.isPending);
+  const selectedFamilyId = families.data?.families?.[0]?.id ?? null;
+
+  const familyDashboard = useQuery({
+    queryKey: ["families", selectedFamilyId, "dashboard", "accounts-page"],
+    queryFn: () => getFamilyDashboard(selectedFamilyId as number),
+    enabled: isReady && selectedFamilyId !== null && preferences.data?.workspace_mode === "family",
+    retry: 2,
+    refetchOnMount: "always",
+  });
 
   const capitalAccounts = useMemo(
     () => (accounts.data ?? []).filter((item) => item.type === "capital"),
@@ -132,6 +151,20 @@ export function AccountsPage() {
   );
 
   const hasFamily = Boolean((families.data?.families ?? []).length);
+  const familyTarget = useMemo(() => {
+    const target = familyDashboard.data?.current_member_capital_target;
+    if (!target?.target_owner_user_id || !target?.target_capital_account_id) {
+      return null;
+    }
+    return (
+      familyDashboard.data?.capital_accounts.find(
+        (item) =>
+          item.owner_user_id === target.target_owner_user_id &&
+          item.capital_account_id === target.target_capital_account_id,
+      ) ?? null
+    );
+  }, [familyDashboard.data]);
+  const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
 
   useEffect(() => {
     if (!settings.data) {
@@ -482,11 +515,16 @@ export function AccountsPage() {
             </label>
 
             <p className="muted">
-              Деньги будут уходить на счёт капитала по умолчанию: <strong>{defaultCapitalAccountName}</strong>.
+              Деньги будут уходить на счёт капитала по умолчанию: <strong>{familyTarget?.name ?? defaultCapitalAccountName}</strong>.
             </p>
 
             {hasFamily ? (
               <p className="muted">Семейные счета и цель для семейных отчислений можно настроить в разделе семьи.</p>
+            ) : null}
+            {familyTarget ? (
+              <p className="muted">
+                В режиме семьи автоотчисления идут в семейный счёт: <strong>{familyTarget.name}</strong>.
+              </p>
             ) : null}
             {settingsError && <p className="form-error">{settingsError}</p>}
             {!settingsError && !updateSettingsMutation.isPending && settingsSavedNotice && (
@@ -662,6 +700,42 @@ export function AccountsPage() {
       </section>
 
       <section className="accounts-main">
+        {!!familyVisibleAccounts.length && (
+          <section className="panel panel-list">
+            <div className="panel-header">
+              <h2>Семейные счета капитала</h2>
+            </div>
+
+            <div className="category-card-grid">
+              {familyVisibleAccounts.map((account) => {
+                const ownerLabel = account.owner_display_name || account.owner_email || "Семья";
+                const isTarget =
+                  familyTarget?.owner_user_id === account.owner_user_id &&
+                  familyTarget?.capital_account_id === account.capital_account_id;
+
+                return (
+                  <article className="account-card" key={`${account.owner_user_id}:${account.capital_account_id}`}>
+                    <div className="category-card-main">
+                      <span
+                        aria-hidden="true"
+                        className="category-dot"
+                        style={{ backgroundColor: account.color ?? "#5f6b76" }}
+                      />
+                      <div>
+                        <strong>{account.name}</strong>
+                        <p>{isTarget ? `Цель семейных отчислений · ${ownerLabel}` : `Семейный счет · ${ownerLabel}`}</p>
+                      </div>
+                    </div>
+                    <div className="account-balance">
+                      <strong>{formatMoney(account.balance)}</strong>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <section className="panel panel-list">
           <div className="panel-header">
             <h2>Мои деньги</h2>

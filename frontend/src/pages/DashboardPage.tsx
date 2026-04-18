@@ -244,7 +244,7 @@ export function DashboardPage() {
       return false;
     }
 
-    const [latestSettings, latestAccounts] = await Promise.all([
+    const [latestSettings, latestAccounts, latestPreferences, latestFamilies] = await Promise.all([
       queryClient.fetchQuery({
         queryKey: ["settings"],
         queryFn: getSettings,
@@ -252,6 +252,14 @@ export function DashboardPage() {
       queryClient.fetchQuery({
         queryKey: ["accounts"],
         queryFn: getAccounts,
+      }),
+      queryClient.fetchQuery({
+        queryKey: ["account", "preferences"],
+        queryFn: getAccountPreferences,
+      }),
+      queryClient.fetchQuery({
+        queryKey: ["families", "me"],
+        queryFn: getMyFamilies,
       }),
     ]);
 
@@ -262,7 +270,33 @@ export function DashboardPage() {
       latestCapitalAccounts.find((item) => item.is_default) ??
       null;
 
-    if (!latestAutoCapitalEnabled || latestDefaultCapitalAccount) {
+    if (!latestAutoCapitalEnabled) {
+      return false;
+    }
+
+    const latestFamilyId = latestFamilies.families?.[0]?.id ?? null;
+    if (latestPreferences.workspace_mode === "family" && latestFamilyId !== null) {
+      const latestFamilyDashboard = await queryClient.fetchQuery({
+        queryKey: ["families", latestFamilyId, "dashboard"],
+        queryFn: () => getFamilyDashboard(latestFamilyId),
+      });
+      const target = latestFamilyDashboard.current_member_capital_target;
+      const hasFamilyTarget = Boolean(
+        target.target_owner_user_id &&
+          target.target_capital_account_id &&
+          latestFamilyDashboard.capital_accounts.some(
+            (item) =>
+              item.owner_user_id === target.target_owner_user_id &&
+              item.capital_account_id === target.target_capital_account_id &&
+              item.is_visible,
+          ),
+      );
+      if (hasFamilyTarget) {
+        return false;
+      }
+    }
+
+    if (latestDefaultCapitalAccount) {
       return false;
     }
 
