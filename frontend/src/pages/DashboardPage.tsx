@@ -332,33 +332,60 @@ export function DashboardPage() {
     const nextIndex = Math.round(track.scrollLeft / slideWidth);
     const startLeft = track.scrollLeft;
     const targetLeft = nextIndex * slideWidth;
-    const duration = 460;
+    const delta = targetLeft - startLeft;
+    const direction = delta === 0 ? 0 : delta > 0 ? 1 : -1;
+    const needsOvershoot = direction !== 0 && Math.abs(delta) < 72;
+    const overshootLeft = needsOvershoot ? targetLeft + direction * 28 : targetLeft;
+    const firstPhaseDuration = needsOvershoot ? 320 : 720;
+    const secondPhaseDuration = needsOvershoot ? 320 : 0;
     const settleTrack = track;
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
     }
     balanceSettleStartRef.current = null;
 
-    function animateSettle(timestamp: number) {
+    function animateBetween(
+      fromLeft: number,
+      toLeft: number,
+      duration: number,
+      timestamp: number,
+      onComplete?: () => void,
+    ) {
       if (balanceSettleStartRef.current === null) {
         balanceSettleStartRef.current = timestamp;
       }
       const elapsed = timestamp - balanceSettleStartRef.current;
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      settleTrack.scrollLeft = startLeft + (targetLeft - startLeft) * eased;
+      settleTrack.scrollLeft = fromLeft + (toLeft - fromLeft) * eased;
 
       if (progress < 1) {
-        balanceSettleFrameRef.current = window.requestAnimationFrame(animateSettle);
+        balanceSettleFrameRef.current = window.requestAnimationFrame((nextTimestamp) => {
+          animateBetween(fromLeft, toLeft, duration, nextTimestamp, onComplete);
+        });
         return;
       }
 
-      settleTrack.scrollLeft = targetLeft;
-      balanceSettleFrameRef.current = null;
+      settleTrack.scrollLeft = toLeft;
       balanceSettleStartRef.current = null;
+      if (onComplete) {
+        onComplete();
+        return;
+      }
+      balanceSettleFrameRef.current = null;
     }
 
-    balanceSettleFrameRef.current = window.requestAnimationFrame(animateSettle);
+    balanceSettleFrameRef.current = window.requestAnimationFrame((timestamp) => {
+      animateBetween(startLeft, overshootLeft, firstPhaseDuration, timestamp, () => {
+        if (!needsOvershoot) {
+          balanceSettleFrameRef.current = null;
+          return;
+        }
+        balanceSettleFrameRef.current = window.requestAnimationFrame((nextTimestamp) => {
+          animateBetween(overshootLeft, targetLeft, secondPhaseDuration, nextTimestamp);
+        });
+      });
+    });
   }
 
   return (
