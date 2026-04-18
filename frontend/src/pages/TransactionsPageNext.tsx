@@ -8,18 +8,24 @@ import {
 
 import {
   applyReconciliation,
+  createAccount,
   createReconciliationSource,
   createTransaction,
   deleteReconciliationSource,
   deleteTransaction,
+  getAccounts,
   getCategories,
   getReconciliationSummary,
+  getSettings,
   getTransactions,
+  updateAccount,
   updateReconciliationSource,
+  updateSettings,
   type ReconciliationHistoryItem,
   type TransactionPeriod,
   type TransactionType,
 } from "../lib/api";
+import { AutoCapitalSetupModal } from "../lib/AutoCapitalSetupModal";
 import { evaluateAmountExpression } from "../lib/amountExpression";
 
 const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
@@ -72,10 +78,26 @@ export function TransactionsPageNext() {
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
   const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
   const [sourceDrafts, setSourceDrafts] = useState<Record<number, { name: string; balance: string }>>({});
+  const [pendingIncomePayload, setPendingIncomePayload] = useState<Parameters<typeof createTransaction>[0] | null>(null);
+  const [autoCapitalModalOpen, setAutoCapitalModalOpen] = useState(false);
+  const [autoCapitalAccountName, setAutoCapitalAccountName] = useState("Копилка");
+  const [autoCapitalDontAskAgain, setAutoCapitalDontAskAgain] = useState(false);
+  const [autoCapitalError, setAutoCapitalError] = useState<string | null>(null);
+  const [autoCapitalBusy, setAutoCapitalBusy] = useState(false);
 
   const categories = useQuery({
     queryKey: ["categories"],
     queryFn: getCategories,
+  });
+
+  const accounts = useQuery({
+    queryKey: ["accounts"],
+    queryFn: getAccounts,
+  });
+
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
   });
 
   const reconciliationSummary = useQuery({
@@ -96,6 +118,12 @@ export function TransactionsPageNext() {
   const selectedCategoryName = useMemo(() => {
     return filteredCategories.find((item) => String(item.id) === categoryId)?.name ?? "";
   }, [categoryId, filteredCategories]);
+
+  const defaultCapitalAccount = useMemo(() => {
+    const capitalAccounts = (accounts.data ?? []).filter((item) => item.type === "capital" && item.is_active);
+    const defaultAccountId = settings.data?.default_capital_account_id ?? null;
+    return capitalAccounts.find((item) => item.id === defaultAccountId) ?? capitalAccounts.find((item) => item.is_default) ?? null;
+  }, [accounts.data, settings.data?.default_capital_account_id]);
 
   const recurringSuggestedName = useMemo(() => {
     return comment.trim() || selectedCategoryName;
@@ -224,6 +252,98 @@ export function TransactionsPageNext() {
     },
   });
 
+  const autoCapitalEnabled = Boolean(settings.data?.auto_capital_enabled && (settings.data?.auto_capital_percent ?? 0) > 0);
+
+  function resetAutoCapitalModal() {
+    setAutoCapitalModalOpen(false);
+    setPendingIncomePayload(null);
+    setAutoCapitalAccountName("Копилка");
+    setAutoCapitalDontAskAgain(false);
+    setAutoCapitalError(null);
+    setAutoCapitalBusy(false);
+  }
+
+  function maybeInterceptIncomeSubmission(payload: Parameters<typeof createTransaction>[0]) {
+    if (payload.type !== "income" || !autoCapitalEnabled || defaultCapitalAccount) {
+      return false;
+    }
+
+    setPendingIncomePayload(payload);
+    setAutoCapitalModalOpen(true);
+    setAutoCapitalAccountName("Копилка");
+    setAutoCapitalDontAskAgain(false);
+    setAutoCapitalError(null);
+    return true;
+  }
+
+  async function handleAutoCapitalSkip() {
+    if (!pendingIncomePayload) {
+      resetAutoCapitalModal();
+      return;
+    }
+
+    setAutoCapitalBusy(true);
+    setAutoCapitalError(null);
+
+    try {
+      if (autoCapitalDontAskAgain) {
+        await updateSettings({
+          auto_capital_enabled: false,
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["settings"] }),
+          queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        ]);
+      }
+
+      await createMutation.mutateAsync({
+        ...pendingIncomePayload,
+        auto_capital_percent: 0,
+        capital_account_id: undefined,
+      });
+      resetAutoCapitalModal();
+    } catch (error) {
+      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось сохранить доход без автоотчислений.");
+      setAutoCapitalBusy(false);
+    }
+  }
+
+  async function handleAutoCapitalCreateNow() {
+    if (!pendingIncomePayload) {
+      resetAutoCapitalModal();
+      return;
+    }
+
+    const accountName = autoCapitalAccountName.trim();
+    if (!accountName) {
+      setAutoCapitalError("Укажите название счета для автоотчислений.");
+      return;
+    }
+
+    setAutoCapitalBusy(true);
+    setAutoCapitalError(null);
+
+    try {
+      const createdAccount = await createAccount({
+        name: accountName,
+      });
+      await updateAccount(createdAccount.id, { is_default: true });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      ]);
+
+      await createMutation.mutateAsync({
+        ...pendingIncomePayload,
+        capital_account_id: createdAccount.id,
+      });
+      resetAutoCapitalModal();
+    } catch (error) {
+      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось создать счет для автоотчислений.");
+      setAutoCapitalBusy(false);
+    }
+  }
+
   const reconciliationDifference = reconciliationSummary.data?.difference ?? 0;
   const reconciliationDifferenceText =
     reconciliationDifference > 0
@@ -328,12 +448,14 @@ export function TransactionsPageNext() {
     const dayOfMonth = Number(date.split("-")[2] || "1");
     const templateName = recurringName.trim() || recurringSuggestedName;
 
-    createMutation.mutate({
+    const payload: Parameters<typeof createTransaction>[0] = {
       type,
       category_id: Number(categoryId),
       amount: normalizedAmount,
       comment,
       date,
+      auto_capital_percent: type === "income" && autoCapitalEnabled ? settings.data?.auto_capital_percent : undefined,
+      capital_account_id: type === "income" ? defaultCapitalAccount?.id : undefined,
       recurring: isRecurring
         ? {
             enabled: true,
@@ -343,11 +465,30 @@ export function TransactionsPageNext() {
             working_days_only: recurringWorkingDaysOnly,
           }
         : undefined,
-    });
+    };
+
+    if (maybeInterceptIncomeSubmission(payload)) {
+      return;
+    }
+
+    createMutation.mutate(payload);
   }
 
   return (
     <main className="page-stack transactions-page-stack">
+      <AutoCapitalSetupModal
+        accountName={autoCapitalAccountName}
+        busy={autoCapitalBusy || createMutation.isPending}
+        dontAskAgain={autoCapitalDontAskAgain}
+        error={autoCapitalError}
+        onAccountNameChange={setAutoCapitalAccountName}
+        onClose={resetAutoCapitalModal}
+        onCreateNow={() => void handleAutoCapitalCreateNow()}
+        onDontAskAgainChange={setAutoCapitalDontAskAgain}
+        onSkip={() => void handleAutoCapitalSkip()}
+        open={autoCapitalModalOpen}
+        percent={settings.data?.auto_capital_percent ?? 0}
+      />
       <div className="transactions-layout transactions-layout-stack">
         <section className="panel panel-form">
         <div className="panel-header">

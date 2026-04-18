@@ -3,13 +3,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   getAccountPreferences,
+  createAccount,
   createTransaction,
+  getAccounts,
   getCategories,
   getDashboard,
   getFamilyDashboard,
   getFamilyTransactions,
+  getSettings,
   getMyFamilies,
+  updateAccount,
+  updateSettings,
 } from "../lib/api";
+import { AutoCapitalSetupModal } from "../lib/AutoCapitalSetupModal";
 import { evaluateAmountExpression } from "../lib/amountExpression";
 
 type RecentFeedItem = {
@@ -78,6 +84,16 @@ export function DashboardPage() {
     queryFn: getCategories,
   });
 
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: getAccounts,
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+  });
+
   const familiesQuery = useQuery({
     queryKey: ["families", "me"],
     queryFn: getMyFamilies,
@@ -117,6 +133,12 @@ export function DashboardPage() {
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
   const [quickError, setQuickError] = useState<string | null>(null);
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
+  const [pendingIncomePayload, setPendingIncomePayload] = useState<Parameters<typeof createTransaction>[0] | null>(null);
+  const [autoCapitalModalOpen, setAutoCapitalModalOpen] = useState(false);
+  const [autoCapitalAccountName, setAutoCapitalAccountName] = useState("Копилка");
+  const [autoCapitalDontAskAgain, setAutoCapitalDontAskAgain] = useState(false);
+  const [autoCapitalError, setAutoCapitalError] = useState<string | null>(null);
+  const [autoCapitalBusy, setAutoCapitalBusy] = useState(false);
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
   const [isBalanceDragging, setIsBalanceDragging] = useState(false);
   const [balanceDragOffset, setBalanceDragOffset] = useState(0);
@@ -179,6 +201,12 @@ export function DashboardPage() {
     [categories.data, quickCategoryId],
   );
 
+  const defaultCapitalAccount = useMemo(() => {
+    const capitalAccounts = (accountsQuery.data ?? []).filter((item) => item.type === "capital" && item.is_active);
+    const defaultAccountId = settingsQuery.data?.default_capital_account_id ?? null;
+    return capitalAccounts.find((item) => item.id === defaultAccountId) ?? capitalAccounts.find((item) => item.is_default) ?? null;
+  }, [accountsQuery.data, settingsQuery.data?.default_capital_account_id]);
+
   const quickEntryMutation = useMutation({
     mutationFn: createTransaction,
     onSuccess: async () => {
@@ -199,6 +227,98 @@ export function DashboardPage() {
       setQuickError(error.message);
     },
   });
+
+  const autoCapitalEnabled = Boolean(settingsQuery.data?.auto_capital_enabled && (settingsQuery.data?.auto_capital_percent ?? 0) > 0);
+
+  function resetAutoCapitalModal() {
+    setAutoCapitalModalOpen(false);
+    setPendingIncomePayload(null);
+    setAutoCapitalAccountName("Копилка");
+    setAutoCapitalDontAskAgain(false);
+    setAutoCapitalError(null);
+    setAutoCapitalBusy(false);
+  }
+
+  function maybeInterceptIncomeSubmission(payload: Parameters<typeof createTransaction>[0]) {
+    if (payload.type !== "income" || !autoCapitalEnabled || defaultCapitalAccount) {
+      return false;
+    }
+
+    setPendingIncomePayload(payload);
+    setAutoCapitalModalOpen(true);
+    setAutoCapitalAccountName("Копилка");
+    setAutoCapitalDontAskAgain(false);
+    setAutoCapitalError(null);
+    return true;
+  }
+
+  async function handleAutoCapitalSkip() {
+    if (!pendingIncomePayload) {
+      resetAutoCapitalModal();
+      return;
+    }
+
+    setAutoCapitalBusy(true);
+    setAutoCapitalError(null);
+
+    try {
+      if (autoCapitalDontAskAgain) {
+        await updateSettings({
+          auto_capital_enabled: false,
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["settings"] }),
+          queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        ]);
+      }
+
+      await quickEntryMutation.mutateAsync({
+        ...pendingIncomePayload,
+        auto_capital_percent: 0,
+        capital_account_id: undefined,
+      });
+      resetAutoCapitalModal();
+    } catch (error) {
+      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось сохранить доход без автоотчислений.");
+      setAutoCapitalBusy(false);
+    }
+  }
+
+  async function handleAutoCapitalCreateNow() {
+    if (!pendingIncomePayload) {
+      resetAutoCapitalModal();
+      return;
+    }
+
+    const accountName = autoCapitalAccountName.trim();
+    if (!accountName) {
+      setAutoCapitalError("Укажите название счета для автоотчислений.");
+      return;
+    }
+
+    setAutoCapitalBusy(true);
+    setAutoCapitalError(null);
+
+    try {
+      const createdAccount = await createAccount({
+        name: accountName,
+      });
+      await updateAccount(createdAccount.id, { is_default: true });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      ]);
+
+      await quickEntryMutation.mutateAsync({
+        ...pendingIncomePayload,
+        capital_account_id: createdAccount.id,
+      });
+      resetAutoCapitalModal();
+    } catch (error) {
+      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось создать счет для автоотчислений.");
+      setAutoCapitalBusy(false);
+    }
+  }
 
   function handleCategoryClick(categoryId: number) {
     const clickedCategory = categories.data?.find((item) => item.id === categoryId);
@@ -326,13 +446,21 @@ export function DashboardPage() {
           : "expense";
     const today = new Date().toISOString().slice(0, 10);
 
-    quickEntryMutation.mutate({
+    const payload: Parameters<typeof createTransaction>[0] = {
       type: transactionType,
       category_id: selectedCategory.id,
       amount,
       comment: `Быстрый ввод: ${selectedCategory.name}`,
       date: today,
-    });
+      auto_capital_percent: transactionType === "income" && autoCapitalEnabled ? settingsQuery.data?.auto_capital_percent : undefined,
+      capital_account_id: transactionType === "income" ? defaultCapitalAccount?.id : undefined,
+    };
+
+    if (maybeInterceptIncomeSubmission(payload)) {
+      return;
+    }
+
+    quickEntryMutation.mutate(payload);
   }
 
   function handleBalancePointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -517,6 +645,20 @@ export function DashboardPage() {
           </p>
         </div>
       </header>
+
+      <AutoCapitalSetupModal
+        accountName={autoCapitalAccountName}
+        busy={autoCapitalBusy || quickEntryMutation.isPending}
+        dontAskAgain={autoCapitalDontAskAgain}
+        error={autoCapitalError}
+        onAccountNameChange={setAutoCapitalAccountName}
+        onClose={resetAutoCapitalModal}
+        onCreateNow={() => void handleAutoCapitalCreateNow()}
+        onDontAskAgainChange={setAutoCapitalDontAskAgain}
+        onSkip={() => void handleAutoCapitalSkip()}
+        open={autoCapitalModalOpen}
+        percent={settingsQuery.data?.auto_capital_percent ?? 0}
+      />
 
       <main className="grid">
         <section className="panel panel-balance">
