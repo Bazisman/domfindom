@@ -428,7 +428,6 @@ export function TransactionsPageNext() {
             );
           })}
 
-          {reconciliationSummary.isLoading && <p className="empty">Загружаем источники фактических денег...</p>}
           {!reconciliationSummary.isLoading && !reconciliationSummary.data?.sources.length && (
             <p className="empty">Добавьте источники фактических денег для сверки: наличные, карты, счета в банке.</p>
           )}
@@ -454,7 +453,6 @@ export function TransactionsPageNext() {
           </div>
           <div className="reconciliation-history-list">
             {(reconciliationSummary.data?.history ?? []).map(renderHistoryItem)}
-            {reconciliationSummary.isLoading && <p className="empty">Загружаем историю сверок...</p>}
             {!reconciliationSummary.isLoading && !reconciliationSummary.data?.history.length && (
               <p className="empty">История сверок появится после первого сохранения.</p>
             )}
