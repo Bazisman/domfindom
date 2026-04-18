@@ -10,6 +10,7 @@ import {
   getFamilyTransactions,
   getMyFamilies,
 } from "../lib/api";
+import { evaluateAmountExpression } from "../lib/amountExpression";
 
 type RecentFeedItem = {
   id: number;
@@ -311,8 +312,8 @@ export function DashboardPage() {
       return;
     }
 
-    const amount = Number(quickAmount.replace(",", "."));
-    if (!amount || amount <= 0) {
+    const amount = evaluateAmountExpression(quickAmount);
+    if (amount === null || amount <= 0) {
       setQuickError("Укажи сумму больше нуля.");
       return;
     }

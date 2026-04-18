@@ -14,6 +14,7 @@ import {
   type TransactionPeriod,
   type TransactionType,
 } from "../lib/api";
+import { evaluateAmountExpression } from "../lib/amountExpression";
 
 const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
   { value: "all", label: "Все" },
@@ -109,12 +110,12 @@ export function TransactionsPage() {
     event.preventDefault();
     setFormError(null);
 
-    const normalizedAmount = Number(amount.replace(",", "."));
+    const normalizedAmount = evaluateAmountExpression(amount);
     if (!categoryId) {
       setFormError("Выбери категорию.");
       return;
     }
-    if (!normalizedAmount || normalizedAmount <= 0) {
+    if (normalizedAmount === null || normalizedAmount <= 0) {
       setFormError("Укажи сумму больше нуля.");
       return;
     }
