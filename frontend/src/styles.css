@@ -486,6 +486,15 @@ body {
   grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
 }
 
+.transactions-layout-stack {
+  grid-template-columns: 1fr;
+}
+
+.transactions-page-stack > .panel,
+.transactions-page-stack > .transactions-layout-stack {
+  grid-column: 1 / -1;
+}
+
 .page-stack {
   display: grid;
   gap: 20px;

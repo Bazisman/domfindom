@@ -346,7 +346,7 @@ export function TransactionsPageNext() {
   }
 
   return (
-    <main className="page-stack">
+    <main className="page-stack transactions-page-stack">
       <section className="panel reconciliation-panel">
         <div className="panel-header">
           <h2>Сверка денег</h2>
@@ -460,7 +460,7 @@ export function TransactionsPageNext() {
         </div>
       </section>
 
-      <div className="transactions-layout">
+      <div className="transactions-layout transactions-layout-stack">
         <section className="panel panel-form">
         <div className="panel-header">
           <h2>Новая транзакция</h2>
