@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -18,7 +18,7 @@ class TransactionResponse(BaseModel):
 
 
 class TransactionPageResponse(BaseModel):
-    items: list[TransactionResponse]
+    items: List[TransactionResponse]
     limit: int
     offset: int
     total: int
