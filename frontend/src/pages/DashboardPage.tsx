@@ -141,6 +141,7 @@ export function DashboardPage() {
   const [autoCapitalError, setAutoCapitalError] = useState<string | null>(null);
   const [autoCapitalBusy, setAutoCapitalBusy] = useState(false);
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
+  const [indicatorBalanceSlide, setIndicatorBalanceSlide] = useState(0);
   const [isBalanceDragging, setIsBalanceDragging] = useState(false);
   const [balanceDragOffset, setBalanceDragOffset] = useState(0);
 
@@ -394,6 +395,7 @@ export function DashboardPage() {
     balanceSettleStartRef.current = null;
     balanceDragStateRef.current = null;
     setActiveBalanceSlide(0);
+    setIndicatorBalanceSlide(0);
     balanceLogicalIndexRef.current = 0;
     setBalanceDragOffset(0);
   }, [selectedFamilyId, showFamilyBalanceSlide]);
@@ -458,6 +460,9 @@ export function DashboardPage() {
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
       balanceSettleFrameRef.current = null;
+      setActiveBalanceSlide(indicatorBalanceSlide);
+      balanceLogicalIndexRef.current = indicatorBalanceSlide;
+      setBalanceDragOffset(0);
     }
     balanceSettleStartRef.current = null;
     balanceDragStateRef.current = {
@@ -498,10 +503,10 @@ export function DashboardPage() {
     const width = viewport.clientWidth || 1;
     const startOffset = balanceDragOffset;
     const targetOffset = direction === 0 ? 0 : direction > 0 ? -width : width;
+    const nextIndex =
+      direction === 0 ? balanceLogicalIndexRef.current : normalizeCarouselIndex(balanceLogicalIndexRef.current + direction, 2);
     if (direction !== 0) {
-      const nextIndex = normalizeCarouselIndex(balanceLogicalIndexRef.current + direction, 2);
-      balanceLogicalIndexRef.current = nextIndex;
-      setActiveBalanceSlide(nextIndex);
+      setIndicatorBalanceSlide(nextIndex);
     }
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
@@ -522,6 +527,9 @@ export function DashboardPage() {
         return;
       }
 
+      balanceLogicalIndexRef.current = nextIndex;
+      setActiveBalanceSlide(nextIndex);
+      setIndicatorBalanceSlide(nextIndex);
       setBalanceDragOffset(0);
       balanceSettleFrameRef.current = null;
       balanceSettleStartRef.current = null;
@@ -669,13 +677,13 @@ export function DashboardPage() {
               <div className="balance-carousel-nav" aria-label="Переключение карточек баланса">
                 <button
                   aria-label="Личный баланс"
-                  className={activeBalanceSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                  className={indicatorBalanceSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                   onClick={() => handleBalanceDotClick(0)}
                   type="button"
                 />
                 <button
                   aria-label="Баланс семьи"
-                  className={activeBalanceSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                  className={indicatorBalanceSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                   onClick={() => handleBalanceDotClick(1)}
                   type="button"
                 />
