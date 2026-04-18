@@ -7,21 +7,26 @@ from contextvars import ContextVar
 DB_NAME = os.getenv("FINANCE_APP_DB_NAME", "finance.db")
 _DB_NAME_CONTEXT: ContextVar[str] = ContextVar("finance_db_name", default=DB_NAME)
 
-_cache = {
-    "balance": {"data": None, "timestamp": 0},
-    "categories": {"data": None, "timestamp": 0},
-    "capital_accounts": {"data": None, "timestamp": 0},
-    "total_capital": {"data": None, "timestamp": 0},
-    "category_list": {"data": None, "timestamp": 0},
-}
+_cache = {}
 
 _CACHE_TTL = 2
 _CACHE_TTL_LONG = 60
 
 
+def _current_db_name() -> str:
+    return _DB_NAME_CONTEXT.get()
+
+
+def _scoped_cache_key(key: str) -> str:
+    return f"{_current_db_name()}::{key}"
+
+
 def _get_cached(key, fetch_func, force_update=False, ttl=_CACHE_TTL):
     now = time.time()
-    cached = _cache[key]
+    scoped_key = _scoped_cache_key(key)
+    if scoped_key not in _cache:
+        _cache[scoped_key] = {"data": None, "timestamp": 0}
+    cached = _cache[scoped_key]
     if force_update or now - cached["timestamp"] > ttl or cached["data"] is None:
         cached["data"] = fetch_func()
         cached["timestamp"] = now
@@ -29,11 +34,15 @@ def _get_cached(key, fetch_func, force_update=False, ttl=_CACHE_TTL):
 
 
 def _invalidate_cache(key=None):
+    db_prefix = f"{_current_db_name()}::"
     if key:
-        _cache[key]["timestamp"] = 0
+        scoped_key = _scoped_cache_key(key)
+        if scoped_key in _cache:
+            _cache[scoped_key]["timestamp"] = 0
         return
-    for cache_key in _cache:
-        _cache[cache_key]["timestamp"] = 0
+    for cache_key in list(_cache.keys()):
+        if cache_key.startswith(db_prefix):
+            _cache[cache_key]["timestamp"] = 0
 
 
 def get_connection():

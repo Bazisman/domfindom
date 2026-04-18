@@ -22,14 +22,12 @@ def get_all_categories(
             return cursor.fetchall()
 
     cache_key = f"categories_{trans_type}_{include_inactive}"
-    if cache_key not in cache:
-        cache[cache_key] = {"data": None, "timestamp": 0}
     return get_cached_fn(cache_key, fetch_categories, ttl=cache_ttl_long)
 
 
 def invalidate_category_cache(cache):
     for key in list(cache.keys()):
-        if key.startswith("categories_"):
+        if key.split("::", 1)[-1].startswith("categories_"):
             cache[key]["timestamp"] = 0
 
 

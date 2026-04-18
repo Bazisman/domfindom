@@ -732,6 +732,96 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_personal_accounts_and_dashboard_do_not_leak_between_family_members(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "РЎРµРјСЊСЏ С‡СѓР¶РёРµ СЃС‡РµС‚Р°"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"accounts-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+
+        self.assertEqual(
+            self.client.post(
+                "/api/v1/transactions",
+                json={
+                    "type": "income",
+                    "category_name": income_category,
+                    "amount": 1000.0,
+                    "comment": "Owner personal income",
+                    "date": "2026-04-18",
+                },
+            ).status_code,
+            201,
+        )
+        self.assertEqual(
+            second_client.post(
+                "/api/v1/transactions",
+                json={
+                    "type": "income",
+                    "category_name": income_category,
+                    "amount": 500.0,
+                    "comment": "Member personal income",
+                    "date": "2026-04-18",
+                },
+            ).status_code,
+            201,
+        )
+
+        owner_capital = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Owner only account", "balance": 111.0, "color": "#123456"},
+        )
+        self.assertEqual(owner_capital.status_code, 201)
+        member_capital = second_client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Member only account", "balance": 222.0, "color": "#654321"},
+        )
+        self.assertEqual(member_capital.status_code, 201)
+
+        family_dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard.status_code, 200)
+
+        owner_accounts = self.client.get("/api/v1/accounts")
+        self.assertEqual(owner_accounts.status_code, 200)
+        owner_account_names = {item["name"] for item in owner_accounts.json()}
+        self.assertIn("Owner only account", owner_account_names)
+        self.assertNotIn("Member only account", owner_account_names)
+
+        member_accounts = second_client.get("/api/v1/accounts")
+        self.assertEqual(member_accounts.status_code, 200)
+        member_account_names = {item["name"] for item in member_accounts.json()}
+        self.assertIn("Member only account", member_account_names)
+        self.assertNotIn("Owner only account", member_account_names)
+
+        owner_dashboard = self.client.get("/api/v1/dashboard")
+        self.assertEqual(owner_dashboard.status_code, 200)
+        self.assertEqual(owner_dashboard.json()["balance"]["main_balance"], 1000.0)
+
+        member_dashboard = second_client.get("/api/v1/dashboard")
+        self.assertEqual(member_dashboard.status_code, 200)
+        self.assertEqual(member_dashboard.json()["balance"]["main_balance"], 500.0)
+
+        second_client.close()
+
     def test_family_capital_target_receives_member_auto_contribution(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья капитал"})
         self.assertEqual(create_family.status_code, 201)

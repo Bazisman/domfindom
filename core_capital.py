@@ -19,8 +19,6 @@ def get_capital_accounts(
             return cursor.fetchall()
 
     cache_key = f"capital_accounts_{include_inactive}"
-    if cache_key not in cache:
-        cache[cache_key] = {"data": None, "timestamp": 0}
     return get_cached_fn(cache_key, fetch_capital_accounts, ttl=cache_ttl_long)
 
 
@@ -40,7 +38,7 @@ def get_default_capital_account(get_connection):
 
 def invalidate_capital_cache(cache):
     for key in list(cache.keys()):
-        if key.startswith("capital_accounts_"):
+        if key.split("::", 1)[-1].startswith("capital_accounts_"):
             cache[key]["timestamp"] = 0
 
 
