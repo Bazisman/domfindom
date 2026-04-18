@@ -116,4 +116,6 @@ class FamilyTransactionListResponse(BaseModel):
     family_name: str
     owner_user_id: Optional[int] = None
     limit: int
+    offset: int = 0
+    total: int = 0
     transactions: List[FamilyDashboardTransactionResponse]

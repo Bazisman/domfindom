@@ -63,6 +63,13 @@ export type Transaction = {
   status: "actual" | "planned";
 };
 
+export type TransactionPage = {
+  items: Transaction[];
+  limit: number;
+  offset: number;
+  total: number;
+};
+
 export type TransactionType = "income" | "expense";
 export type TransactionPeriod = "all" | "month" | "last_month" | "year";
 
@@ -372,6 +379,8 @@ export type FamilyTransactionListResponse = {
   family_name: string;
   owner_user_id: number | null;
   limit: number;
+  offset: number;
+  total: number;
   transactions: FamilyDashboardResponse["recent_transactions"];
 };
 
@@ -735,6 +744,20 @@ export function getTransactions(params?: {
   search.set("period", params?.period ?? "all");
   search.set("include_planned", params?.includePlanned === false ? "false" : "true");
   return request<Transaction[]>(`/transactions?${search.toString()}`);
+}
+
+export function getTransactionsPage(params?: {
+  limit?: number;
+  offset?: number;
+  period?: TransactionPeriod;
+  includePlanned?: boolean;
+}) {
+  const search = new URLSearchParams();
+  search.set("limit", String(params?.limit ?? 20));
+  search.set("offset", String(params?.offset ?? 0));
+  search.set("period", params?.period ?? "all");
+  search.set("include_planned", params?.includePlanned === false ? "false" : "true");
+  return request<TransactionPage>(`/transactions/page?${search.toString()}`);
 }
 
 export function getCategories() {

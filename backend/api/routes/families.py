@@ -161,6 +161,8 @@ def _collect_family_transactions(
         family_name=family_name,
         owner_user_id=owner_user_id if owner_user_id > 0 else None,
         limit=safe_limit,
+        offset=safe_offset,
+        total=len(items),
         transactions=[
             FamilyDashboardTransactionResponse(**item)
             for item in items[safe_offset:safe_offset + safe_limit]

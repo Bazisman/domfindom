@@ -9,6 +9,7 @@ from backend.schemas.common import MessageResponse
 from backend.schemas.transactions import (
     TransactionCreateRequest,
     TransactionCreateResponse,
+    TransactionPageResponse,
     TransactionResponse,
 )
 from backend.services import category_service, row_to_transaction_response, transaction_service
@@ -51,6 +52,28 @@ def _list_transactions_window(limit: int, offset: int, period: str, include_plan
     return collected
 
 
+def _count_transactions(period: str, include_planned: bool) -> int:
+    total = 0
+    raw_offset = 0
+    batch_size = 500
+
+    while True:
+        batch = transaction_service.get_transactions(limit=batch_size, offset=raw_offset, period=period)
+        if not batch:
+            break
+
+        if include_planned:
+            total += len(batch)
+        else:
+            total += sum(1 for item in batch if item.status != "planned")
+
+        if len(batch) < batch_size:
+            break
+        raw_offset += len(batch)
+
+    return total
+
+
 def _resolve_category_name(payload: TransactionCreateRequest) -> str:
     if payload.category_name:
         return payload.category_name
@@ -79,6 +102,30 @@ def list_transactions(
 ) -> List[TransactionResponse]:
     transactions = _list_transactions_window(limit=limit, offset=offset, period=period, include_planned=include_planned)
     return [TransactionResponse(**row_to_transaction_response(item)) for item in transactions]
+
+
+@router.get("/page", response_model=TransactionPageResponse)
+def list_transactions_page(
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    period: str = Query(default="all"),
+    include_planned: bool = Query(default=True),
+) -> TransactionPageResponse:
+    safe_limit = max(1, min(limit, 200))
+    safe_offset = max(0, offset)
+    transactions = _list_transactions_window(
+        limit=safe_limit,
+        offset=safe_offset,
+        period=period,
+        include_planned=include_planned,
+    )
+    total = _count_transactions(period=period, include_planned=include_planned)
+    return TransactionPageResponse(
+        items=[TransactionResponse(**row_to_transaction_response(item)) for item in transactions],
+        limit=safe_limit,
+        offset=safe_offset,
+        total=total,
+    )
 
 
 @router.post("", response_model=TransactionCreateResponse, status_code=status.HTTP_201_CREATED)

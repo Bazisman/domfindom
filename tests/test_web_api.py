@@ -803,6 +803,7 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(current_month.status_code, 200)
         current_payload = current_month.json()
+        self.assertEqual(current_payload["total"], 2)
         current_comments = [item["comment"] for item in current_payload["transactions"]]
         self.assertIn("Owner feed income", current_comments)
         self.assertIn("Member feed expense", current_comments)
@@ -819,9 +820,15 @@ class WebApiTestCase(unittest.TestCase):
             f"/api/v1/families/{family_id}/transactions?period=month&limit=10&offset=0&include_planned=true"
         )
         self.assertEqual(with_planned.status_code, 200)
+        self.assertEqual(with_planned.json()["total"], 3)
         planned_items = [item for item in with_planned.json()["transactions"] if item["comment"] == "Member future planned"]
         self.assertEqual(len(planned_items), 1)
         self.assertEqual(planned_items[0]["status"], "planned")
+
+        personal_page = self.client.get("/api/v1/transactions/page?period=month&limit=10&offset=0")
+        self.assertEqual(personal_page.status_code, 200)
+        self.assertEqual(personal_page.json()["total"], 1)
+        self.assertEqual(personal_page.json()["items"][0]["comment"], "Owner feed income")
 
         second_client.close()
 

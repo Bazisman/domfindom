@@ -1096,6 +1096,28 @@ body {
   gap: 12px;
 }
 
+.toolbar-group-between {
+  justify-content: space-between;
+}
+
+.field-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.field-inline span {
+  white-space: nowrap;
+}
+
+.field-inline select {
+  min-width: 84px;
+}
+
+.field-compact {
+  margin: 0;
+}
+
 .filter-check {
   display: inline-flex;
   align-items: center;
@@ -1132,6 +1154,32 @@ body {
 .transaction-date {
   margin: 4px 0 0;
   color: var(--muted);
+}
+
+.transaction-owner-row,
+.transaction-main > .muted:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.transaction-owner-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.transaction-owner-chip,
+.transaction-main > .muted:last-child {
+  width: fit-content;
+  border: 1px solid rgba(47, 163, 110, 0.28);
+  border-radius: 999px;
+  background: rgba(47, 163, 110, 0.12);
+  color: var(--text);
+  padding: 4px 10px;
 }
 
 .transaction-meta {

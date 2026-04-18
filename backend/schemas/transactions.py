@@ -17,6 +17,13 @@ class TransactionResponse(BaseModel):
     status: TransactionStatus
 
 
+class TransactionPageResponse(BaseModel):
+    items: list[TransactionResponse]
+    limit: int
+    offset: int
+    total: int
+
+
 class RecurringOptionsRequest(BaseModel):
     enabled: bool = False
     template_name: str = Field(default="", max_length=255)

@@ -21,12 +21,13 @@ import {
   getCategories,
   getReconciliationSummary,
   getSettings,
-  getTransactions,
+  getTransactionsPage,
   updateAccount,
   updateReconciliationSource,
   updateSettings,
   type ReconciliationHistoryItem,
   type Transaction,
+  type TransactionPage,
   type TransactionPeriod,
   type TransactionType,
 } from "../lib/api";
@@ -40,7 +41,7 @@ const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
   { value: "year", label: "Этот год" },
 ];
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 type FeedTransaction = Transaction & {
   owner_user_id?: number;
@@ -71,10 +72,20 @@ function formatReconciliationDate(value: string) {
   }).format(parsed);
 }
 
+function ownerChipStyle(ownerUserId: number) {
+  const hue = Math.abs(ownerUserId * 57) % 360;
+  return {
+    borderColor: `hsla(${hue}, 70%, 56%, 0.45)`,
+    background: `hsla(${hue}, 70%, 56%, 0.14)`,
+    color: `hsl(${hue}, 80%, 72%)`,
+  };
+}
+
 export function TransactionsPageNext() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<TransactionPeriod>("month");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [type, setType] = useState<TransactionType>("expense");
   const [showPlanned, setShowPlanned] = useState(false);
   const [categoryId, setCategoryId] = useState<string>("");
@@ -139,21 +150,21 @@ export function TransactionsPageNext() {
 
   const selectedFamilyId = families.data?.families?.[0]?.id ?? null;
   const useFamilyFeed = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
-  const pageOffset = page * PAGE_SIZE;
+  const pageOffset = page * pageSize;
 
   const transactions = useQuery({
-    queryKey: ["transactions", period, page, showPlanned],
-    queryFn: () => getTransactions({ limit: PAGE_SIZE + 1, offset: pageOffset, period, includePlanned: showPlanned }),
+    queryKey: ["transactions", "page", period, page, pageSize, showPlanned],
+    queryFn: () => getTransactionsPage({ limit: pageSize, offset: pageOffset, period, includePlanned: showPlanned }),
     placeholderData: keepPreviousData,
     enabled: !useFamilyFeed,
   });
 
   const familyTransactions = useQuery({
-    queryKey: ["families", selectedFamilyId, "transactions", period, page, showPlanned],
+    queryKey: ["families", selectedFamilyId, "transactions", period, page, pageSize, showPlanned],
     queryFn: () =>
       getFamilyTransactions({
         familyId: selectedFamilyId as number,
-        limit: PAGE_SIZE + 1,
+        limit: pageSize,
         offset: pageOffset,
         period,
         includePlanned: showPlanned,
@@ -204,7 +215,14 @@ export function TransactionsPageNext() {
 
   useEffect(() => {
     setPage(0);
-  }, [period, showPlanned, useFamilyFeed, selectedFamilyId]);
+  }, [period, showPlanned, useFamilyFeed, selectedFamilyId, pageSize]);
+
+  const transactionPage = useMemo<TransactionPage | null>(() => {
+    if (useFamilyFeed) {
+      return null;
+    }
+    return transactions.data ?? null;
+  }, [transactions.data, useFamilyFeed]);
 
   const rawTransactions = useMemo<FeedTransaction[]>(() => {
     if (useFamilyFeed) {
@@ -212,13 +230,26 @@ export function TransactionsPageNext() {
         ...item,
       }));
     }
-    return (transactions.data ?? []).map((item) => ({
+    return ((transactionPage?.items ?? []) as Transaction[]).map((item) => ({
       ...item,
     }));
-  }, [useFamilyFeed, familyTransactions.data?.transactions, transactions.data]);
+  }, [useFamilyFeed, familyTransactions.data?.transactions, transactionPage?.items]);
 
-  const visibleTransactions = useMemo(() => rawTransactions.slice(0, PAGE_SIZE), [rawTransactions]);
-  const hasNextPage = rawTransactions.length > PAGE_SIZE;
+  const visibleTransactions = useMemo(() => rawTransactions, [rawTransactions]);
+  const totalTransactions = useMemo(() => {
+    if (useFamilyFeed) {
+      return familyTransactions.data?.total ?? 0;
+    }
+    return transactionPage?.total ?? 0;
+  }, [familyTransactions.data?.total, transactionPage?.total, useFamilyFeed]);
+  const totalPages = Math.max(1, Math.ceil(totalTransactions / pageSize));
+  const hasNextPage = page + 1 < totalPages;
+
+  useEffect(() => {
+    if (page >= totalPages) {
+      setPage(Math.max(totalPages - 1, 0));
+    }
+  }, [page, totalPages]);
 
   const createMutation = useMutation({
     mutationFn: createTransaction,
@@ -865,6 +896,16 @@ export function TransactionsPageNext() {
                 </option>
               ))}
             </select>
+            <label className="field field-inline field-compact">
+              <span>Строк на странице</span>
+              <select onChange={(event) => setPageSize(Number(event.target.value))} value={pageSize}>
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
@@ -912,7 +953,7 @@ export function TransactionsPageNext() {
             </p>
           )}
         </div>
-        <div className="toolbar-group">
+        <div className="toolbar-group toolbar-group-between">
           <button
             className="ghost-button"
             disabled={page === 0}
@@ -922,6 +963,7 @@ export function TransactionsPageNext() {
             Назад
           </button>
           <span className="muted">Страница {page + 1}</span>
+          <span className="muted">из {totalPages}</span>
           <button
             className="ghost-button"
             disabled={!hasNextPage}
