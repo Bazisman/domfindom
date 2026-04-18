@@ -346,6 +346,7 @@ body {
   gap: 0;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
   scrollbar-width: none;
   -ms-overflow-style: none;
   touch-action: pan-x;
@@ -367,6 +368,7 @@ body {
   flex: 0 0 100%;
   min-width: 0;
   scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .balance-carousel-nav {
