@@ -93,7 +93,7 @@ async def attach_user_context_and_sync(request: Request, call_next):
         ):
             csrf_header = request.headers.get("x-csrf-token", "")
             if not auth_service.verify_csrf_token(raw_token or "", csrf_header):
-                return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
+                return JSONResponse({"detail": "Ошибка проверки защитного токена. Обновите страницу и попробуйте снова."}, status_code=403)
 
         if (
             current_user
@@ -135,7 +135,7 @@ def serve_index():
                 "version": settings.version,
                 "docs": "/docs",
                 "health": "/api/v1/health",
-                "frontend": "not found",
+                "frontend": "не найден",
             },
             status_code=503,
         )
@@ -153,4 +153,4 @@ def serve_frontend(path: str):
     if index_path.exists():
         return FileResponse(index_path)
 
-    return JSONResponse({"detail": "Frontend build not found"}, status_code=404)
+    return JSONResponse({"detail": "Фронтенд-сборка не найдена"}, status_code=404)

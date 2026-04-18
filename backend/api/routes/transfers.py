@@ -44,7 +44,7 @@ def create_transfer(payload: TransferCreateRequest) -> TransferResponse:
     from_account = _find_account_row(payload.from_account_id, include_inactive=False)
     to_account = _find_account_row(payload.to_account_id, include_inactive=False)
     if not from_account or not to_account:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source or target account not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет списания или зачисления не найден")
 
     created = transaction_service.transfer_money(
         payload.from_account_id,
@@ -56,7 +56,7 @@ def create_transfer(payload: TransferCreateRequest) -> TransferResponse:
     if not created:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Transfer was not created. Check account balances and parameters.",
+            detail="Не удалось создать перевод. Проверьте балансы и параметры счетов.",
         )
 
     latest = core.get_transfers_history(
@@ -75,5 +75,5 @@ def create_transfer(payload: TransferCreateRequest) -> TransferResponse:
 
     fallback = core.get_transfers_history(limit=1, include_inactive=True)
     if not fallback:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Transfer created but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Перевод создан, но не найден")
     return _transfer_response(fallback[0])

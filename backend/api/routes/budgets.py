@@ -31,7 +31,7 @@ def _get_budget_or_404(budget_id: int):
     for item in budgets:
         if item["id"] == budget_id:
             return item
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Бюджет не найден")
 
 
 @router.get("", response_model=List[BudgetResponse])
@@ -43,7 +43,7 @@ def list_budgets() -> List[BudgetResponse]:
 def create_budget(payload: BudgetCreateRequest) -> BudgetResponse:
     category = core.get_category_by_id(payload.category_id)
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
 
     created = transaction_service.set_budget(
         category_id=payload.category_id,
@@ -51,13 +51,13 @@ def create_budget(payload: BudgetCreateRequest) -> BudgetResponse:
         period=payload.period,
     )
     if not created:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Budget was not created")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать бюджет")
 
     budgets = transaction_service.get_budgets()
     for item in budgets:
         if item["category_id"] == payload.category_id:
             return _budget_response(item)
-    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Budget created but not found")
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Бюджет создан, но не найден")
 
 
 @router.patch("/{budget_id}", response_model=BudgetResponse)
@@ -72,7 +72,7 @@ def update_budget(budget_id: int, payload: BudgetUpdateRequest) -> BudgetRespons
         period=period,
     )
     if not updated:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Budget was not updated")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить бюджет")
 
     refreshed = _get_budget_or_404(budget_id)
     return _budget_response(refreshed)
@@ -100,5 +100,5 @@ def delete_budget(budget_id: int) -> Dict[str, str]:
     _get_budget_or_404(budget_id)
     deleted = transaction_service.delete_budget(budget_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Budget was not deleted")
-    return {"message": "Budget deleted"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить бюджет")
+    return {"message": "Бюджет удален"}

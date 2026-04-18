@@ -39,7 +39,7 @@ class TransactionCreateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_category(self) -> "TransactionCreateRequest":
         if not self.category_id and not self.category_name:
-            raise ValueError("category_id or category_name is required")
+            raise ValueError("Нужно указать категорию")
         return self
 
 

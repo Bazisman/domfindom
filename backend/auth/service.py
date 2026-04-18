@@ -380,7 +380,7 @@ class AuthService:
         self.ensure_user_finance_db(user_id)
         user_row = self.get_user_by_id(user_id)
         if not user_row:
-            raise RuntimeError("User creation succeeded but user not found")
+            raise RuntimeError("Пользователь создан, но запись не найдена")
         return self.get_user_public(user_row)
 
     def authenticate(self, email: str, password: str) -> Optional[Dict[str, object]]:
@@ -1072,7 +1072,7 @@ class AuthService:
     def create_family(self, owner_user_id: int, name: str) -> Dict[str, object]:
         clean_name = (name or "").strip()
         if len(clean_name) < 2:
-            raise ValueError("Family name is too short")
+            raise ValueError("Название семьи слишком короткое")
 
         with self._auth_connection() as conn:
             cursor = conn.cursor()

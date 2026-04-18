@@ -80,7 +80,7 @@ def create_reconciliation_source(payload: ReconciliationSourceCreateRequest) -> 
     sources = core.get_reconciliation_sources()
     source = next((item for item in sources if int(item["id"]) == int(source_id)), None)
     if not source:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Source created but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Источник создан, но не найден")
     return _serialize_source(source)
 
 
@@ -92,16 +92,16 @@ def update_reconciliation_source(source_id: int, payload: ReconciliationSourceUp
     if payload.balance is not None:
         updates["balance"] = payload.balance
     if not updates:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No updates provided")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не переданы изменения")
 
     updated = core.update_reconciliation_source(source_id, **updates)
     if not updated:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Источник не найден")
 
     sources = core.get_reconciliation_sources()
     source = next((item for item in sources if int(item["id"]) == source_id), None)
     if not source:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Источник не найден")
     return _serialize_source(source)
 
 
@@ -109,8 +109,8 @@ def update_reconciliation_source(source_id: int, payload: ReconciliationSourceUp
 def delete_reconciliation_source(source_id: int) -> MessageResponse:
     deleted = core.delete_reconciliation_source(source_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
-    return MessageResponse(message="Source deleted")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Источник не найден")
+    return MessageResponse(message="Источник удален")
 
 
 @router.post("/apply", response_model=ReconciliationApplyResponse)
@@ -134,7 +134,7 @@ def apply_reconciliation() -> ReconciliationApplyResponse:
     history = core.get_reconciliations_history(limit=20)
     reconciliation = next((item for item in history if int(item["id"]) == int(recon_id)), None)
     if not reconciliation:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reconciliation saved but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Сверка сохранена, но не найдена")
 
     message = "Баланс сверен" if difference == 0 else "Создана корректировка и сохранена сверка"
     return ReconciliationApplyResponse(

@@ -38,7 +38,7 @@ def list_categories(
 def get_category(category_id: int) -> CategoryResponse:
     category = category_service.get_category_by_id(category_id)
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
     return _to_response(category)
 
 
@@ -51,11 +51,11 @@ def create_category(payload: CategoryCreateRequest) -> CategoryResponse:
         icon=payload.icon,
     )
     if not category_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category was not created")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать категорию")
 
     category = category_service.get_category_by_id(category_id)
     if not category:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Category created but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория создана, но не найдена")
     return _to_response(category)
 
 
@@ -63,18 +63,18 @@ def create_category(payload: CategoryCreateRequest) -> CategoryResponse:
 def update_category(category_id: int, payload: CategoryUpdateRequest) -> CategoryResponse:
     category = category_service.get_category_by_id(category_id)
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
 
     updated = category_service.update_category(
         category_id,
         **payload.model_dump(exclude_none=True),
     )
     if not updated:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category was not updated")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить категорию")
 
     refreshed = category_service.get_category_by_id(category_id)
     if not refreshed:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Category updated but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория обновлена, но не найдена")
     return _to_response(refreshed)
 
 
@@ -82,9 +82,9 @@ def update_category(category_id: int, payload: CategoryUpdateRequest) -> Categor
 def delete_category(category_id: int) -> MessageResponse:
     category = category_service.get_category_by_id(category_id)
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
 
     deleted = category_service.delete_category(category_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category was not deleted")
-    return MessageResponse(message="Category deactivated")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить категорию")
+    return MessageResponse(message="Категория отключена")

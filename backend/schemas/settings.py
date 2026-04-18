@@ -16,5 +16,5 @@ class SettingsUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_has_changes(self) -> "SettingsUpdateRequest":
         if self.auto_capital_enabled is None and self.auto_capital_percent is None:
-            raise ValueError("At least one field must be provided")
+            raise ValueError("Нужно передать хотя бы одно поле для изменения")
         return self

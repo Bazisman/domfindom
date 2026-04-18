@@ -24,7 +24,7 @@ class BudgetUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_has_changes(self) -> "BudgetUpdateRequest":
         if self.amount is None and self.period is None:
-            raise ValueError("At least one field must be provided")
+            raise ValueError("Нужно передать хотя бы одно поле для изменения")
         return self
 
 

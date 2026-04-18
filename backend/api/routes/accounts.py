@@ -82,7 +82,7 @@ def list_accounts(
 def get_account(account_id: int) -> AccountResponse:
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
 
     account_type, row = found
     if account_type == "main":
@@ -99,11 +99,11 @@ def create_account(payload: AccountCreateRequest) -> AccountResponse:
         color=payload.color,
     )
     if not account_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account was not created")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать счет")
 
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Account created but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет создан, но не найден")
     return _capital_account_response(found[1])
 
 
@@ -111,19 +111,19 @@ def create_account(payload: AccountCreateRequest) -> AccountResponse:
 def update_account(account_id: int, payload: AccountUpdateRequest) -> AccountResponse:
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
 
     account_type, _ = found
     if account_type != "capital":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only capital accounts can be updated through this endpoint",
+            detail="Через этот раздел можно изменять только счета капитала",
         )
 
     if payload.is_default is False:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Default capital account can only be changed by setting another account as default",
+            detail="Счет капитала по умолчанию можно изменить только назначив другой счет основным",
         )
 
     update_data = payload.model_dump(exclude_none=True)
@@ -136,11 +136,11 @@ def update_account(account_id: int, payload: AccountUpdateRequest) -> AccountRes
         updated = transaction_service.set_default_capital_account(account_id) and updated
 
     if not updated:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account was not updated")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить счет")
 
     refreshed = _find_account_row(account_id, include_inactive=True)
     if not refreshed:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Account updated but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет обновлен, но не найден")
     return _capital_account_response(refreshed[1])
 
 
@@ -148,16 +148,16 @@ def update_account(account_id: int, payload: AccountUpdateRequest) -> AccountRes
 def delete_account(account_id: int) -> MessageResponse:
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
 
     account_type, _ = found
     if account_type != "capital":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Main account cannot be deleted through this endpoint",
+            detail="Основной счет нельзя удалить через этот раздел",
         )
 
     deleted = transaction_service.delete_capital_account(account_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account was not deleted")
-    return MessageResponse(message="Account deactivated")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить счет")
+    return MessageResponse(message="Счет отключен")

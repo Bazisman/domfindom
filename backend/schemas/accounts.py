@@ -47,7 +47,7 @@ class AccountUpdateRequest(BaseModel):
                 self.is_default,
             )
         ):
-            raise ValueError("At least one field must be provided")
+            raise ValueError("Нужно передать хотя бы одно поле для изменения")
         return self
 
 
@@ -73,5 +73,5 @@ class TransferCreateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_accounts(self) -> "TransferCreateRequest":
         if self.from_account_id == self.to_account_id:
-            raise ValueError("from_account_id and to_account_id must be different")
+            raise ValueError("Счет списания и счет зачисления должны отличаться")
         return self

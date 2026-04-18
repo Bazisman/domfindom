@@ -54,11 +54,11 @@ def create_recurring_template(payload: RecurringTemplateCreateRequest) -> Recurr
         working_days_only=payload.working_days_only,
     )
     if not template_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Template was not created")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать шаблон")
 
     row = core.get_recurring_template_by_id(template_id)
     if not row:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Template created but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Шаблон создан, но не найден")
     category_name = None
     if row["category_id"]:
         category = core.get_category_by_id(row["category_id"])
@@ -72,15 +72,15 @@ def create_recurring_template(payload: RecurringTemplateCreateRequest) -> Recurr
 def update_recurring_template(template_id: int, payload: RecurringTemplateUpdateRequest) -> RecurringTemplateResponse:
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No changes provided")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не переданы изменения")
 
     updated = transaction_service.update_recurring_template(template_id, **update_data)
     if not updated:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Template was not updated")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить шаблон")
 
     row = core.get_recurring_template_by_id(template_id)
     if not row:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаблон не найден")
     category_name = None
     if row["category_id"]:
         category = core.get_category_by_id(row["category_id"])
@@ -94,8 +94,8 @@ def update_recurring_template(template_id: int, payload: RecurringTemplateUpdate
 def delete_recurring_template(template_id: int) -> MessageResponse:
     deleted = transaction_service.delete_recurring_template(template_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
-    return MessageResponse(message="Template deleted")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаблон не найден")
+    return MessageResponse(message="Шаблон удален")
 
 
 @router.get("/due", response_model=List[PlannedTransactionDueResponse])
@@ -121,5 +121,5 @@ def execute_due_planned_transactions() -> ExecutePlannedResponse:
     executed_count = transaction_service.execute_planned_transactions()
     return ExecutePlannedResponse(
         executed_count=executed_count,
-        message=f"Executed {executed_count} planned transactions",
+        message=f"Исполнено запланированных операций: {executed_count}",
     )

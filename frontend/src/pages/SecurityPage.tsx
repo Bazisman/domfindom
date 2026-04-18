@@ -122,12 +122,16 @@ export function SecurityPage() {
       register: "Регистрация",
       login: "Вход",
       logout: "Выход",
+      verify_email: "Подтверждение email",
       change_password: "Смена пароля",
       password_reset_request: "Запрос сброса пароля",
       password_reset_confirm: "Подтверждение сброса пароля",
       backup_save: "Сохранение резервной копии",
       backup_restore: "Восстановление из резервной копии",
       reset_all_data: "Сброс всех данных",
+      account_delete_request: "Запрос удаления аккаунта",
+      account_delete_confirm: "Подтверждение удаления аккаунта",
+      family_invite_create: "Приглашение в семью",
     };
     return labels[type] ?? type;
   }
@@ -137,6 +141,32 @@ export function SecurityPage() {
     if (status === "fail") return "Ошибка";
     if (status === "blocked") return "Заблокировано";
     return status;
+  }
+
+  function formatEventDetail(detail: string) {
+    const labels: Record<string, string> = {
+      user_exists: "Пользователь с таким email уже существует.",
+      user_exists_race: "Пользователь с таким email уже существует.",
+      verification_email_sent: "Письмо для подтверждения email отправлено.",
+      verification_email_not_sent: "Письмо для подтверждения email пока не отправлено.",
+      rate_limited: "Превышен лимит попыток входа.",
+      email_not_verified: "Email еще не подтвержден.",
+      invalid_credentials: "Указан неверный email или пароль.",
+      invalid_or_expired_token: "Токен недействителен или уже истек.",
+      account_deleted: "Аккаунт удален.",
+      invalid_current_password: "Текущий пароль указан неверно.",
+      issued_via_email: "Ссылка на сброс пароля отправлена на почту.",
+      issued_without_email: "Ссылка на сброс пароля создана, но отправка писем не настроена.",
+      user_not_found_or_inactive: "Активный пользователь с таким email не найден.",
+      missing_or_invalid_backup: "Резервная копия не найдена или повреждена.",
+      token_not_created: "Не удалось создать токен.",
+      smtp_not_configured: "Отправка писем не настроена.",
+      mail_delivery_failed: "Не удалось отправить письмо.",
+      token_sent_via_email: "Ссылка или токен отправлены на почту.",
+      sent_via_email_and_cabinet: "Приглашение отправлено на почту и добавлено в личный кабинет.",
+      saved_to_cabinet_only: "Приглашение сохранено в личном кабинете.",
+    };
+    return labels[detail] ?? detail;
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -275,7 +305,7 @@ export function SecurityPage() {
                     {session.is_current ? "Текущая сессия" : "Сессия"} #{session.id}
                   </strong>
                   <p>IP: {session.ip || "неизвестно"}</p>
-                  <p>Agent: {session.user_agent || "не указан"}</p>
+                  <p>Устройство: {session.user_agent || "не указано"}</p>
                   <p>Создана: {formatDate(session.created_at)}</p>
                   <p>Истекает: {formatDate(session.expires_at)}</p>
                 </div>
@@ -317,7 +347,7 @@ export function SecurityPage() {
                   </p>
                   <p>Время: {formatDate(event.created_at)}</p>
                   <p>IP: {event.ip || "неизвестно"}</p>
-                  {event.detail ? <p>Детали: {event.detail}</p> : null}
+                  {event.detail ? <p>Детали: {formatEventDetail(event.detail)}</p> : null}
                 </div>
               </article>
             ))}

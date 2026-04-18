@@ -23,7 +23,7 @@ def _resolve_category_name(payload: TransactionCreateRequest) -> str:
         return payload.category_name
     category = category_service.get_category_by_id(payload.category_id or 0)
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
     return category.name
 
 
@@ -118,7 +118,7 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
 
     row = core.get_transaction_by_id(created_id)
     if not row:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Transaction created but not found")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Транзакция создана, но не найдена")
 
     transaction = Transaction(
         id=row["id"],
@@ -131,7 +131,7 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
     )
     return TransactionCreateResponse(
         id=created_id,
-        message="Transaction created",
+        message="Транзакция создана",
         transaction=TransactionResponse(**row_to_transaction_response(transaction)),
     )
 
@@ -140,5 +140,5 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
 def delete_transaction(transaction_id: int) -> MessageResponse:
     deleted = transaction_service.delete_transaction(transaction_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
-    return MessageResponse(message="Transaction deleted")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+    return MessageResponse(message="Транзакция удалена")

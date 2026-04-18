@@ -82,7 +82,7 @@ async def attach_user_context_and_sync(request: Request, call_next):
         ):
             csrf_header = request.headers.get("x-csrf-token", "")
             if not auth_service.verify_csrf_token(raw_token or "", csrf_header):
-                return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
+                return JSONResponse({"detail": "Ошибка проверки защитного токена. Обновите страницу и попробуйте снова."}, status_code=403)
 
         if (
             current_user

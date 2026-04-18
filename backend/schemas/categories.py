@@ -38,5 +38,5 @@ class CategoryUpdateRequest(BaseModel):
                 self.is_active,
             )
         ):
-            raise ValueError("At least one field must be provided")
+            raise ValueError("Нужно передать хотя бы одно поле для изменения")
         return self
