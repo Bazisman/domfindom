@@ -163,7 +163,6 @@ export function TransactionsPageNext() {
     onSuccess: async () => {
       setAmount("");
       setComment("");
-      setCategoryId("");
       setIsRecurring(false);
       setRecurringName("");
       setRecurringNameTouched(false);

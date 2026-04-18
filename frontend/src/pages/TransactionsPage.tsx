@@ -78,7 +78,6 @@ export function TransactionsPage() {
     onSuccess: async () => {
       setAmount("");
       setComment("");
-      setCategoryId("");
       setIsRecurring(false);
       setRecurringName("");
       setRecurringMonthsAhead("12");

@@ -214,7 +214,6 @@ export function DashboardPage() {
       setQuickSuccess("Операция добавлена");
       setQuickError(null);
       setQuickAmount("");
-      setQuickCategoryId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
