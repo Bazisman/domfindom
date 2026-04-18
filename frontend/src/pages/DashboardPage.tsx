@@ -73,6 +73,7 @@ export function DashboardPage() {
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
   const balanceSettleStartRef = useRef<number | null>(null);
+  const balanceLogicalIndexRef = useRef(0);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -393,6 +394,7 @@ export function DashboardPage() {
     balanceSettleStartRef.current = null;
     balanceDragStateRef.current = null;
     setActiveBalanceSlide(0);
+    balanceLogicalIndexRef.current = 0;
     setBalanceDragOffset(0);
   }, [selectedFamilyId, showFamilyBalanceSlide]);
 
@@ -471,8 +473,9 @@ export function DashboardPage() {
   }
 
   function handleBalancePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const viewport = balanceCarouselRef.current;
     const dragState = balanceDragStateRef.current;
-    if (!dragState || dragState.pointerId !== event.pointerId) {
+    if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
     const deltaX = event.clientX - dragState.startX;
@@ -482,7 +485,9 @@ export function DashboardPage() {
       dragState.lastClientX = event.clientX;
     }
     event.preventDefault();
-    setBalanceDragOffset(dragState.startOffset + deltaX);
+    const maxOffset = Math.max((viewport.clientWidth || 1) * 0.92, 1);
+    const nextOffset = dragState.startOffset + deltaX;
+    setBalanceDragOffset(Math.max(-maxOffset, Math.min(maxOffset, nextOffset)));
   }
 
   function animateDesktopBalanceFlight(direction: -1 | 0 | 1) {
@@ -493,6 +498,11 @@ export function DashboardPage() {
     const width = viewport.clientWidth || 1;
     const startOffset = balanceDragOffset;
     const targetOffset = direction === 0 ? 0 : direction > 0 ? -width : width;
+    if (direction !== 0) {
+      const nextIndex = normalizeCarouselIndex(balanceLogicalIndexRef.current + direction, 2);
+      balanceLogicalIndexRef.current = nextIndex;
+      setActiveBalanceSlide(nextIndex);
+    }
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
     }
@@ -512,9 +522,6 @@ export function DashboardPage() {
         return;
       }
 
-      if (direction !== 0) {
-        setActiveBalanceSlide((current) => normalizeCarouselIndex(current + direction, 2));
-      }
       setBalanceDragOffset(0);
       balanceSettleFrameRef.current = null;
       balanceSettleStartRef.current = null;
