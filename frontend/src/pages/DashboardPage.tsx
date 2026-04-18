@@ -59,6 +59,7 @@ export function DashboardPage() {
     startScrollLeft: number;
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
+  const balanceSettleStartRef = useRef<number | null>(null);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -329,18 +330,35 @@ export function DashboardPage() {
     }
     const slideWidth = track.clientWidth || 1;
     const nextIndex = Math.round(track.scrollLeft / slideWidth);
+    const startLeft = track.scrollLeft;
+    const targetLeft = nextIndex * slideWidth;
+    const duration = 460;
+    const settleTrack = track;
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
     }
-    balanceSettleFrameRef.current = window.requestAnimationFrame(() => {
-      balanceSettleFrameRef.current = window.requestAnimationFrame(() => {
-        track.scrollTo({
-          left: nextIndex * slideWidth,
-          behavior: "smooth",
-        });
-        balanceSettleFrameRef.current = null;
-      });
-    });
+    balanceSettleStartRef.current = null;
+
+    function animateSettle(timestamp: number) {
+      if (balanceSettleStartRef.current === null) {
+        balanceSettleStartRef.current = timestamp;
+      }
+      const elapsed = timestamp - balanceSettleStartRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      settleTrack.scrollLeft = startLeft + (targetLeft - startLeft) * eased;
+
+      if (progress < 1) {
+        balanceSettleFrameRef.current = window.requestAnimationFrame(animateSettle);
+        return;
+      }
+
+      settleTrack.scrollLeft = targetLeft;
+      balanceSettleFrameRef.current = null;
+      balanceSettleStartRef.current = null;
+    }
+
+    balanceSettleFrameRef.current = window.requestAnimationFrame(animateSettle);
   }
 
   return (
