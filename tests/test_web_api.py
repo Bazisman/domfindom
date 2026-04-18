@@ -732,6 +732,106 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_capital_target_receives_member_auto_contribution(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья капитал"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        owner_capital = self.client.post(
+            "/api/v1/accounts",
+            json={
+                "type": "capital",
+                "name": "Сбер копилка",
+                "balance": 0.0,
+                "color": "#228b22",
+            },
+        )
+        self.assertEqual(owner_capital.status_code, 201)
+        owner_capital_id = int(owner_capital.json()["id"])
+
+        publish_owner_capital = self.client.patch(
+            f"/api/v1/accounts/{owner_capital_id}",
+            json={"family_visible": True, "family_default_target": True},
+        )
+        self.assertEqual(publish_owner_capital.status_code, 200)
+        self.assertTrue(publish_owner_capital.json()["family_visible"])
+        self.assertTrue(publish_owner_capital.json()["family_default_target"])
+
+        second_client = TestClient(app)
+        second_email = f"family-capital-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        switch_workspace = second_client.put(
+            "/api/v1/account/preferences",
+            json={"workspace_mode": "family"},
+        )
+        self.assertEqual(switch_workspace.status_code, 200)
+
+        family_dashboard_before = second_client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard_before.status_code, 200)
+        self.assertEqual(
+            family_dashboard_before.json()["current_member_capital_target"]["target_capital_account_id"],
+            owner_capital_id,
+        )
+
+        income_category = second_client.get("/api/v1/categories?type=income").json()[0]["name"]
+        create_income = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 1000.0,
+                "comment": "Семейное автоотчисление",
+                "date": "2026-04-18",
+            },
+        )
+        self.assertEqual(create_income.status_code, 201)
+        income_id = int(create_income.json()["id"])
+
+        owner_accounts = self.client.get("/api/v1/accounts")
+        self.assertEqual(owner_accounts.status_code, 200)
+        owner_capital_after = next(item for item in owner_accounts.json() if item["id"] == owner_capital_id)
+        self.assertEqual(owner_capital_after["balance"], 100.0)
+
+        member_accounts = second_client.get("/api/v1/accounts")
+        self.assertEqual(member_accounts.status_code, 200)
+        member_main = next(item for item in member_accounts.json() if item["type"] == "main")
+        self.assertEqual(member_main["balance"], 900.0)
+
+        family_dashboard_after = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard_after.status_code, 200)
+        self.assertEqual(family_dashboard_after.json()["balance"]["capital_balance"], 100.0)
+
+        deleted_income = second_client.delete(f"/api/v1/transactions/{income_id}")
+        self.assertEqual(deleted_income.status_code, 200)
+
+        owner_accounts_after_delete = self.client.get("/api/v1/accounts")
+        self.assertEqual(owner_accounts_after_delete.status_code, 200)
+        owner_capital_after_delete = next(item for item in owner_accounts_after_delete.json() if item["id"] == owner_capital_id)
+        self.assertEqual(owner_capital_after_delete["balance"], 0.0)
+
+        member_accounts_after_delete = second_client.get("/api/v1/accounts")
+        self.assertEqual(member_accounts_after_delete.status_code, 200)
+        member_main_after_delete = next(item for item in member_accounts_after_delete.json() if item["type"] == "main")
+        self.assertEqual(member_main_after_delete["balance"], 0.0)
+        second_client.close()
+
     def test_family_transactions_support_period_offset_and_planned_toggle(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья лента"})
         self.assertEqual(create_family.status_code, 201)

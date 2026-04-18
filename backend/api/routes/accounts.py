@@ -1,8 +1,10 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import core
+from backend.auth.dependencies import require_user
+from backend.auth.service import auth_service
 from backend.schemas.accounts import AccountCreateRequest, AccountResponse, AccountUpdateRequest
 from backend.schemas.common import MessageResponse
 from backend.services import transaction_service
@@ -22,6 +24,21 @@ def _row_value(row, key: str, default=None):
         return getattr(row, key, default)
 
 
+def _current_family_id(user_id: int) -> int:
+    family = auth_service.get_primary_family(user_id)
+    return int(family["id"]) if family else 0
+
+
+def _family_meta_map(family_id: int, owner_user_id: int):
+    if family_id <= 0:
+        return {}
+    return {
+        int(item["capital_account_id"]): item
+        for item in auth_service.list_family_capital_accounts(family_id)
+        if int(item["owner_user_id"]) == owner_user_id
+    }
+
+
 def _main_account_response(row) -> AccountResponse:
     return AccountResponse(
         id=_row_value(row, "id", 0),
@@ -33,10 +50,13 @@ def _main_account_response(row) -> AccountResponse:
         is_default=False,
         icon=None,
         color=None,
+        family_visible=False,
+        family_default_target=False,
     )
 
 
-def _capital_account_response(row) -> AccountResponse:
+def _capital_account_response(row, family_meta=None) -> AccountResponse:
+    family_meta = family_meta or {}
     return AccountResponse(
         id=_row_value(row, "id", 0),
         name=_row_value(row, "name", ""),
@@ -47,6 +67,8 @@ def _capital_account_response(row) -> AccountResponse:
         is_default=bool(_row_value(row, "is_default", 0)),
         icon=_row_value(row, "icon"),
         color=_row_value(row, "color"),
+        family_visible=bool(family_meta.get("is_visible", False)),
+        family_default_target=bool(family_meta.get("is_default_target", False)),
     )
 
 
@@ -66,20 +88,23 @@ def _find_account_row(account_id: int, include_inactive: bool = False):
 @router.get("", response_model=List[AccountResponse])
 def list_accounts(
     include_inactive: bool = Query(default=False),
+    current_user=Depends(require_user),
 ) -> List[AccountResponse]:
+    family_id = _current_family_id(int(current_user["id"]))
+    family_meta = _family_meta_map(family_id, int(current_user["id"]))
     main_accounts = [
         _main_account_response(account)
         for account in transaction_service.get_all_accounts(include_inactive=include_inactive)
     ]
     capital_accounts = [
-        _capital_account_response(account)
+        _capital_account_response(account, family_meta.get(int(_row_value(account, "id", 0))))
         for account in core.get_capital_accounts(include_inactive=include_inactive)
     ]
     return [*main_accounts, *capital_accounts]
 
 
 @router.get("/{account_id}", response_model=AccountResponse)
-def get_account(account_id: int) -> AccountResponse:
+def get_account(account_id: int, current_user=Depends(require_user)) -> AccountResponse:
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
@@ -87,11 +112,14 @@ def get_account(account_id: int) -> AccountResponse:
     account_type, row = found
     if account_type == "main":
         return _main_account_response(row)
-    return _capital_account_response(row)
+
+    family_id = _current_family_id(int(current_user["id"]))
+    family_meta = _family_meta_map(family_id, int(current_user["id"]))
+    return _capital_account_response(row, family_meta.get(account_id))
 
 
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
-def create_account(payload: AccountCreateRequest) -> AccountResponse:
+def create_account(payload: AccountCreateRequest, current_user=Depends(require_user)) -> AccountResponse:
     account_id = transaction_service.add_capital_account(
         name=payload.name,
         balance=payload.balance,
@@ -104,11 +132,13 @@ def create_account(payload: AccountCreateRequest) -> AccountResponse:
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет создан, но не найден")
-    return _capital_account_response(found[1])
+    family_id = _current_family_id(int(current_user["id"]))
+    family_meta = _family_meta_map(family_id, int(current_user["id"]))
+    return _capital_account_response(found[1], family_meta.get(account_id))
 
 
 @router.patch("/{account_id}", response_model=AccountResponse)
-def update_account(account_id: int, payload: AccountUpdateRequest) -> AccountResponse:
+def update_account(account_id: int, payload: AccountUpdateRequest, current_user=Depends(require_user)) -> AccountResponse:
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
@@ -128,6 +158,8 @@ def update_account(account_id: int, payload: AccountUpdateRequest) -> AccountRes
 
     update_data = payload.model_dump(exclude_none=True)
     should_set_default = update_data.pop("is_default", False)
+    family_visible = update_data.pop("family_visible", None)
+    family_default_target = update_data.pop("family_default_target", None)
 
     updated = True
     if update_data:
@@ -135,13 +167,29 @@ def update_account(account_id: int, payload: AccountUpdateRequest) -> AccountRes
     if should_set_default:
         updated = transaction_service.set_default_capital_account(account_id) and updated
 
+    family_id = _current_family_id(int(current_user["id"]))
+    if family_id > 0 and (family_visible is not None or family_default_target is not None):
+        existing_meta = auth_service.get_family_capital_account(family_id, int(current_user["id"]), account_id) or {}
+        auth_service.upsert_family_capital_account(
+            family_id=family_id,
+            owner_user_id=int(current_user["id"]),
+            capital_account_id=account_id,
+            is_visible=bool(existing_meta.get("is_visible", False) if family_visible is None else family_visible),
+            is_default_target=bool(
+                existing_meta.get("is_default_target", False)
+                if family_default_target is None
+                else family_default_target
+            ),
+        )
+
     if not updated:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить счет")
 
     refreshed = _find_account_row(account_id, include_inactive=True)
     if not refreshed:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет обновлен, но не найден")
-    return _capital_account_response(refreshed[1])
+    family_meta = _family_meta_map(family_id, int(current_user["id"]))
+    return _capital_account_response(refreshed[1], family_meta.get(account_id))
 
 
 @router.delete("/{account_id}", response_model=MessageResponse)

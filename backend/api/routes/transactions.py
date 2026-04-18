@@ -1,10 +1,12 @@
 import calendar
 from datetime import date as date_cls
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import core
+from backend.auth.dependencies import require_user
+from backend.auth.service import auth_service
 from backend.schemas.common import MessageResponse
 from backend.schemas.transactions import (
     TransactionCreateRequest,
@@ -93,6 +95,145 @@ def _is_future_date(date_value: str) -> bool:
     return date_value > date_cls.today().isoformat()
 
 
+def _current_workspace_mode(user_id: int) -> str:
+    return str(auth_service.get_user_preferences(user_id).get("workspace_mode") or "personal")
+
+
+def _primary_family_id(user_id: int) -> int:
+    family = auth_service.get_primary_family(user_id)
+    return int(family["id"]) if family else 0
+
+
+def _run_in_user_db(user_id: int, action):
+    db_path = auth_service.ensure_user_finance_db(user_id)
+    token = core.push_db_name(db_path)
+    try:
+        return action()
+    finally:
+        core.pop_db_name(token)
+
+
+def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
+    def _action():
+        for account in core.get_capital_accounts(include_inactive=False):
+            if int(account["id"]) == capital_account_id:
+                return account
+        return None
+
+    return _run_in_user_db(owner_user_id, _action)
+
+
+def _adjust_main_account(user_id: int, amount_delta: float) -> None:
+    def _action():
+        with core.get_connection() as conn:
+            conn.execute(
+                'UPDATE accounts SET balance = balance + ?, updated_at = datetime("now") WHERE id = 1',
+                (amount_delta,),
+            )
+            conn.commit()
+        core._invalidate_cache()
+
+    _run_in_user_db(user_id, _action)
+
+
+def _adjust_capital_account(owner_user_id: int, capital_account_id: int, amount_delta: float) -> bool:
+    def _action():
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE capital_accounts
+                SET balance = balance + ?, updated_at = datetime("now")
+                WHERE id = ? AND is_active = 1
+                """,
+                (amount_delta, capital_account_id),
+            )
+            conn.commit()
+            core._invalidate_cache()
+            return cursor.rowcount > 0
+
+    return bool(_run_in_user_db(owner_user_id, _action))
+
+
+def _create_income_with_family_capital(
+    current_user_id: int,
+    payload: TransactionCreateRequest,
+    category_name: str,
+    auto_capital_percent: int,
+) -> Optional[int]:
+    if auto_capital_percent <= 0 or _current_workspace_mode(current_user_id) != "family":
+        return None
+
+    family_id = _primary_family_id(current_user_id)
+    if family_id <= 0:
+        return None
+
+    target = auth_service.ensure_family_member_capital_target(family_id, current_user_id)
+    if not target:
+        return None
+
+    target_owner_user_id = int(target["owner_user_id"])
+    target_capital_account_id = int(target["capital_account_id"])
+    published_meta = auth_service.get_family_capital_account(
+        family_id,
+        target_owner_user_id,
+        target_capital_account_id,
+    )
+    if not published_meta or not bool(published_meta.get("is_visible")):
+        return None
+
+    target_account = _get_active_capital_account(target_owner_user_id, target_capital_account_id)
+    if not target_account:
+        return None
+
+    contribution_amount = payload.amount * (auto_capital_percent / 100)
+    created_id = core.add_income_with_capital(
+        payload.amount,
+        category_name,
+        payload.comment,
+        payload.date,
+        0,
+        None,
+    )
+
+    capital_applied = False
+    try:
+        _adjust_main_account(current_user_id, -contribution_amount)
+        capital_applied = _adjust_capital_account(target_owner_user_id, target_capital_account_id, contribution_amount)
+        if not capital_applied:
+            raise RuntimeError("family_capital_target_update_failed")
+        auth_service.create_family_capital_contribution(
+            family_id=family_id,
+            source_user_id=current_user_id,
+            source_transaction_id=created_id,
+            target_owner_user_id=target_owner_user_id,
+            target_capital_account_id=target_capital_account_id,
+            amount=contribution_amount,
+            date=payload.date,
+            comment=payload.comment,
+        )
+        return created_id
+    except Exception:
+        if capital_applied:
+            _adjust_capital_account(target_owner_user_id, target_capital_account_id, -contribution_amount)
+        core.delete_transaction(created_id)
+        raise
+
+
+def _rollback_family_capital_contribution(source_user_id: int, transaction_id: int) -> None:
+    contribution = auth_service.get_family_capital_contribution(source_user_id, transaction_id)
+    if not contribution:
+        return
+
+    amount = float(contribution["amount"] or 0)
+    target_owner_user_id = int(contribution["target_owner_user_id"])
+    target_capital_account_id = int(contribution["target_capital_account_id"])
+
+    _adjust_main_account(source_user_id, amount)
+    _adjust_capital_account(target_owner_user_id, target_capital_account_id, -amount)
+    auth_service.reverse_family_capital_contribution(int(contribution["id"]))
+
+
 @router.get("", response_model=List[TransactionResponse])
 def list_transactions(
     limit: int = Query(default=50, ge=1, le=500),
@@ -129,18 +270,14 @@ def list_transactions_page(
 
 
 @router.post("", response_model=TransactionCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateResponse:
+def create_transaction(payload: TransactionCreateRequest, current_user=Depends(require_user)) -> TransactionCreateResponse:
     category_name = _resolve_category_name(payload)
     category = core.get_category_by_name(category_name)
     is_future = _is_future_date(payload.date)
     recurring_payload = payload.recurring if payload.recurring and payload.recurring.enabled else None
     planned_date = payload.date
 
-    if (
-        is_future
-        and recurring_payload
-        and recurring_payload.working_days_only
-    ):
+    if is_future and recurring_payload and recurring_payload.working_days_only:
         planned_date = core._adjust_to_workday(payload.date)
 
     if is_future:
@@ -161,17 +298,26 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
 
             if auto_capital_percent is None:
                 auto_capital_percent = settings_percent if settings_enabled else 0
-            if capital_account_id is None and default_capital_account:
-                capital_account_id = default_capital_account["id"]
 
-            created_id = core.add_income_with_capital(
-                payload.amount,
-                category_name,
-                payload.comment,
-                payload.date,
-                auto_capital_percent,
-                capital_account_id,
+            family_created_id = _create_income_with_family_capital(
+                current_user_id=int(current_user["id"]),
+                payload=payload,
+                category_name=category_name,
+                auto_capital_percent=int(auto_capital_percent or 0),
             )
+            if family_created_id is not None:
+                created_id = family_created_id
+            else:
+                if capital_account_id is None and default_capital_account:
+                    capital_account_id = default_capital_account["id"]
+                created_id = core.add_income_with_capital(
+                    payload.amount,
+                    category_name,
+                    payload.comment,
+                    payload.date,
+                    auto_capital_percent,
+                    capital_account_id,
+                )
         else:
             created_id = core.add_expense(
                 payload.amount,
@@ -218,8 +364,9 @@ def create_transaction(payload: TransactionCreateRequest) -> TransactionCreateRe
 
 
 @router.delete("/{transaction_id}", response_model=MessageResponse)
-def delete_transaction(transaction_id: int) -> MessageResponse:
+def delete_transaction(transaction_id: int, current_user=Depends(require_user)) -> MessageResponse:
     deleted = transaction_service.delete_transaction(transaction_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+    _rollback_family_capital_contribution(int(current_user["id"]), transaction_id)
     return MessageResponse(message="Транзакция удалена")

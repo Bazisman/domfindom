@@ -182,6 +182,8 @@ export type Account = {
   is_default: boolean;
   icon: string | null;
   color: string | null;
+  family_visible: boolean;
+  family_default_target: boolean;
 };
 
 export type AccountCreatePayload = {
@@ -198,6 +200,8 @@ export type AccountUpdatePayload = {
   icon?: string;
   color?: string;
   is_default?: boolean;
+  family_visible?: boolean;
+  family_default_target?: boolean;
 };
 
 export type Transfer = {
@@ -357,9 +361,26 @@ export type FamilyDashboardResponse = {
   members_count: number;
   balance: {
     main_balance: number;
+    capital_balance: number;
     income: number;
     expense: number;
     difference: number;
+  };
+  capital_accounts: Array<{
+    owner_user_id: number;
+    owner_email: string;
+    owner_display_name: string;
+    capital_account_id: number;
+    name: string;
+    balance: number;
+    color: string | null;
+    icon: string | null;
+    is_visible: boolean;
+    is_default_target: boolean;
+  }>;
+  current_member_capital_target: {
+    target_owner_user_id: number | null;
+    target_capital_account_id: number | null;
   };
   recent_transactions: Array<{
     id: number;
@@ -678,6 +699,20 @@ export function getFamilyMembers(familyId: number) {
 
 export function getFamilyDashboard(familyId: number) {
   return request<FamilyDashboardResponse>(`/families/${familyId}/dashboard`);
+}
+
+export function updateFamilyCapitalTarget(payload: {
+  familyId: number;
+  targetOwnerUserId: number | null;
+  targetCapitalAccountId: number | null;
+}) {
+  return request<FamilyDashboardResponse["current_member_capital_target"]>(`/families/${payload.familyId}/capital-target`, {
+    method: "PUT",
+    body: JSON.stringify({
+      target_owner_user_id: payload.targetOwnerUserId,
+      target_capital_account_id: payload.targetCapitalAccountId,
+    }),
+  });
 }
 
 export function getFamilyTransactions(params: {

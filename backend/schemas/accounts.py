@@ -16,6 +16,8 @@ class AccountResponse(BaseModel):
     is_default: bool = False
     icon: Optional[str] = None
     color: Optional[str] = None
+    family_visible: bool = False
+    family_default_target: bool = False
 
 
 class AccountCreateRequest(BaseModel):
@@ -33,6 +35,8 @@ class AccountUpdateRequest(BaseModel):
     color: Optional[str] = None
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None
+    family_visible: Optional[bool] = None
+    family_default_target: Optional[bool] = None
 
     @model_validator(mode="after")
     def validate_has_changes(self) -> "AccountUpdateRequest":
@@ -45,6 +49,8 @@ class AccountUpdateRequest(BaseModel):
                 self.color,
                 self.is_active,
                 self.is_default,
+                self.family_visible,
+                self.family_default_target,
             )
         ):
             raise ValueError("Нужно передать хотя бы одно поле для изменения")

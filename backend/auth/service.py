@@ -303,6 +303,69 @@ class AuthService:
                 WHERE role IN ('admin', 'accountant')
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_capital_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    owner_user_id INTEGER NOT NULL,
+                    capital_account_id INTEGER NOT NULL,
+                    is_visible INTEGER NOT NULL DEFAULT 0,
+                    is_default_target INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (owner_user_id) REFERENCES users(id),
+                    UNIQUE(family_id, owner_user_id, capital_account_id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_family_capital_accounts_family
+                ON family_capital_accounts(family_id, is_visible)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_capital_member_settings (
+                    family_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    target_owner_user_id INTEGER,
+                    target_capital_account_id INTEGER,
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (family_id, user_id),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_capital_contributions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    source_user_id INTEGER NOT NULL,
+                    source_transaction_id INTEGER NOT NULL,
+                    target_owner_user_id INTEGER NOT NULL,
+                    target_capital_account_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    date TEXT NOT NULL,
+                    comment TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    reversed_at TEXT,
+                    UNIQUE(source_user_id, source_transaction_id),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (source_user_id) REFERENCES users(id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_family_capital_contributions_family
+                ON family_capital_contributions(family_id, reversed_at)
+                """
+            )
             conn.commit()
         self.cleanup_expired_sessions()
         self.cleanup_password_reset_tokens()
@@ -1128,6 +1191,10 @@ class AuthService:
             for row in rows
         ]
 
+    def get_primary_family(self, user_id: int) -> Optional[Dict[str, object]]:
+        families = self.list_user_families(user_id)
+        return families[0] if families else None
+
     def get_family_membership(self, family_id: int, user_id: int) -> Optional[Dict[str, object]]:
         with self._auth_connection() as conn:
             cursor = conn.cursor()
@@ -1190,6 +1257,318 @@ class AuthService:
             }
             for row in rows
         ]
+
+    def list_family_capital_accounts(self, family_id: int) -> List[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fca.family_id,
+                       fca.owner_user_id,
+                       fca.capital_account_id,
+                       fca.is_visible,
+                       fca.is_default_target,
+                       fca.updated_at,
+                       u.email,
+                       COALESCE(up.display_name, '') AS display_name
+                FROM family_capital_accounts fca
+                JOIN users u ON u.id = fca.owner_user_id
+                LEFT JOIN user_preferences up ON up.user_id = fca.owner_user_id
+                WHERE fca.family_id = ?
+                ORDER BY fca.is_default_target DESC, fca.owner_user_id ASC, fca.capital_account_id ASC
+                """,
+                (family_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "family_id": int(row["family_id"]),
+                "owner_user_id": int(row["owner_user_id"]),
+                "capital_account_id": int(row["capital_account_id"]),
+                "is_visible": bool(row["is_visible"]),
+                "is_default_target": bool(row["is_default_target"]),
+                "updated_at": str(row["updated_at"] or ""),
+                "owner_email": str(row["email"] or ""),
+                "owner_display_name": str(row["display_name"] or "").strip(),
+            }
+            for row in rows
+        ]
+
+    def get_family_capital_account(
+        self,
+        family_id: int,
+        owner_user_id: int,
+        capital_account_id: int,
+    ) -> Optional[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT family_id, owner_user_id, capital_account_id, is_visible, is_default_target, updated_at
+                FROM family_capital_accounts
+                WHERE family_id = ?
+                  AND owner_user_id = ?
+                  AND capital_account_id = ?
+                LIMIT 1
+                """,
+                (family_id, owner_user_id, capital_account_id),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "family_id": int(row["family_id"]),
+            "owner_user_id": int(row["owner_user_id"]),
+            "capital_account_id": int(row["capital_account_id"]),
+            "is_visible": bool(row["is_visible"]),
+            "is_default_target": bool(row["is_default_target"]),
+            "updated_at": str(row["updated_at"] or ""),
+        }
+
+    def upsert_family_capital_account(
+        self,
+        family_id: int,
+        owner_user_id: int,
+        capital_account_id: int,
+        is_visible: bool,
+        is_default_target: bool,
+    ) -> Dict[str, object]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            if is_default_target:
+                cursor.execute(
+                    """
+                    UPDATE family_capital_accounts
+                    SET is_default_target = 0, updated_at = datetime('now')
+                    WHERE family_id = ?
+                      AND owner_user_id = ?
+                    """,
+                    (family_id, owner_user_id),
+                )
+            cursor.execute(
+                """
+                INSERT INTO family_capital_accounts (
+                    family_id,
+                    owner_user_id,
+                    capital_account_id,
+                    is_visible,
+                    is_default_target,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(family_id, owner_user_id, capital_account_id) DO UPDATE SET
+                    is_visible = excluded.is_visible,
+                    is_default_target = excluded.is_default_target,
+                    updated_at = datetime('now')
+                """,
+                (
+                    family_id,
+                    owner_user_id,
+                    capital_account_id,
+                    1 if is_visible else 0,
+                    1 if is_default_target else 0,
+                ),
+            )
+            conn.commit()
+        return self.get_family_capital_account(family_id, owner_user_id, capital_account_id) or {}
+
+    def get_family_default_capital_target(self, family_id: int) -> Optional[Dict[str, int]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT owner_user_id, capital_account_id
+                FROM family_capital_accounts
+                WHERE family_id = ?
+                  AND is_visible = 1
+                ORDER BY is_default_target DESC, updated_at DESC, id DESC
+                LIMIT 1
+                """,
+                (family_id,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "owner_user_id": int(row["owner_user_id"]),
+            "capital_account_id": int(row["capital_account_id"]),
+        }
+
+    def get_family_member_capital_target(self, family_id: int, user_id: int) -> Optional[Dict[str, int]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT target_owner_user_id, target_capital_account_id
+                FROM family_capital_member_settings
+                WHERE family_id = ?
+                  AND user_id = ?
+                LIMIT 1
+                """,
+                (family_id, user_id),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        owner_user_id = row["target_owner_user_id"]
+        capital_account_id = row["target_capital_account_id"]
+        if owner_user_id is None or capital_account_id is None:
+            return None
+        return {
+            "owner_user_id": int(owner_user_id),
+            "capital_account_id": int(capital_account_id),
+        }
+
+    def set_family_member_capital_target(
+        self,
+        family_id: int,
+        user_id: int,
+        target_owner_user_id: Optional[int],
+        target_capital_account_id: Optional[int],
+    ) -> Dict[str, object]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO family_capital_member_settings (
+                    family_id,
+                    user_id,
+                    target_owner_user_id,
+                    target_capital_account_id,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(family_id, user_id) DO UPDATE SET
+                    target_owner_user_id = excluded.target_owner_user_id,
+                    target_capital_account_id = excluded.target_capital_account_id,
+                    updated_at = datetime('now')
+                """,
+                (family_id, user_id, target_owner_user_id, target_capital_account_id),
+            )
+            conn.commit()
+        return {
+            "family_id": family_id,
+            "user_id": user_id,
+            "target_owner_user_id": target_owner_user_id,
+            "target_capital_account_id": target_capital_account_id,
+        }
+
+    def ensure_family_member_capital_target(self, family_id: int, user_id: int) -> Optional[Dict[str, int]]:
+        current = self.get_family_member_capital_target(family_id, user_id)
+        if current:
+            return current
+        default_target = self.get_family_default_capital_target(family_id)
+        if not default_target:
+            return None
+        self.set_family_member_capital_target(
+            family_id=family_id,
+            user_id=user_id,
+            target_owner_user_id=int(default_target["owner_user_id"]),
+            target_capital_account_id=int(default_target["capital_account_id"]),
+        )
+        return default_target
+
+    def create_family_capital_contribution(
+        self,
+        family_id: int,
+        source_user_id: int,
+        source_transaction_id: int,
+        target_owner_user_id: int,
+        target_capital_account_id: int,
+        amount: float,
+        date: str,
+        comment: str = "",
+    ) -> Dict[str, object]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO family_capital_contributions (
+                    family_id,
+                    source_user_id,
+                    source_transaction_id,
+                    target_owner_user_id,
+                    target_capital_account_id,
+                    amount,
+                    date,
+                    comment,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    family_id,
+                    source_user_id,
+                    source_transaction_id,
+                    target_owner_user_id,
+                    target_capital_account_id,
+                    amount,
+                    date,
+                    comment,
+                ),
+            )
+            contribution_id = int(cursor.lastrowid)
+            conn.commit()
+        return {
+            "id": contribution_id,
+            "family_id": family_id,
+            "source_user_id": source_user_id,
+            "source_transaction_id": source_transaction_id,
+            "target_owner_user_id": target_owner_user_id,
+            "target_capital_account_id": target_capital_account_id,
+            "amount": amount,
+            "date": date,
+            "comment": comment,
+        }
+
+    def get_family_capital_contribution(
+        self,
+        source_user_id: int,
+        source_transaction_id: int,
+    ) -> Optional[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT *
+                FROM family_capital_contributions
+                WHERE source_user_id = ?
+                  AND source_transaction_id = ?
+                  AND reversed_at IS NULL
+                LIMIT 1
+                """,
+                (source_user_id, source_transaction_id),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row["id"]),
+            "family_id": int(row["family_id"]),
+            "source_user_id": int(row["source_user_id"]),
+            "source_transaction_id": int(row["source_transaction_id"]),
+            "target_owner_user_id": int(row["target_owner_user_id"]),
+            "target_capital_account_id": int(row["target_capital_account_id"]),
+            "amount": float(row["amount"] or 0),
+            "date": str(row["date"] or ""),
+            "comment": str(row["comment"] or ""),
+        }
+
+    def reverse_family_capital_contribution(self, contribution_id: int) -> bool:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE family_capital_contributions
+                SET reversed_at = datetime('now')
+                WHERE id = ?
+                  AND reversed_at IS NULL
+                """,
+                (contribution_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
 
     def update_family_member_role(self, family_id: int, user_id: int, role: str) -> bool:
         normalized_role = role if role in {"member", "viewer"} else "member"
@@ -1404,6 +1783,7 @@ class AuthService:
                 (invite_id,),
             )
             conn.commit()
+        self.ensure_family_member_capital_target(family_id, user_id)
         return {
             "family_id": family_id,
             "family_name": family_name,
@@ -1485,6 +1865,7 @@ class AuthService:
                 (int(row["id"]),),
             )
             conn.commit()
+        self.ensure_family_member_capital_target(family_id, user_id)
 
         return {
             "family_id": family_id,

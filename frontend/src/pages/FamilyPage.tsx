@@ -4,16 +4,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createFamily,
   createFamilyInvite,
+  getAccounts,
   getFamilyDashboard,
-  getFamilyTransactions,
   getFamilyMembers,
+  getFamilyTransactions,
   getMe,
   getMyFamilies,
   removeFamilyMember,
+  updateAccount,
+  updateFamilyCapitalTarget,
   updateFamilyMemberRole,
 } from "../lib/api";
 
-type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove";
+type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish" | "capital_target";
 
 function roleLabel(role: "owner" | "member" | "viewer"): string {
   if (role === "owner") {
@@ -44,6 +47,7 @@ export function FamilyPage() {
   const [transactionsScope, setTransactionsScope] = useState<"all" | "mine" | `user:${number}`>("all");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [selectedTargetKey, setSelectedTargetKey] = useState("");
 
   const familiesQuery = useQuery({
     queryKey: ["families", "me"],
@@ -54,6 +58,12 @@ export function FamilyPage() {
   const meQuery = useQuery({
     queryKey: ["auth", "me"],
     queryFn: getMe,
+    retry: false,
+  });
+
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: getAccounts,
     retry: false,
   });
 
@@ -104,6 +114,21 @@ export function FamilyPage() {
     retry: false,
   });
 
+  const capitalAccounts = useMemo(
+    () => (accountsQuery.data ?? []).filter((item) => item.type === "capital" && item.is_active),
+    [accountsQuery.data],
+  );
+
+  const publishedAccountKeys = useMemo(
+    () =>
+      new Set(
+        (familyDashboardQuery.data?.capital_accounts ?? [])
+          .filter((item) => item.owner_user_id === meQuery.data?.id)
+          .map((item) => `${item.owner_user_id}:${item.capital_account_id}`),
+      ),
+    [familyDashboardQuery.data?.capital_accounts, meQuery.data?.id],
+  );
+
   useEffect(() => {
     if (selectedFamilyId !== null) {
       const exists = (familiesQuery.data?.families ?? []).some((item) => item.id === selectedFamilyId);
@@ -116,6 +141,15 @@ export function FamilyPage() {
   useEffect(() => {
     setTransactionsScope("all");
   }, [familyId]);
+
+  useEffect(() => {
+    const target = familyDashboardQuery.data?.current_member_capital_target;
+    if (target?.target_owner_user_id && target?.target_capital_account_id) {
+      setSelectedTargetKey(`${target.target_owner_user_id}:${target.target_capital_account_id}`);
+      return;
+    }
+    setSelectedTargetKey("");
+  }, [familyDashboardQuery.data?.current_member_capital_target]);
 
   const createFamilyMutation = useMutation({
     mutationFn: createFamily,
@@ -201,6 +235,50 @@ export function FamilyPage() {
     },
   });
 
+  const publishCapitalMutation = useMutation({
+    mutationFn: ({ accountId, familyVisible, familyDefaultTarget }: { accountId: number; familyVisible: boolean; familyDefaultTarget?: boolean }) =>
+      updateAccount(accountId, {
+        family_visible: familyVisible,
+        family_default_target: familyDefaultTarget,
+      }),
+    onSuccess: async () => {
+      setMessage("Настройки семейного капитала обновлены.");
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] }),
+      ]);
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message);
+      setMessage("");
+    },
+    onSettled: () => {
+      setBusyAction("");
+    },
+  });
+
+  const updateTargetMutation = useMutation({
+    mutationFn: ({ ownerUserId, capitalAccountId }: { ownerUserId: number | null; capitalAccountId: number | null }) =>
+      updateFamilyCapitalTarget({
+        familyId: familyId as number,
+        targetOwnerUserId: ownerUserId,
+        targetCapitalAccountId: capitalAccountId,
+      }),
+    onSuccess: async () => {
+      setMessage("Цель семейных отчислений обновлена.");
+      setError("");
+      await queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] });
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message);
+      setMessage("");
+    },
+    onSettled: () => {
+      setBusyAction("");
+    },
+  });
+
   function onCreateFamily() {
     const trimmed = familyName.trim();
     if (!trimmed) {
@@ -244,6 +322,34 @@ export function FamilyPage() {
     setBusyAction("member_remove");
     setBusyUserId(memberUserId);
     removeMemberMutation.mutate({ family_id: familyId, user_id: memberUserId });
+  }
+
+  function toggleFamilyCapital(accountId: number, familyVisible: boolean) {
+    setBusyAction("capital_publish");
+    publishCapitalMutation.mutate({
+      accountId,
+      familyVisible,
+      familyDefaultTarget: familyVisible ? undefined : false,
+    });
+  }
+
+  function makeDefaultFamilyCapital(accountId: number) {
+    setBusyAction("capital_publish");
+    publishCapitalMutation.mutate({ accountId, familyVisible: true, familyDefaultTarget: true });
+  }
+
+  function saveFamilyTarget() {
+    if (familyId === null) {
+      return;
+    }
+    const [ownerRaw, accountRaw] = selectedTargetKey.split(":");
+    const ownerUserId = ownerRaw ? Number(ownerRaw) : null;
+    const capitalAccountId = accountRaw ? Number(accountRaw) : null;
+    setBusyAction("capital_target");
+    updateTargetMutation.mutate({
+      ownerUserId: Number.isFinite(ownerUserId ?? NaN) ? ownerUserId : null,
+      capitalAccountId: Number.isFinite(capitalAccountId ?? NaN) ? capitalAccountId : null,
+    });
   }
 
   return (
@@ -339,6 +445,12 @@ export function FamilyPage() {
             </article>
             <article className="list-item">
               <div>
+                <strong>Семейный капитал</strong>
+                <p>{formatMoney(familyDashboardQuery.data?.balance.capital_balance ?? 0)}</p>
+              </div>
+            </article>
+            <article className="list-item">
+              <div>
                 <strong>Доход за месяц</strong>
                 <p className="money plus">{formatMoney(familyDashboardQuery.data?.balance.income ?? 0)}</p>
               </div>
@@ -349,6 +461,93 @@ export function FamilyPage() {
                 <p className="money minus">{formatMoney(familyDashboardQuery.data?.balance.expense ?? 0)}</p>
               </div>
             </article>
+          </div>
+        </section>
+      ) : null}
+
+      {familyId !== null ? (
+        <section className="panel panel-wide">
+          <div className="panel-header">
+            <h3>Семейный капитал</h3>
+            <span>Общие накопительные счета и цель для автоотчислений</span>
+          </div>
+
+          <div className="transaction-form">
+            <label className="field">
+              <span>Мой счет для публикации семье</span>
+              <div className="list">
+                {capitalAccounts.map((account) => {
+                  const accountKey = `${meQuery.data?.id ?? 0}:${account.id}`;
+                  const isPublished = publishedAccountKeys.has(accountKey);
+                  return (
+                    <article className="list-item" key={account.id}>
+                      <div>
+                        <strong>{account.name}</strong>
+                        <p>{formatMoney(account.balance)}</p>
+                      </div>
+                      <div className="family-page-actions">
+                        <button
+                          className="ghost-button"
+                          disabled={busyAction === "capital_publish"}
+                          onClick={() => toggleFamilyCapital(account.id, !isPublished)}
+                          type="button"
+                        >
+                          {isPublished ? "Убрать из семьи" : "Показывать семье"}
+                        </button>
+                        {isPublished && !account.family_default_target ? (
+                          <button
+                            className="ghost-button"
+                            disabled={busyAction === "capital_publish"}
+                            onClick={() => makeDefaultFamilyCapital(account.id)}
+                            type="button"
+                          >
+                            Семейный по умолчанию
+                          </button>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })}
+                {!capitalAccounts.length ? <p className="muted">У вас пока нет активных счетов капитала.</p> : null}
+              </div>
+            </label>
+
+            <label className="field">
+              <span>Куда отправлять мои семейные отчисления</span>
+              <select onChange={(event) => setSelectedTargetKey(event.target.value)} value={selectedTargetKey}>
+                <option value="">Не выбрано</option>
+                {(familyDashboardQuery.data?.capital_accounts ?? []).map((account) => (
+                  <option
+                    key={`${account.owner_user_id}:${account.capital_account_id}`}
+                    value={`${account.owner_user_id}:${account.capital_account_id}`}
+                  >
+                    {(account.owner_display_name || account.owner_email) + " - " + account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button className="primary-button" disabled={busyAction === "capital_target"} onClick={saveFamilyTarget} type="button">
+              {busyAction === "capital_target" ? "Сохраняем..." : "Сохранить цель отчислений"}
+            </button>
+          </div>
+
+          <div className="list">
+            {(familyDashboardQuery.data?.capital_accounts ?? []).map((account) => (
+              <article className="list-item" key={`${account.owner_user_id}-${account.capital_account_id}`}>
+                <div>
+                  <strong>{account.name}</strong>
+                  <p>{account.owner_display_name || account.owner_email}</p>
+                </div>
+                <div className="family-page-actions">
+                  {account.is_default_target ? <span className="status-chip">По умолчанию</span> : null}
+                  <strong>{formatMoney(account.balance)}</strong>
+                </div>
+              </article>
+            ))}
+            {!familyDashboardQuery.isLoading && !(familyDashboardQuery.data?.capital_accounts ?? []).length ? (
+              <p className="muted">Семейные счета капитала пока не настроены.</p>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -418,35 +617,34 @@ export function FamilyPage() {
                     {member.display_name ? <p>{member.email}</p> : null}
                     <p>Роль: {roleLabel(member.role)}</p>
                   </div>
+
                   <div className="family-page-actions">
-                    <select
-                      disabled={!canManageThisMember || busyAction !== ""}
-                      onChange={(event) =>
-                        onUpdateMemberRole(
-                          member.user_id,
-                          event.target.value as "member" | "viewer",
-                        )
-                      }
-                      value={member.role === "owner" ? "member" : member.role}
-                    >
-                      <option value="member">Помощник</option>
-                      <option value="viewer">Просмотр</option>
-                    </select>
-                    <button
-                      className="ghost-button family-remove-button"
-                      disabled={!canManageThisMember || busyAction !== ""}
-                      onClick={() => onRemoveMember(member.user_id)}
-                      type="button"
-                    >
-                      {busyAction === "member_remove" && busyUserId === member.user_id ? "Исключаем..." : "Исключить"}
-                    </button>
+                    {canManageThisMember ? (
+                      <>
+                        <button
+                          className="ghost-button"
+                          disabled={busyAction === "member_update" && busyUserId === member.user_id}
+                          onClick={() => onUpdateMemberRole(member.user_id, member.role === "viewer" ? "member" : "viewer")}
+                          type="button"
+                        >
+                          {member.role === "viewer" ? "Сделать помощником" : "Только просмотр"}
+                        </button>
+                        <button
+                          className="ghost-button"
+                          disabled={busyAction === "member_remove" && busyUserId === member.user_id}
+                          onClick={() => onRemoveMember(member.user_id)}
+                          type="button"
+                        >
+                          Исключить
+                        </button>
+                      </>
+                    ) : (
+                      <span className="status-chip">{isSelf ? "Это вы" : roleLabel(member.role)}</span>
+                    )}
                   </div>
                 </article>
               );
             })}
-            {!familyMembersQuery.isLoading && (familyMembersQuery.data?.members ?? []).length === 0 ? (
-              <p className="muted">Участников пока нет.</p>
-            ) : null}
           </div>
         </section>
       ) : null}

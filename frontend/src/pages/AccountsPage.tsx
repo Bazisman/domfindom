@@ -6,6 +6,7 @@ import {
   createTransfer,
   deleteAccount,
   getAccounts,
+  getMyFamilies,
   getSettings,
   getTransfers,
   updateAccount,
@@ -76,6 +77,11 @@ export function AccountsPage() {
     queryFn: getSettings,
   });
 
+  const families = useQuery({
+    queryKey: ["families", "me"],
+    queryFn: getMyFamilies,
+  });
+
   const transfers = useQuery({
     queryKey: ["transfers", "all"],
     queryFn: () => getTransfers({ limit: 20 }),
@@ -100,6 +106,8 @@ export function AccountsPage() {
     () => (accounts.data ?? []).filter((item) => item.is_active),
     [accounts.data],
   );
+
+  const hasFamily = Boolean((families.data?.families ?? []).length);
 
   useEffect(() => {
     if (!settings.data) {
@@ -453,6 +461,9 @@ export function AccountsPage() {
               Деньги будут уходить на счёт капитала по умолчанию: <strong>{defaultCapitalAccountName}</strong>.
             </p>
 
+            {hasFamily ? (
+              <p className="muted">Семейные счета и цель для семейных отчислений можно настроить в разделе семьи.</p>
+            ) : null}
             {settingsError && <p className="form-error">{settingsError}</p>}
             {!settingsError && !updateSettingsMutation.isPending && settingsSavedNotice && (
               <p className="form-status form-status-success">Сохранено</p>

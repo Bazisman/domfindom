@@ -85,9 +85,33 @@ class FamilyPendingInviteListResponse(BaseModel):
 
 class FamilyDashboardBalanceResponse(BaseModel):
     main_balance: float
+    capital_balance: float = 0
     income: float
     expense: float
     difference: float
+
+
+class FamilyCapitalAccountItemResponse(BaseModel):
+    owner_user_id: int
+    owner_email: str
+    owner_display_name: str
+    capital_account_id: int
+    name: str
+    balance: float
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    is_visible: bool
+    is_default_target: bool
+
+
+class FamilyCapitalSelectionResponse(BaseModel):
+    target_owner_user_id: Optional[int] = None
+    target_capital_account_id: Optional[int] = None
+
+
+class FamilyCapitalTargetUpdatePayload(BaseModel):
+    target_owner_user_id: Optional[int] = None
+    target_capital_account_id: Optional[int] = None
 
 
 class FamilyDashboardTransactionResponse(BaseModel):
@@ -108,6 +132,8 @@ class FamilyDashboardResponse(BaseModel):
     family_name: str
     members_count: int
     balance: FamilyDashboardBalanceResponse
+    capital_accounts: List[FamilyCapitalAccountItemResponse] = []
+    current_member_capital_target: FamilyCapitalSelectionResponse = FamilyCapitalSelectionResponse()
     recent_transactions: List[FamilyDashboardTransactionResponse]
 
 

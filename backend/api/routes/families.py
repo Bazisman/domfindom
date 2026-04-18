@@ -9,7 +9,13 @@ from backend.auth.mailer import auth_mailer
 from backend.auth.service import auth_service
 from backend.schemas.families import (
     FamilyActionResponse,
+    FamilyCapitalAccountItemResponse,
+    FamilyCapitalSelectionResponse,
+    FamilyCapitalTargetUpdatePayload,
     FamilyCreatePayload,
+    FamilyDashboardBalanceResponse,
+    FamilyDashboardResponse,
+    FamilyDashboardTransactionResponse,
     FamilyInviteAcceptPayload,
     FamilyInviteAcceptResponse,
     FamilyInviteCreatePayload,
@@ -19,12 +25,9 @@ from backend.schemas.families import (
     FamilyMemberItemResponse,
     FamilyMemberListResponse,
     FamilyMemberRoleUpdatePayload,
-    FamilyDashboardBalanceResponse,
-    FamilyDashboardResponse,
-    FamilyDashboardTransactionResponse,
-    FamilyTransactionListResponse,
     FamilyPendingInviteItemResponse,
     FamilyPendingInviteListResponse,
+    FamilyTransactionListResponse,
 )
 from backend.services import row_to_transaction_response, transaction_service
 
@@ -53,46 +56,99 @@ def _require_family_admin_access(family_id: int, user_id: int):
     return membership
 
 
-def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboardResponse:
+def _run_in_user_db(user_id: int, action):
+    user_db_path = auth_service.ensure_user_finance_db(user_id)
+    token = core.push_db_name(user_db_path)
+    try:
+        return action()
+    finally:
+        core.pop_db_name(token)
+
+
+def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
+    result: List[Dict[str, object]] = []
+    for item in auth_service.list_family_capital_accounts(family_id):
+        if not bool(item.get("is_visible")):
+            continue
+        owner_user_id = int(item["owner_user_id"])
+        capital_account_id = int(item["capital_account_id"])
+
+        def _action():
+            for account in core.get_capital_accounts(include_inactive=False):
+                if int(account["id"]) == capital_account_id:
+                    return account
+            return None
+
+        account = _run_in_user_db(owner_user_id, _action)
+        if not account:
+            continue
+        result.append(
+            {
+                "owner_user_id": owner_user_id,
+                "owner_email": str(item.get("owner_email") or ""),
+                "owner_display_name": str(item.get("owner_display_name") or "").strip(),
+                "capital_account_id": capital_account_id,
+                "name": str(account["name"] or ""),
+                "balance": float(account["balance"] or 0),
+                "color": account["color"] if "color" in account.keys() else None,
+                "icon": account["icon"] if "icon" in account.keys() else None,
+                "is_visible": True,
+                "is_default_target": bool(item.get("is_default_target")),
+            }
+        )
+    return result
+
+
+def _collect_family_dashboard(family_id: int, family_name: str, current_user_id: int) -> FamilyDashboardResponse:
     members = auth_service.list_family_members(family_id)
     now = datetime.now()
 
     main_balance = 0.0
+    capital_balance = 0.0
     income = 0.0
     expense = 0.0
     recent_transactions: List[Dict[str, object]] = []
+    capital_accounts = _collect_family_capital_accounts(family_id)
+    capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
 
     for member in members:
         user_id = int(member["user_id"])
         user_email = str(member["email"] or "")
         user_display_name = str(member.get("display_name") or "").strip()
-        user_db_path = auth_service.ensure_user_finance_db(user_id)
-        db_token = core.push_db_name(user_db_path)
-        try:
+
+        def _action():
             balance = transaction_service.get_balance(force_update=True)
             stats = transaction_service.get_monthly_stats(now.year, now.month)
-            main_balance += float(balance.main_balance)
-            income += float(stats.get("income", 0.0) or 0.0)
-            expense += float(stats.get("expense", 0.0) or 0.0)
-
             items = transaction_service.get_transactions(limit=100, period="all", offset=0)
-            for item in items:
-                if item.status == "planned":
-                    continue
-                mapped = row_to_transaction_response(item)
-                recent_transactions.append(
-                    {
-                        **mapped,
-                        "owner_user_id": user_id,
-                        "owner_email": user_email,
-                        "owner_display_name": user_display_name,
-                    }
-                )
-        finally:
-            core.pop_db_name(db_token)
+            return balance, stats, items
+
+        balance, stats, items = _run_in_user_db(user_id, _action)
+        main_balance += float(balance.main_balance)
+        income += float(stats.get("income", 0.0) or 0.0)
+        expense += float(stats.get("expense", 0.0) or 0.0)
+
+        for item in items:
+            if item.status == "planned":
+                continue
+            mapped = row_to_transaction_response(item)
+            recent_transactions.append(
+                {
+                    **mapped,
+                    "owner_user_id": user_id,
+                    "owner_email": user_email,
+                    "owner_display_name": user_display_name,
+                }
+            )
 
     recent_transactions.sort(key=lambda item: (str(item["date"]), int(item["id"])), reverse=True)
     top_transactions = recent_transactions[:20]
+    current_target = auth_service.ensure_family_member_capital_target(family_id, current_user_id)
+    if current_target and not any(
+        int(item["owner_user_id"]) == int(current_target["owner_user_id"])
+        and int(item["capital_account_id"]) == int(current_target["capital_account_id"])
+        for item in capital_accounts
+    ):
+        current_target = None
 
     return FamilyDashboardResponse(
         family_id=family_id,
@@ -100,9 +156,15 @@ def _collect_family_dashboard(family_id: int, family_name: str) -> FamilyDashboa
         members_count=len(members),
         balance=FamilyDashboardBalanceResponse(
             main_balance=round(main_balance, 2),
+            capital_balance=round(capital_balance, 2),
             income=round(income, 2),
             expense=round(expense, 2),
             difference=round(income - expense, 2),
+        ),
+        capital_accounts=[FamilyCapitalAccountItemResponse(**item) for item in capital_accounts],
+        current_member_capital_target=FamilyCapitalSelectionResponse(
+            target_owner_user_id=int(current_target["owner_user_id"]) if current_target else None,
+            target_capital_account_id=int(current_target["capital_account_id"]) if current_target else None,
         ),
         recent_transactions=[FamilyDashboardTransactionResponse(**item) for item in top_transactions],
     )
@@ -135,24 +197,22 @@ def _collect_family_transactions(
     items: List[Dict[str, object]] = []
 
     for user_id in target_user_ids:
-        user_db_path = auth_service.ensure_user_finance_db(user_id)
-        db_token = core.push_db_name(user_db_path)
-        try:
-            rows = transaction_service.get_transactions(limit=500, period=period, offset=0)
-            for row in rows:
-                if not include_planned and row.status == "planned":
-                    continue
-                mapped = row_to_transaction_response(row)
-                items.append(
-                    {
-                        **mapped,
-                        "owner_user_id": user_id,
-                        "owner_email": member_map.get(user_id, {}).get("email", ""),
-                        "owner_display_name": member_map.get(user_id, {}).get("display_name", ""),
-                    }
-                )
-        finally:
-            core.pop_db_name(db_token)
+        def _action():
+            return transaction_service.get_transactions(limit=500, period=period, offset=0)
+
+        rows = _run_in_user_db(user_id, _action)
+        for row in rows:
+            if not include_planned and row.status == "planned":
+                continue
+            mapped = row_to_transaction_response(row)
+            items.append(
+                {
+                    **mapped,
+                    "owner_user_id": user_id,
+                    "owner_email": member_map.get(user_id, {}).get("email", ""),
+                    "owner_display_name": member_map.get(user_id, {}).get("display_name", ""),
+                }
+            )
 
     items.sort(key=lambda item: (str(item["date"]), int(item["id"])), reverse=True)
 
@@ -214,7 +274,51 @@ def get_family_dashboard(family_id: int, current_user=Depends(require_user)) -> 
 
     membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
     family_name = str(membership.get("family_name") or "Семья")
-    return _collect_family_dashboard(family_id=family_id, family_name=family_name)
+    return _collect_family_dashboard(
+        family_id=family_id,
+        family_name=family_name,
+        current_user_id=int(current_user["id"]),
+    )
+
+
+@router.put("/{family_id}/capital-target", response_model=FamilyCapitalSelectionResponse)
+def update_family_capital_target(
+    family_id: int,
+    payload: FamilyCapitalTargetUpdatePayload,
+    current_user=Depends(require_user),
+) -> FamilyCapitalSelectionResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
+
+    if payload.target_owner_user_id is None or payload.target_capital_account_id is None:
+        auth_service.set_family_member_capital_target(
+            family_id=family_id,
+            user_id=int(current_user["id"]),
+            target_owner_user_id=None,
+            target_capital_account_id=None,
+        )
+        return FamilyCapitalSelectionResponse()
+
+    published_meta = auth_service.get_family_capital_account(
+        family_id=family_id,
+        owner_user_id=int(payload.target_owner_user_id),
+        capital_account_id=int(payload.target_capital_account_id),
+    )
+    if not published_meta or not bool(published_meta.get("is_visible")):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Семейный счет для отчислений не найден")
+
+    auth_service.set_family_member_capital_target(
+        family_id=family_id,
+        user_id=int(current_user["id"]),
+        target_owner_user_id=int(payload.target_owner_user_id),
+        target_capital_account_id=int(payload.target_capital_account_id),
+    )
+    return FamilyCapitalSelectionResponse(
+        target_owner_user_id=int(payload.target_owner_user_id),
+        target_capital_account_id=int(payload.target_capital_account_id),
+    )
 
 
 @router.get("/{family_id}/transactions", response_model=FamilyTransactionListResponse)
