@@ -170,16 +170,22 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
     family_id = _current_family_id(int(current_user["id"]))
     if family_id > 0 and (family_visible is not None or family_default_target is not None):
         existing_meta = auth_service.get_family_capital_account(family_id, int(current_user["id"]), account_id) or {}
+        effective_family_visible = bool(existing_meta.get("is_visible", False) if family_visible is None else family_visible)
+        effective_family_default = bool(
+            existing_meta.get("is_default_target", False)
+            if family_default_target is None
+            else family_default_target
+        )
+        if not effective_family_visible:
+            effective_family_default = False
+        if effective_family_default:
+            effective_family_visible = True
         auth_service.upsert_family_capital_account(
             family_id=family_id,
             owner_user_id=int(current_user["id"]),
             capital_account_id=account_id,
-            is_visible=bool(existing_meta.get("is_visible", False) if family_visible is None else family_visible),
-            is_default_target=bool(
-                existing_meta.get("is_default_target", False)
-                if family_default_target is None
-                else family_default_target
-            ),
+            is_visible=effective_family_visible,
+            is_default_target=effective_family_default,
         )
 
     if not updated:
