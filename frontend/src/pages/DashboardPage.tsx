@@ -48,6 +48,10 @@ function getForecastMonthLabel(endDate: string | undefined) {
   return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
 }
 
+function normalizeCarouselIndex(index: number, length: number) {
+  return ((index % length) + length) % length;
+}
+
 export function DashboardPage() {
   const queryClient = useQueryClient();
   const quickEntryFormRef = useRef<HTMLFormElement | null>(null);
@@ -56,14 +60,12 @@ export function DashboardPage() {
   const balanceDragStateRef = useRef<{
     pointerId: number;
     startX: number;
-    startScrollLeft: number;
+    startOffset: number;
     lastClientX: number;
     lastDirection: -1 | 0 | 1;
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
   const balanceSettleStartRef = useRef<number | null>(null);
-  const balanceScrollIdleTimeoutRef = useRef<number | null>(null);
-  const balanceVirtualIndexRef = useRef(0);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -116,6 +118,8 @@ export function DashboardPage() {
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
   const [isBalanceDragging, setIsBalanceDragging] = useState(false);
+  const [balanceDragOffset, setBalanceDragOffset] = useState(0);
+  const [isDesktopBalanceMode, setIsDesktopBalanceMode] = useState(false);
 
   const visibleTransactions = useMemo(() => {
     if (useFamilyFeed) {
@@ -157,7 +161,17 @@ export function DashboardPage() {
   const forecastMonthLabel = getForecastMonthLabel(dashboard.data?.forecast.end_date);
   const familyBalance = familyDashboardQuery.data?.balance;
   const showFamilyBalanceSlide = useFamilyFeed && familyBalance !== undefined;
-  const balanceLoopSlides = showFamilyBalanceSlide ? [1, 0, 1, 0] : [0];
+  const desktopBalanceSlides = useMemo(
+    () =>
+      showFamilyBalanceSlide
+        ? [
+            normalizeCarouselIndex(activeBalanceSlide - 1, 2),
+            normalizeCarouselIndex(activeBalanceSlide, 2),
+            normalizeCarouselIndex(activeBalanceSlide + 1, 2),
+          ]
+        : [0],
+    [activeBalanceSlide, showFamilyBalanceSlide],
+  );
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -226,40 +240,51 @@ export function DashboardPage() {
   }, [selectedCategory?.id]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(pointer: fine)");
+    const syncMode = () => setIsDesktopBalanceMode(mediaQuery.matches);
+    syncMode();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncMode);
+      return () => mediaQuery.removeEventListener("change", syncMode);
+    }
+
+    mediaQuery.addListener(syncMode);
+    return () => mediaQuery.removeListener(syncMode);
+  }, []);
+
+  useEffect(() => {
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
       balanceSettleFrameRef.current = null;
     }
-    if (balanceScrollIdleTimeoutRef.current !== null) {
-      window.clearTimeout(balanceScrollIdleTimeoutRef.current);
-      balanceScrollIdleTimeoutRef.current = null;
-    }
     balanceSettleStartRef.current = null;
     balanceDragStateRef.current = null;
     setActiveBalanceSlide(0);
-    if (balanceCarouselRef.current) {
-      const track = balanceCarouselRef.current;
-      const slideWidth = track.clientWidth || 1;
-      const startIndex = showFamilyBalanceSlide ? 1 : 0;
-      balanceVirtualIndexRef.current = startIndex;
-      track.scrollTo({ left: slideWidth * startIndex, behavior: "auto" });
+    setBalanceDragOffset(0);
+
+    if (!showFamilyBalanceSlide || isDesktopBalanceMode) {
+      return;
     }
-  }, [showFamilyBalanceSlide, selectedFamilyId]);
+
+    balanceCarouselRef.current?.scrollTo({ left: 0, behavior: "auto" });
+  }, [isDesktopBalanceMode, selectedFamilyId, showFamilyBalanceSlide]);
 
   useEffect(() => {
     return () => {
       if (balanceSettleFrameRef.current !== null) {
         window.cancelAnimationFrame(balanceSettleFrameRef.current);
       }
-      if (balanceScrollIdleTimeoutRef.current !== null) {
-        window.clearTimeout(balanceScrollIdleTimeoutRef.current);
-      }
     };
   }, []);
 
   useEffect(() => {
     const node = balanceCarouselRef.current;
-    if (!node || !showFamilyBalanceSlide) {
+    if (!node || !showFamilyBalanceSlide || isDesktopBalanceMode) {
       return;
     }
 
@@ -268,47 +293,13 @@ export function DashboardPage() {
       if (!track) {
         return;
       }
-      const slideWidth = track.clientWidth || 1;
-      const nearestVirtualIndex = Math.max(
-        0,
-        Math.min(balanceLoopSlides.length - 1, Math.round(track.scrollLeft / slideWidth)),
-      );
-      const nextLogicalIndex = balanceLoopSlides[nearestVirtualIndex] ?? 0;
-      balanceVirtualIndexRef.current = nearestVirtualIndex;
-      setActiveBalanceSlide(nextLogicalIndex);
-
-      if (isBalanceDragging || balanceSettleFrameRef.current !== null) {
-        return;
-      }
-      if (balanceScrollIdleTimeoutRef.current !== null) {
-        window.clearTimeout(balanceScrollIdleTimeoutRef.current);
-      }
-      balanceScrollIdleTimeoutRef.current = window.setTimeout(() => {
-        const currentTrack = balanceCarouselRef.current;
-        if (!currentTrack) {
-          return;
-        }
-        const currentSlideWidth = currentTrack.clientWidth || 1;
-        const currentVirtualIndex = Math.max(
-          0,
-          Math.min(balanceLoopSlides.length - 1, Math.round(currentTrack.scrollLeft / currentSlideWidth)),
-        );
-        const logicalIndex = balanceLoopSlides[currentVirtualIndex] ?? 0;
-        const preferredVirtualIndex = logicalIndex === 0 ? 1 : 2;
-        if (currentVirtualIndex !== preferredVirtualIndex) {
-          currentTrack.scrollTo({
-            left: currentSlideWidth * preferredVirtualIndex,
-            behavior: "auto",
-          });
-        }
-        balanceVirtualIndexRef.current = preferredVirtualIndex;
-      }, 120);
+      setActiveBalanceSlide(track.scrollLeft > track.clientWidth * 0.5 ? 1 : 0);
     }
 
     syncActiveSlide();
     node.addEventListener("scroll", syncActiveSlide, { passive: true });
     return () => node.removeEventListener("scroll", syncActiveSlide);
-  }, [isBalanceDragging, showFamilyBalanceSlide]);
+  }, [isDesktopBalanceMode, showFamilyBalanceSlide]);
 
   function submitQuickEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -344,38 +335,33 @@ export function DashboardPage() {
   }
 
   function handleBalancePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (!showFamilyBalanceSlide || event.pointerType !== "mouse") {
+    if (!showFamilyBalanceSlide || !isDesktopBalanceMode || event.pointerType !== "mouse") {
       return;
     }
-    const track = balanceCarouselRef.current;
-    if (!track) {
+    const viewport = balanceCarouselRef.current;
+    if (!viewport) {
       return;
     }
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
       balanceSettleFrameRef.current = null;
     }
-    if (balanceScrollIdleTimeoutRef.current !== null) {
-      window.clearTimeout(balanceScrollIdleTimeoutRef.current);
-      balanceScrollIdleTimeoutRef.current = null;
-    }
     balanceSettleStartRef.current = null;
     balanceDragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
-      startScrollLeft: track.scrollLeft,
+      startOffset: balanceDragOffset,
       lastClientX: event.clientX,
       lastDirection: 0,
     };
     event.preventDefault();
     setIsBalanceDragging(true);
-    track.setPointerCapture(event.pointerId);
+    viewport.setPointerCapture(event.pointerId);
   }
 
   function handleBalancePointerMove(event: PointerEvent<HTMLDivElement>) {
-    const track = balanceCarouselRef.current;
     const dragState = balanceDragStateRef.current;
-    if (!track || !dragState || dragState.pointerId !== event.pointerId) {
+    if (!dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
     const deltaX = event.clientX - dragState.startX;
@@ -385,20 +371,17 @@ export function DashboardPage() {
       dragState.lastClientX = event.clientX;
     }
     event.preventDefault();
-    track.scrollLeft = dragState.startScrollLeft - deltaX;
+    setBalanceDragOffset(dragState.startOffset + deltaX);
   }
 
-  function animateBalanceTrackTo(targetVirtualIndex: number) {
-    const track = balanceCarouselRef.current;
-    if (!track) {
+  function animateDesktopBalanceFlight(direction: -1 | 0 | 1) {
+    const viewport = balanceCarouselRef.current;
+    if (!viewport) {
       return;
     }
-    const slideWidth = track.clientWidth || 1;
-    const startLeft = track.scrollLeft;
-    const targetLeft = targetVirtualIndex * slideWidth;
-    const targetLogicalIndex = balanceLoopSlides[targetVirtualIndex] ?? 0;
-    const preferredVirtualIndex = targetLogicalIndex === 0 ? 1 : 2;
-    const settleTrack = track;
+    const width = viewport.clientWidth || 1;
+    const startOffset = balanceDragOffset;
+    const targetOffset = direction === 0 ? 0 : direction > 0 ? -width : width;
     if (balanceSettleFrameRef.current !== null) {
       window.cancelAnimationFrame(balanceSettleFrameRef.current);
     }
@@ -409,24 +392,19 @@ export function DashboardPage() {
         balanceSettleStartRef.current = timestamp;
       }
       const elapsed = timestamp - balanceSettleStartRef.current;
-      const progress = Math.min(elapsed / 820, 1);
-      const eased = 1 - Math.pow(1 - progress, 4);
-      settleTrack.scrollLeft = startLeft + (targetLeft - startLeft) * eased;
+      const progress = Math.min(elapsed / 760, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setBalanceDragOffset(startOffset + (targetOffset - startOffset) * eased);
 
       if (progress < 1) {
         balanceSettleFrameRef.current = window.requestAnimationFrame(animate);
         return;
       }
 
-      settleTrack.scrollLeft = targetLeft;
-      if (targetVirtualIndex !== preferredVirtualIndex) {
-        settleTrack.scrollTo({
-          left: slideWidth * preferredVirtualIndex,
-          behavior: "auto",
-        });
+      if (direction !== 0) {
+        setActiveBalanceSlide((current) => normalizeCarouselIndex(current + direction, 2));
       }
-      balanceVirtualIndexRef.current = preferredVirtualIndex;
-      setActiveBalanceSlide(targetLogicalIndex);
+      setBalanceDragOffset(0);
       balanceSettleFrameRef.current = null;
       balanceSettleStartRef.current = null;
     }
@@ -435,15 +413,15 @@ export function DashboardPage() {
   }
 
   function finishBalanceDrag(event: PointerEvent<HTMLDivElement>) {
-    const track = balanceCarouselRef.current;
+    const viewport = balanceCarouselRef.current;
     const dragState = balanceDragStateRef.current;
-    if (!track || !dragState || dragState.pointerId !== event.pointerId) {
+    if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
       return;
     }
     balanceDragStateRef.current = null;
     setIsBalanceDragging(false);
-    if (track.hasPointerCapture(event.pointerId)) {
-      track.releasePointerCapture(event.pointerId);
+    if (viewport.hasPointerCapture(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
     }
     const totalDeltaX = event.clientX - dragState.startX;
     const direction =
@@ -454,23 +432,78 @@ export function DashboardPage() {
           : totalDeltaX >= 6
             ? -1
             : 0;
-    const slideWidth = track.clientWidth || 1;
-    const currentVirtualIndex = Math.max(
-      0,
-      Math.min(balanceLoopSlides.length - 1, balanceVirtualIndexRef.current),
-    );
-    const targetVirtualIndex =
-      direction === 0
-        ? currentVirtualIndex
-        : Math.max(0, Math.min(balanceLoopSlides.length - 1, currentVirtualIndex + direction));
-    animateBalanceTrackTo(targetVirtualIndex);
+    animateDesktopBalanceFlight(direction);
   }
 
   function handleBalanceDotClick(logicalIndex: number) {
     if (!showFamilyBalanceSlide) {
       return;
     }
-    animateBalanceTrackTo(logicalIndex === 0 ? 1 : 2);
+    if (isDesktopBalanceMode) {
+      const nextDirection = logicalIndex === normalizeCarouselIndex(activeBalanceSlide + 1, 2) ? 1 : -1;
+      animateDesktopBalanceFlight(logicalIndex === activeBalanceSlide ? 0 : nextDirection);
+      return;
+    }
+    if (logicalIndex === 0) {
+      balanceCarouselRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+      return;
+    }
+    balanceCarouselRef.current?.scrollTo({
+      left: balanceCarouselRef.current?.clientWidth ?? 0,
+      behavior: "smooth",
+    });
+  }
+
+  function renderPersonalBalanceSlide(key: string) {
+    return (
+      <article className="balance-slide" key={key}>
+        <p className="panel-label">Текущий баланс</p>
+        <h2>{dashboard.data?.balance.main_balance !== undefined ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
+        <div className="stats-row">
+          <div>
+            <span>Доход за месяц (получено / план)</span>
+            <strong>{dashboard.data ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}` : "—"}</strong>
+            <p className="stat-note">Еще поступит: {formatMoney(remainingIncome)}</p>
+          </div>
+          <div>
+            <span>Расход за месяц (потрачено / план)</span>
+            <strong className={isExpenseOverPlan ? "money minus" : undefined}>
+              {dashboard.data ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}` : "—"}
+            </strong>
+            <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
+              {remainingExpense >= 0
+                ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
+                : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
+            </p>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  function renderFamilyBalanceSlide(key: string) {
+    return (
+      <article className="balance-slide" key={key}>
+        <p className="panel-label">Текущий баланс семьи</p>
+        <h2>{familyBalance ? formatMoney(familyBalance.main_balance) : "—"}</h2>
+        <div className="stats-row">
+          <div>
+            <span>Доход семьи</span>
+            <strong className="money plus">{familyBalance ? formatMoney(familyBalance.income) : "—"}</strong>
+            <p className="stat-note">Сумма по всем участникам семьи</p>
+          </div>
+          <div>
+            <span>Расход семьи</span>
+            <strong className="money minus">{familyBalance ? formatMoney(familyBalance.expense) : "—"}</strong>
+            <p className="stat-note">
+              {familyDashboardQuery.data?.family_name
+                ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count ?? 0} участ.`
+                : "Семейный режим"}
+            </p>
+          </div>
+        </div>
+      </article>
+    );
   }
 
   return (
@@ -487,122 +520,32 @@ export function DashboardPage() {
       <main className="grid">
         <section className="panel panel-balance">
           <div className="balance-carousel" data-has-family-slide={showFamilyBalanceSlide ? "true" : "false"}>
-            <div
-              className={isBalanceDragging ? "balance-carousel-track is-dragging" : "balance-carousel-track"}
-              onPointerDown={handleBalancePointerDown}
-              onPointerMove={handleBalancePointerMove}
-              onPointerUp={finishBalanceDrag}
-              onPointerCancel={finishBalanceDrag}
-              ref={balanceCarouselRef}
-            >
-              {showFamilyBalanceSlide ? (
-                <article className="balance-slide">
-                  <p className="panel-label">Текущий баланс семьи</p>
-                  <h2>{formatMoney(familyBalance.main_balance)}</h2>
-                  <div className="stats-row">
-                    <div>
-                      <span>Доход семьи</span>
-                      <strong className="money plus">{formatMoney(familyBalance.income)}</strong>
-                      <p className="stat-note">Сумма по всем участникам семьи</p>
-                    </div>
-                    <div>
-                      <span>Расход семьи</span>
-                      <strong className="money minus">{formatMoney(familyBalance.expense)}</strong>
-                      <p className="stat-note">
-                        {familyDashboardQuery.data
-                          ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count} участ.`
-                          : "Семейный режим"}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              ) : null}
-              <article className="balance-slide">
-                <p className="panel-label">Текущий баланс</p>
-                <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
-                <div className="stats-row">
-                  <div>
-                    <span>Доход за месяц (получено / план)</span>
-                    <strong>
-                      {dashboard.data
-                        ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
-                        : "—"}
-                    </strong>
-                    <p className="stat-note">
-                      Еще поступит: {formatMoney(remainingIncome)}
-                    </p>
-                  </div>
-                  <div>
-                    <span>Расход за месяц (потрачено / план)</span>
-                    <strong className={isExpenseOverPlan ? "money minus" : undefined}>
-                      {dashboard.data
-                        ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
-                        : "—"}
-                    </strong>
-                    <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
-                      {remainingExpense >= 0
-                        ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
-                        : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
-                    </p>
-                  </div>
+            {showFamilyBalanceSlide && isDesktopBalanceMode ? (
+              <div
+                className="balance-carousel-viewport"
+                onPointerDown={handleBalancePointerDown}
+                onPointerMove={handleBalancePointerMove}
+                onPointerUp={finishBalanceDrag}
+                onPointerCancel={finishBalanceDrag}
+                ref={balanceCarouselRef}
+              >
+                <div
+                  className={isBalanceDragging ? "balance-carousel-track is-desktop is-dragging" : "balance-carousel-track is-desktop"}
+                  style={{ transform: `translate3d(calc(-100% + ${balanceDragOffset}px), 0, 0)` }}
+                >
+                  {desktopBalanceSlides.map((slideIndex, index) =>
+                    slideIndex === 0
+                      ? renderPersonalBalanceSlide(`desktop-balance-${index}`)
+                      : renderFamilyBalanceSlide(`desktop-balance-${index}`),
+                  )}
                 </div>
-              </article>
-
-              {showFamilyBalanceSlide ? (
-                <article className="balance-slide">
-                  <p className="panel-label">Текущий баланс семьи</p>
-                  <h2>{formatMoney(familyBalance.main_balance)}</h2>
-                  <div className="stats-row">
-                    <div>
-                      <span>Доход семьи</span>
-                      <strong className="money plus">{formatMoney(familyBalance.income)}</strong>
-                      <p className="stat-note">
-                        Сумма по всем участникам семьи
-                      </p>
-                    </div>
-                    <div>
-                      <span>Расход семьи</span>
-                      <strong className="money minus">{formatMoney(familyBalance.expense)}</strong>
-                      <p className="stat-note">
-                        {familyDashboardQuery.data
-                          ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count} участ.`
-                          : "Семейный режим"}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              ) : null}
-              {showFamilyBalanceSlide ? (
-                <article className="balance-slide">
-                  <p className="panel-label">Текущий баланс</p>
-                  <h2>{dashboard.data ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
-                  <div className="stats-row">
-                    <div>
-                      <span>Доход за месяц (получено / план)</span>
-                      <strong>
-                        {dashboard.data
-                          ? `${formatMoney(receivedIncome)} / ${formatMoney(expectedIncomeTotal)}`
-                          : "—"}
-                      </strong>
-                      <p className="stat-note">Еще поступит: {formatMoney(remainingIncome)}</p>
-                    </div>
-                    <div>
-                      <span>Расход за месяц (потрачено / план)</span>
-                      <strong className={isExpenseOverPlan ? "money minus" : undefined}>
-                        {dashboard.data
-                          ? `${formatMoney(executedExpense)} / ${formatMoney(plannedExpenseTotal)}`
-                          : "—"}
-                      </strong>
-                      <p className={isExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
-                        {remainingExpense >= 0
-                          ? `Еще предстоит потратить: ${formatMoney(remainingExpense)}`
-                          : `Перерасход: ${formatMoney(Math.abs(remainingExpense))}`}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              ) : null}
-            </div>
+              </div>
+            ) : (
+              <div className="balance-carousel-track" ref={balanceCarouselRef}>
+                {renderPersonalBalanceSlide("mobile-balance-personal")}
+                {showFamilyBalanceSlide ? renderFamilyBalanceSlide("mobile-balance-family") : null}
+              </div>
+            )}
 
             {showFamilyBalanceSlide ? (
               <div className="balance-carousel-nav" aria-label="Переключение карточек баланса">
