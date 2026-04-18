@@ -511,6 +511,12 @@ body {
   background: rgba(255, 255, 255, 0.5);
 }
 
+[data-theme="dark"] .reconciliation-stat-card {
+  background: linear-gradient(165deg, rgba(24, 33, 39, 0.94), rgba(19, 28, 34, 0.92));
+  border-color: rgba(230, 237, 243, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
 .reconciliation-stat-card span,
 .reconciliation-note,
 .reconciliation-history-main span,
