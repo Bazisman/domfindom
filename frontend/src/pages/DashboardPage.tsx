@@ -58,6 +58,7 @@ export function DashboardPage() {
     startX: number;
     startScrollLeft: number;
   } | null>(null);
+  const balanceSettleFrameRef = useRef<number | null>(null);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -226,6 +227,14 @@ export function DashboardPage() {
   }, [showFamilyBalanceSlide, selectedFamilyId]);
 
   useEffect(() => {
+    return () => {
+      if (balanceSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(balanceSettleFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const node = balanceCarouselRef.current;
     if (!node || !showFamilyBalanceSlide) {
       return;
@@ -320,9 +329,17 @@ export function DashboardPage() {
     }
     const slideWidth = track.clientWidth || 1;
     const nextIndex = Math.round(track.scrollLeft / slideWidth);
-    track.scrollTo({
-      left: nextIndex * slideWidth,
-      behavior: "smooth",
+    if (balanceSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(balanceSettleFrameRef.current);
+    }
+    balanceSettleFrameRef.current = window.requestAnimationFrame(() => {
+      balanceSettleFrameRef.current = window.requestAnimationFrame(() => {
+        track.scrollTo({
+          left: nextIndex * slideWidth,
+          behavior: "smooth",
+        });
+        balanceSettleFrameRef.current = null;
+      });
     });
   }
 
