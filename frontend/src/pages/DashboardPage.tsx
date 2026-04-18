@@ -57,7 +57,6 @@ export function DashboardPage() {
     pointerId: number;
     startX: number;
     startScrollLeft: number;
-    moved: boolean;
   } | null>(null);
 
   const dashboard = useQuery({
@@ -291,8 +290,8 @@ export function DashboardPage() {
       pointerId: event.pointerId,
       startX: event.clientX,
       startScrollLeft: track.scrollLeft,
-      moved: false,
     };
+    event.preventDefault();
     setIsBalanceDragging(true);
     track.setPointerCapture(event.pointerId);
   }
@@ -304,9 +303,7 @@ export function DashboardPage() {
       return;
     }
     const deltaX = event.clientX - dragState.startX;
-    if (Math.abs(deltaX) > 4) {
-      dragState.moved = true;
-    }
+    event.preventDefault();
     track.scrollLeft = dragState.startScrollLeft - deltaX;
   }
 
@@ -321,6 +318,12 @@ export function DashboardPage() {
     if (track.hasPointerCapture(event.pointerId)) {
       track.releasePointerCapture(event.pointerId);
     }
+    const slideWidth = track.clientWidth || 1;
+    const nextIndex = Math.round(track.scrollLeft / slideWidth);
+    track.scrollTo({
+      left: nextIndex * slideWidth,
+      behavior: "smooth",
+    });
   }
 
   return (

@@ -357,8 +357,10 @@ body {
 }
 
 .balance-carousel-track.is-dragging {
+  scroll-snap-type: none;
   cursor: grabbing;
   user-select: none;
+  scroll-behavior: auto;
 }
 
 .balance-slide {
