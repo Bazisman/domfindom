@@ -115,6 +115,13 @@
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_transactions_support_period_offset_and_planned_toggle -v`
 - Выкладка на `domfindom.ru` выполнена: коммит `258bcd7` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена отдельным архивом `frontend-dist-258bcd7.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
 - После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
+- Семейный режим на главной и в планировании переведен на общий прогноз семьи: `Баланс на конец месяца`, запланированные доходы и расходы теперь берутся из агрегированного family forecast и учитывают операции всех участников.
+- Проверено:
+  - `python tools/check_encoding.py --root .`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_dashboard_sums_each_member_balance_without_cache_bleed -v`
+  - `npm run build`
+- Выкладка на `domfindom.ru` выполнена: коммит `aebf62d` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена архивом `frontend-dist-aebf62d.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
+- После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
 - Для автоотчислений оставлена одна точка выбора цели: на странице `Счета` в карточке `Автоотчисления` теперь доступны и личные счета капитала, и опубликованные семейные счета, а дублирующая настройка из раздела `Семья` убрана.
 - Семейные автоотчисления синхронизированы с новым UX: после явного выбора личного счета доход снова уходит в личную цель участника, а не откатывается на семейный счет по умолчанию.
 - Проверено:
