@@ -113,3 +113,5 @@
   - `npm run build`
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_transactions_can_be_filtered_by_owner -v`
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_transactions_support_period_offset_and_planned_toggle -v`
+- Выкладка на `domfindom.ru` выполнена: коммит `258bcd7` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена отдельным архивом `frontend-dist-258bcd7.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
+- После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
