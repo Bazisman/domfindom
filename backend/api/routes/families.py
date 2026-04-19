@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime
 from typing import Dict, List
 
@@ -36,6 +37,70 @@ from backend.services import row_to_transaction_response, transaction_service
 
 
 router = APIRouter()
+
+
+def _collect_family_forecast(
+    members: List[Dict[str, object]],
+    current_user_id: int,
+    now: datetime,
+    current_balance: float,
+    planned_income: float,
+    planned_expense: float,
+    executed_planned_income: float,
+    executed_planned_expense: float,
+) -> ForecastResponse:
+    start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+    personal_budgets = _run_in_user_db(current_user_id, core.get_budgets)
+    spent_by_category: Dict[str, float] = {}
+
+    for member in members:
+        user_id = int(member["user_id"])
+
+        def _action():
+            return core.get_expenses_by_category(start_of_month, today)
+
+        expenses = _run_in_user_db(user_id, _action)
+        for item in expenses:
+            category_name = str(item["category"] or "")
+            spent_by_category[category_name] = spent_by_category.get(category_name, 0.0) + float(item["total"] or 0.0)
+
+    total_budgets = 0.0
+    current_expenses = 0.0
+    for budget in personal_budgets:
+        monthly_amount = float(
+            core._get_budget_monthly_limit(
+                budget["amount"] or 0,
+                budget["period"] if "period" in budget.keys() else "monthly",
+            )
+        )
+        total_budgets += monthly_amount
+        category_name = str(budget["category"] or "")
+        spent = float(spent_by_category.get(category_name, 0.0))
+        current_expenses += min(spent, monthly_amount)
+
+    budget_remaining = max(total_budgets - current_expenses, 0.0)
+    combined_pending_expense = planned_expense + budget_remaining
+    combined_executed_expense = executed_planned_expense + current_expenses
+    projected_balance = current_balance + planned_income - planned_expense - budget_remaining
+    end_date = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime("%Y-%m-%d")
+
+    return ForecastResponse(
+        current_balance=round(current_balance, 2),
+        planned_income=round(planned_income, 2),
+        planned_expense=round(planned_expense, 2),
+        executed_planned_income=round(executed_planned_income, 2),
+        executed_planned_expense=round(executed_planned_expense, 2),
+        monthly_budget=round(total_budgets, 2),
+        total_budgets=round(total_budgets, 2),
+        current_expenses=round(current_expenses, 2),
+        budget_remaining=round(budget_remaining, 2),
+        combined_pending_expense=round(combined_pending_expense, 2),
+        combined_executed_expense=round(combined_executed_expense, 2),
+        projected=round(projected_balance, 2),
+        projected_balance=round(projected_balance, 2),
+        end_date=end_date,
+    )
 
 
 def _normalize_email(value: str) -> str:
@@ -120,19 +185,10 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     capital_balance = 0.0
     income = 0.0
     expense = 0.0
-    forecast_current_balance = 0.0
     forecast_planned_income = 0.0
     forecast_planned_expense = 0.0
     forecast_executed_planned_income = 0.0
     forecast_executed_planned_expense = 0.0
-    forecast_monthly_budget = 0.0
-    forecast_total_budgets = 0.0
-    forecast_current_expenses = 0.0
-    forecast_budget_remaining = 0.0
-    forecast_combined_pending_expense = 0.0
-    forecast_combined_executed_expense = 0.0
-    forecast_projected = 0.0
-    forecast_end_date = now.strftime("%Y-%m-%d")
     recent_transactions: List[Dict[str, object]] = []
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
@@ -153,19 +209,10 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         main_balance += float(balance.main_balance)
         income += float(stats.get("income", 0.0) or 0.0)
         expense += float(stats.get("expense", 0.0) or 0.0)
-        forecast_current_balance += float(forecast.get("current_balance", 0.0) or 0.0)
         forecast_planned_income += float(forecast.get("planned_income", 0.0) or 0.0)
         forecast_planned_expense += float(forecast.get("planned_expense", 0.0) or 0.0)
         forecast_executed_planned_income += float(forecast.get("executed_planned_income", 0.0) or 0.0)
         forecast_executed_planned_expense += float(forecast.get("executed_planned_expense", 0.0) or 0.0)
-        forecast_monthly_budget += float(forecast.get("monthly_budget", 0.0) or 0.0)
-        forecast_total_budgets += float(forecast.get("total_budgets", 0.0) or 0.0)
-        forecast_current_expenses += float(forecast.get("current_expenses", 0.0) or 0.0)
-        forecast_budget_remaining += float(forecast.get("budget_remaining", 0.0) or 0.0)
-        forecast_combined_pending_expense += float(forecast.get("combined_pending_expense", 0.0) or 0.0)
-        forecast_combined_executed_expense += float(forecast.get("combined_executed_expense", 0.0) or 0.0)
-        forecast_projected += float(forecast.get("projected_balance", forecast.get("projected", 0.0)) or 0.0)
-        forecast_end_date = str(forecast.get("end_date") or forecast_end_date)
 
         for item in items:
             if item.status == "planned":
@@ -189,6 +236,16 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         for item in capital_accounts
     ):
         current_target = None
+    family_forecast = _collect_family_forecast(
+        members=members,
+        current_user_id=current_user_id,
+        now=now,
+        current_balance=main_balance,
+        planned_income=forecast_planned_income,
+        planned_expense=forecast_planned_expense,
+        executed_planned_income=forecast_executed_planned_income,
+        executed_planned_expense=forecast_executed_planned_expense,
+    )
 
     return FamilyDashboardResponse(
         family_id=family_id,
@@ -201,22 +258,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
             expense=round(expense, 2),
             difference=round(income - expense, 2),
         ),
-        forecast=ForecastResponse(
-            current_balance=round(forecast_current_balance, 2),
-            planned_income=round(forecast_planned_income, 2),
-            planned_expense=round(forecast_planned_expense, 2),
-            executed_planned_income=round(forecast_executed_planned_income, 2),
-            executed_planned_expense=round(forecast_executed_planned_expense, 2),
-            monthly_budget=round(forecast_monthly_budget, 2),
-            total_budgets=round(forecast_total_budgets, 2),
-            current_expenses=round(forecast_current_expenses, 2),
-            budget_remaining=round(forecast_budget_remaining, 2),
-            combined_pending_expense=round(forecast_combined_pending_expense, 2),
-            combined_executed_expense=round(forecast_combined_executed_expense, 2),
-            projected=round(forecast_projected, 2),
-            projected_balance=round(forecast_projected, 2),
-            end_date=forecast_end_date,
-        ),
+        forecast=family_forecast,
         capital_accounts=[FamilyCapitalAccountItemResponse(**item) for item in capital_accounts],
         current_member_capital_target=FamilyCapitalSelectionResponse(
             target_owner_user_id=int(current_target["owner_user_id"]) if current_target else None,
