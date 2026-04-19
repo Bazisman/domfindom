@@ -153,3 +153,12 @@
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_budget_crud_via_api -v`
 - Выкладка на `domfindom.ru` выполнена: коммит `26f70b7` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена архивом `frontend-dist-26f70b7.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
 - После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
+- Р’ СЃРµРјРµР№РЅРѕРј СЂРµР¶РёРјРµ `Р‘Р°Р»Р°РЅСЃ РЅР° РєРѕРЅРµС† РјРµСЃСЏС†Р°` СЂР°Р·РІРµРґРµРЅ РЅР° РґРІРµ РїРµСЂРµРєР»СЋС‡Р°РµРјС‹Рµ РєР°СЂС‚РѕС‡РєРё: Р»РёС‡РЅС‹Р№ РїСЂРѕРіРЅРѕР· СѓС‡Р°СЃС‚РЅРёРєР° Рё РѕР±С‰РёР№ РїСЂРѕРіРЅРѕР· СЃРµРјСЊРё.
+- РћР±С‰РёР№ РїСЂРѕРіРЅРѕР· СЃРµРјСЊРё С‚РµРїРµСЂСЊ СѓС‡РёС‚С‹РІР°РµС‚ СЂР°СЃС…РѕРґС‹ РІСЃРµС… СѓС‡Р°СЃС‚РЅРёРєРѕРІ, РЅРѕ Р±СЋРґР¶РµС‚РЅС‹Р№ СЂРµР·РµСЂРІ СЃС‡РёС‚Р°РµС‚ РїРѕ Р±СЋРґР¶РµС‚Р°Рј С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ, РїРѕСЌС‚РѕРјСѓ С‚СЂР°С‚С‹ РґСЂСѓРіРѕРіРѕ СѓС‡Р°СЃС‚РЅРёРєР° РІРЅСѓС‚СЂРё СЌС‚РѕРіРѕ Р»РёРјРёС‚Р° Р±РѕР»СЊС€Рµ РЅРµ Р·Р°РЅРёР¶Р°СЋС‚ РѕСЃС‚Р°С‚РѕРє РґРІР°Р¶РґС‹.
+- РџСЂРѕРІРµСЂРµРЅРѕ:
+  - `python tools/check_encoding.py --root .`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_dashboard_sums_each_member_balance_without_cache_bleed -v`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_dashboard_forecast_uses_current_user_budgets_with_family_expenses -v`
+  - `npm run build`
+- Р’С‹РєР»Р°РґРєР° РЅР° `domfindom.ru` РІС‹РїРѕР»РЅРµРЅР°: РєРѕРјРјРёС‚ `a0d9e27` РѕС‚РїСЂР°РІР»РµРЅ РІ `origin/main`, backend РЅР° production РѕР±РЅРѕРІР»РµРЅ С‡РµСЂРµР· `git pull --ff-only`, frontend-СЃС‚Р°С‚РёРєР° Р·Р°РіСЂСѓР¶РµРЅР° Р°СЂС…РёРІРѕРј `frontend-dist-a0d9e27.tar.gz` Рё СЂР°СЃРїР°РєРѕРІР°РЅР° РІ `/var/www/u3480024/data/www/domfindom.ru`, Р·Р°С‚РµРј РІС‹РїРѕР»РЅРµРЅ restart С‡РµСЂРµР· `tmp/restart.txt`.
+- РџРѕСЃР»Рµ РІС‹РєР»Р°РґРєРё РїСЂРѕРІРµСЂРµРЅ `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
