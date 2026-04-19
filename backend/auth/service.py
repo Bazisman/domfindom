@@ -1455,9 +1455,28 @@ class AuthService:
         }
 
     def ensure_family_member_capital_target(self, family_id: int, user_id: int) -> Optional[Dict[str, int]]:
-        current = self.get_family_member_capital_target(family_id, user_id)
-        if current:
-            return current
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT target_owner_user_id, target_capital_account_id
+                FROM family_capital_member_settings
+                WHERE family_id = ?
+                  AND user_id = ?
+                LIMIT 1
+                """,
+                (family_id, user_id),
+            )
+            row = cursor.fetchone()
+        if row:
+            owner_user_id = row["target_owner_user_id"]
+            capital_account_id = row["target_capital_account_id"]
+            if owner_user_id is None or capital_account_id is None:
+                return None
+            return {
+                "owner_user_id": int(owner_user_id),
+                "capital_account_id": int(capital_account_id),
+            }
         default_target = self.get_family_default_capital_target(family_id)
         if not default_target:
             return None

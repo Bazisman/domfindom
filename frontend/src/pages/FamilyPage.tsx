@@ -12,11 +12,10 @@ import {
   getMyFamilies,
   removeFamilyMember,
   updateAccount,
-  updateFamilyCapitalTarget,
   updateFamilyMemberRole,
 } from "../lib/api";
 
-type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish" | "capital_target";
+type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish";
 
 function roleLabel(role: "owner" | "member" | "viewer"): string {
   if (role === "owner") {
@@ -47,8 +46,6 @@ export function FamilyPage() {
   const [transactionsScope, setTransactionsScope] = useState<"all" | "mine" | `user:${number}`>("all");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [selectedTargetKey, setSelectedTargetKey] = useState("");
-
   const familiesQuery = useQuery({
     queryKey: ["families", "me"],
     queryFn: getMyFamilies,
@@ -141,15 +138,6 @@ export function FamilyPage() {
   useEffect(() => {
     setTransactionsScope("all");
   }, [familyId]);
-
-  useEffect(() => {
-    const target = familyDashboardQuery.data?.current_member_capital_target;
-    if (target?.target_owner_user_id && target?.target_capital_account_id) {
-      setSelectedTargetKey(`${target.target_owner_user_id}:${target.target_capital_account_id}`);
-      return;
-    }
-    setSelectedTargetKey("");
-  }, [familyDashboardQuery.data?.current_member_capital_target]);
 
   const createFamilyMutation = useMutation({
     mutationFn: createFamily,
@@ -258,27 +246,6 @@ export function FamilyPage() {
     },
   });
 
-  const updateTargetMutation = useMutation({
-    mutationFn: ({ ownerUserId, capitalAccountId }: { ownerUserId: number | null; capitalAccountId: number | null }) =>
-      updateFamilyCapitalTarget({
-        familyId: familyId as number,
-        targetOwnerUserId: ownerUserId,
-        targetCapitalAccountId: capitalAccountId,
-      }),
-    onSuccess: async () => {
-      setMessage("Цель семейных отчислений обновлена.");
-      setError("");
-      await queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] });
-    },
-    onError: (mutationError: Error) => {
-      setError(mutationError.message);
-      setMessage("");
-    },
-    onSettled: () => {
-      setBusyAction("");
-    },
-  });
-
   function onCreateFamily() {
     const trimmed = familyName.trim();
     if (!trimmed) {
@@ -336,20 +303,6 @@ export function FamilyPage() {
   function makeDefaultFamilyCapital(accountId: number) {
     setBusyAction("capital_publish");
     publishCapitalMutation.mutate({ accountId, familyVisible: true, familyDefaultTarget: true });
-  }
-
-  function saveFamilyTarget() {
-    if (familyId === null) {
-      return;
-    }
-    const [ownerRaw, accountRaw] = selectedTargetKey.split(":");
-    const ownerUserId = ownerRaw ? Number(ownerRaw) : null;
-    const capitalAccountId = accountRaw ? Number(accountRaw) : null;
-    setBusyAction("capital_target");
-    updateTargetMutation.mutate({
-      ownerUserId: Number.isFinite(ownerUserId ?? NaN) ? ownerUserId : null,
-      capitalAccountId: Number.isFinite(capitalAccountId ?? NaN) ? capitalAccountId : null,
-    });
   }
 
   return (
@@ -469,7 +422,7 @@ export function FamilyPage() {
         <section className="panel panel-wide">
           <div className="panel-header">
             <h3>Семейный капитал</h3>
-            <span>Общие накопительные счета и цель для автоотчислений</span>
+            <span>Общие накопительные счета для семьи</span>
           </div>
 
           <div className="transaction-form">
@@ -512,24 +465,6 @@ export function FamilyPage() {
               </div>
             </label>
 
-            <label className="field">
-              <span>Куда отправлять мои семейные отчисления</span>
-              <select onChange={(event) => setSelectedTargetKey(event.target.value)} value={selectedTargetKey}>
-                <option value="">Не выбрано</option>
-                {(familyDashboardQuery.data?.capital_accounts ?? []).map((account) => (
-                  <option
-                    key={`${account.owner_user_id}:${account.capital_account_id}`}
-                    value={`${account.owner_user_id}:${account.capital_account_id}`}
-                  >
-                    {(account.owner_display_name || account.owner_email) + " - " + account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button className="primary-button" disabled={busyAction === "capital_target"} onClick={saveFamilyTarget} type="button">
-              {busyAction === "capital_target" ? "Сохраняем..." : "Сохранить цель отчислений"}
-            </button>
           </div>
 
           <div className="list">

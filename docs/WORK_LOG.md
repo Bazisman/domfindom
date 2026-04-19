@@ -115,3 +115,10 @@
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_transactions_support_period_offset_and_planned_toggle -v`
 - Выкладка на `domfindom.ru` выполнена: коммит `258bcd7` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена отдельным архивом `frontend-dist-258bcd7.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
 - После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
+- Пересобрали логику автоотчислений вокруг одного понятного выбора цели: на странице `Счета` выбор направления для автоотчислений теперь находится только в карточке `Автоотчисления`, в одном списке доступны и личные счета капитала, и опубликованные семейные счета, а из раздела `Семья` убрана дублирующая настройка `Куда отправлять мои семейные отчисления`.
+- Backend для семейных автоотчислений синхронизирован с новым UX: если участник семьи явно очищает семейную цель и выбирает личный счет капитала, доход снова уходит в личный дефолтный счет, а не откатывается обратно на семейный счет по умолчанию.
+- Проверено:
+  - `python tools/check_encoding.py --root .`
+  - `npm run build`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_capital_target_receives_member_auto_contribution -v`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_member_can_clear_family_capital_target_and_use_personal_default -v`

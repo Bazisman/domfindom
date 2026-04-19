@@ -152,7 +152,13 @@ export function AccountsPage() {
     [accounts.data],
   );
 
-  const hasFamily = Boolean((families.data?.families ?? []).length);
+  const defaultPersonalCapitalAccount = useMemo(
+    () =>
+      capitalAccounts.find((account) => account.id === settings.data?.default_capital_account_id) ??
+      capitalAccounts.find((account) => account.is_default) ??
+      null,
+    [capitalAccounts, settings.data?.default_capital_account_id],
+  );
   const familyTarget = useMemo(() => {
     const target = familyDashboard.data?.current_member_capital_target;
     if (!target?.target_owner_user_id || !target?.target_capital_account_id) {
@@ -168,15 +174,36 @@ export function AccountsPage() {
   }, [familyDashboard.data]);
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
   const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
+  const autoCapitalTargetOptions = useMemo(
+    () => [
+      ...capitalAccounts
+        .filter((account) => account.is_active)
+        .map((account) => ({
+          key: `personal:${account.id}`,
+          label: account.name,
+          description: "Личный счет капитала",
+        })),
+      ...familyVisibleAccounts.map((account) => ({
+        key: `family:${account.owner_user_id}:${account.capital_account_id}`,
+        label: account.name,
+        description: `Семейный счет · ${account.owner_display_name || account.owner_email || "Семья"}`,
+      })),
+    ],
+    [capitalAccounts, familyVisibleAccounts],
+  );
+  const currentAutoCapitalTargetKey = useMemo(() => {
+    if (familyTarget) {
+      return `family:${familyTarget.owner_user_id}:${familyTarget.capital_account_id}`;
+    }
+    if (defaultPersonalCapitalAccount) {
+      return `personal:${defaultPersonalCapitalAccount.id}`;
+    }
+    return "";
+  }, [defaultPersonalCapitalAccount, familyTarget]);
 
   useEffect(() => {
-    const target = familyDashboard.data?.current_member_capital_target;
-    if (target?.target_owner_user_id && target?.target_capital_account_id) {
-      setSelectedTargetKey(`${target.target_owner_user_id}:${target.target_capital_account_id}`);
-      return;
-    }
-    setSelectedTargetKey("");
-  }, [familyDashboard.data?.current_member_capital_target]);
+    setSelectedTargetKey(currentAutoCapitalTargetKey);
+  }, [currentAutoCapitalTargetKey]);
 
   useEffect(() => {
     if (!settings.data) {
@@ -300,16 +327,54 @@ export function AccountsPage() {
     },
   });
 
-  const updateFamilyTargetMutation = useMutation({
-    mutationFn: ({ ownerUserId, capitalAccountId }: { ownerUserId: number | null; capitalAccountId: number | null }) =>
-      updateFamilyCapitalTarget({
-        familyId: selectedFamilyId as number,
-        targetOwnerUserId: ownerUserId,
-        targetCapitalAccountId: capitalAccountId,
-      }),
+  const updateAutoCapitalTargetMutation = useMutation({
+    mutationFn: async (targetKey: string) => {
+      if (targetKey.startsWith("personal:")) {
+        const accountId = Number(targetKey.slice("personal:".length));
+        if (!Number.isFinite(accountId) || accountId <= 0) {
+          throw new Error("Не удалось определить личный счет для автоотчислений.");
+        }
+        if (selectedFamilyId !== null) {
+          await updateFamilyCapitalTarget({
+            familyId: selectedFamilyId,
+            targetOwnerUserId: null,
+            targetCapitalAccountId: null,
+          });
+        }
+        return updateAccount(accountId, { is_default: true });
+      }
+
+      if (targetKey.startsWith("family:")) {
+        if (selectedFamilyId === null) {
+          throw new Error("Семейный бюджет не найден.");
+        }
+        const [, ownerRaw, accountRaw] = targetKey.split(":");
+        const ownerUserId = Number(ownerRaw);
+        const capitalAccountId = Number(accountRaw);
+        if (!Number.isFinite(ownerUserId) || !Number.isFinite(capitalAccountId) || ownerUserId <= 0 || capitalAccountId <= 0) {
+          throw new Error("Не удалось определить семейный счет для автоотчислений.");
+        }
+        return updateFamilyCapitalTarget({
+          familyId: selectedFamilyId,
+          targetOwnerUserId: ownerUserId,
+          targetCapitalAccountId: capitalAccountId,
+        });
+      }
+
+      throw new Error("Выберите счет для автоотчислений.");
+    },
     onSuccess: async () => {
       setSettingsError(null);
+      setSettingsSavedNotice(true);
+      if (settingsSavedNoticeTimeoutRef.current) {
+        window.clearTimeout(settingsSavedNoticeTimeoutRef.current);
+      }
+      settingsSavedNoticeTimeoutRef.current = window.setTimeout(() => {
+        setSettingsSavedNotice(false);
+      }, 1800);
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["settings"] }),
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard", "accounts-page"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "capital-history"] }),
@@ -485,16 +550,12 @@ export function AccountsPage() {
   }
 
   function saveFamilyTarget() {
-    if (selectedFamilyId === null) {
+    if (!selectedTargetKey) {
+      setSettingsError("Выберите счет для автоотчислений.");
       return;
     }
-    const [ownerRaw, accountRaw] = selectedTargetKey.split(":");
-    const ownerUserId = ownerRaw ? Number(ownerRaw) : null;
-    const capitalAccountId = accountRaw ? Number(accountRaw) : null;
-    updateFamilyTargetMutation.mutate({
-      ownerUserId: Number.isFinite(ownerUserId ?? NaN) ? ownerUserId : null,
-      capitalAccountId: Number.isFinite(capitalAccountId ?? NaN) ? capitalAccountId : null,
-    });
+    setSettingsSavedNotice(false);
+    updateAutoCapitalTargetMutation.mutate(selectedTargetKey);
   }
 
   function getAccountTone(account: Account) {
@@ -507,8 +568,7 @@ export function AccountsPage() {
     return "Счёт капитала";
   }
 
-  const defaultCapitalAccountName =
-    capitalAccounts.find((account) => account.id === settings.data?.default_capital_account_id)?.name ??
+  const defaultCapitalAccountName = defaultPersonalCapitalAccount?.name ??
     "счёт ещё не выбран";
 
   return (
@@ -561,26 +621,57 @@ export function AccountsPage() {
 
             <div className="auto-capital-info">
               <div className="auto-capital-info-row">
-                <span className="auto-capital-info-label">По умолчанию</span>
+                <span className="auto-capital-info-label">Текущая цель</span>
                 <strong>{familyTarget?.name ?? defaultCapitalAccountName}</strong>
               </div>
 
-              {familyTarget ? (
-                <div className="auto-capital-info-row">
-                  <span className="auto-capital-info-label">В семье</span>
-                  <strong>{familyTarget.name}</strong>
-                </div>
-              ) : null}
-
-              {hasFamily ? (
-                <p className="auto-capital-note">Семейную цель для отчислений можно настроить в разделе семьи.</p>
-              ) : null}
+              <div className="auto-capital-info-row">
+                <span className="auto-capital-info-label">Тип</span>
+                <strong>
+                  {familyTarget ? "Семейный счет" : defaultPersonalCapitalAccount ? "Личный счет капитала" : "Не выбрано"}
+                </strong>
+              </div>
             </div>
+            <label className="field">
+              <span>Куда отправлять автоотчисления с доходов</span>
+              <select
+                onChange={(event) => {
+                  setSelectedTargetKey(event.target.value);
+                  setSettingsError(null);
+                }}
+                value={selectedTargetKey}
+              >
+                <option value="">Выбери счет</option>
+                {autoCapitalTargetOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.description + " · " + option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <p className="auto-capital-note">Личные и семейные счета для автоотчислений настраиваются здесь.</p>
+
+            <button
+              className="primary-button"
+              disabled={
+                updateAutoCapitalTargetMutation.isPending ||
+                !selectedTargetKey ||
+                selectedTargetKey === currentAutoCapitalTargetKey
+              }
+              onClick={saveFamilyTarget}
+              type="button"
+            >
+              {updateAutoCapitalTargetMutation.isPending ? "Сохраняем..." : "Сохранить цель автоотчислений"}
+            </button>
             {settingsError && <p className="form-error">{settingsError}</p>}
-            {!settingsError && !updateSettingsMutation.isPending && settingsSavedNotice && (
+            {!settingsError &&
+              !updateSettingsMutation.isPending &&
+              !updateAutoCapitalTargetMutation.isPending &&
+              settingsSavedNotice && (
               <p className="form-status form-status-success">Сохранено</p>
             )}
-            {!settingsError && updateSettingsMutation.isPending && (
+            {!settingsError && (updateSettingsMutation.isPending || updateAutoCapitalTargetMutation.isPending) && (
               <p className="form-status">Сохраняем настройки...</p>
             )}
           </form>
@@ -784,31 +875,6 @@ export function AccountsPage() {
               })}
             </div>
 
-            <div className="transaction-form">
-              <label className="field">
-                <span>Куда отправлять мои семейные отчисления</span>
-                <select onChange={(event) => setSelectedTargetKey(event.target.value)} value={selectedTargetKey}>
-                  <option value="">Не выбрано</option>
-                  {familyVisibleAccounts.map((account) => (
-                    <option
-                      key={`${account.owner_user_id}:${account.capital_account_id}`}
-                      value={`${account.owner_user_id}:${account.capital_account_id}`}
-                    >
-                      {(account.owner_display_name || account.owner_email) + " - " + account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                className="primary-button"
-                disabled={updateFamilyTargetMutation.isPending}
-                onClick={saveFamilyTarget}
-                type="button"
-              >
-                {updateFamilyTargetMutation.isPending ? "Сохраняем..." : "Сохранить цель отчислений"}
-              </button>
-            </div>
           </section>
         )}
 
