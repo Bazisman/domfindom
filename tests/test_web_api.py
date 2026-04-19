@@ -729,6 +729,9 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["balance"]["income"], 100000.0)
         self.assertEqual(payload["balance"]["expense"], 30000.0)
         self.assertEqual(payload["balance"]["difference"], 70000.0)
+        self.assertEqual(payload["forecast"]["current_balance"], 70000.0)
+        self.assertEqual(payload["forecast"]["projected_balance"], 70000.0)
+        self.assertEqual(payload["forecast"]["planned_expense"], 0.0)
 
         second_client.close()
 

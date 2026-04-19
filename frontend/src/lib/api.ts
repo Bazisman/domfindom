@@ -366,6 +366,7 @@ export type FamilyDashboardResponse = {
     expense: number;
     difference: number;
   };
+  forecast: DashboardResponse["forecast"];
   capital_accounts: Array<{
     owner_user_id: number;
     owner_email: string;

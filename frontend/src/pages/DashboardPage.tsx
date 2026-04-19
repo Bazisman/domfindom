@@ -129,6 +129,9 @@ export function DashboardPage() {
     retry: false,
   });
 
+  const activeForecast = useFamilyFeed ? familyDashboardQuery.data?.forecast : dashboard.data?.forecast;
+  const activeBalance = useFamilyFeed ? familyDashboardQuery.data?.balance : dashboard.data?.balance;
+
   const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
   const [quickAmount, setQuickAmount] = useState("");
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
@@ -171,18 +174,18 @@ export function DashboardPage() {
     );
   }, [useFamilyFeed, familyTransactionsQuery.data?.transactions, dashboard.data?.recent_transactions]);
 
-  const receivedIncome = dashboard.data?.balance.income ?? 0;
-  const pendingIncome = dashboard.data?.forecast.planned_income ?? 0;
+  const receivedIncome = activeBalance?.income ?? 0;
+  const pendingIncome = activeForecast?.planned_income ?? 0;
   const expectedIncomeTotal = receivedIncome + pendingIncome;
 
-  const executedExpense = dashboard.data?.balance.expense ?? 0;
+  const executedExpense = activeBalance?.expense ?? 0;
   const plannedExpenseTotal =
-    (dashboard.data?.forecast.total_budgets ?? dashboard.data?.forecast.monthly_budget ?? 0) +
-    (dashboard.data?.forecast.planned_expense ?? 0);
+    (activeForecast?.total_budgets ?? activeForecast?.monthly_budget ?? 0) +
+    (activeForecast?.planned_expense ?? 0);
   const isExpenseOverPlan = executedExpense > plannedExpenseTotal;
   const remainingIncome = Math.max(expectedIncomeTotal - receivedIncome, 0);
   const remainingExpense = plannedExpenseTotal - executedExpense;
-  const forecastMonthLabel = getForecastMonthLabel(dashboard.data?.forecast.end_date);
+  const forecastMonthLabel = getForecastMonthLabel(activeForecast?.end_date);
   const familyBalance = familyDashboardQuery.data?.balance;
   const showFamilyBalanceSlide = useFamilyFeed && familyBalance !== undefined;
   const desktopBalanceSlides = useMemo(
@@ -727,8 +730,8 @@ export function DashboardPage() {
 
         <section className="panel">
           <p className="panel-label">Баланс на конец месяца</p>
-          <h2>{dashboard.data ? formatMoney(dashboard.data.forecast.projected_balance) : "—"}</h2>
-          <p className="muted">{dashboard.data ? `Прогноз на ${forecastMonthLabel}` : "Нужен backend на FastAPI"}</p>
+          <h2>{activeForecast ? formatMoney(activeForecast.projected_balance) : "—"}</h2>
+          <p className="muted">{activeForecast ? `Прогноз на ${forecastMonthLabel}` : "Нужен backend на FastAPI"}</p>
         </section>
 
         <section className="panel panel-full">

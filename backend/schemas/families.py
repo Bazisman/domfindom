@@ -1,6 +1,7 @@
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
+from backend.schemas.forecast import ForecastResponse
 
 
 FamilyRole = Literal["owner", "member", "viewer"]
@@ -154,6 +155,7 @@ class FamilyDashboardResponse(BaseModel):
     family_name: str
     members_count: int
     balance: FamilyDashboardBalanceResponse
+    forecast: ForecastResponse
     capital_accounts: List[FamilyCapitalAccountItemResponse] = []
     current_member_capital_target: FamilyCapitalSelectionResponse = FamilyCapitalSelectionResponse()
     recent_transactions: List[FamilyDashboardTransactionResponse]

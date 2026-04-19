@@ -31,6 +31,7 @@ from backend.schemas.families import (
     FamilyPendingInviteListResponse,
     FamilyTransactionListResponse,
 )
+from backend.schemas.forecast import ForecastResponse
 from backend.services import row_to_transaction_response, transaction_service
 
 
@@ -119,6 +120,19 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     capital_balance = 0.0
     income = 0.0
     expense = 0.0
+    forecast_current_balance = 0.0
+    forecast_planned_income = 0.0
+    forecast_planned_expense = 0.0
+    forecast_executed_planned_income = 0.0
+    forecast_executed_planned_expense = 0.0
+    forecast_monthly_budget = 0.0
+    forecast_total_budgets = 0.0
+    forecast_current_expenses = 0.0
+    forecast_budget_remaining = 0.0
+    forecast_combined_pending_expense = 0.0
+    forecast_combined_executed_expense = 0.0
+    forecast_projected = 0.0
+    forecast_end_date = now.strftime("%Y-%m-%d")
     recent_transactions: List[Dict[str, object]] = []
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
@@ -132,12 +146,26 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
             balance = transaction_service.get_balance(force_update=True)
             stats = transaction_service.get_monthly_stats(now.year, now.month)
             items = transaction_service.get_transactions(limit=100, period="all", offset=0)
-            return balance, stats, items
+            forecast = core.get_projected_balance()
+            return balance, stats, items, forecast
 
-        balance, stats, items = _run_in_user_db(user_id, _action)
+        balance, stats, items, forecast = _run_in_user_db(user_id, _action)
         main_balance += float(balance.main_balance)
         income += float(stats.get("income", 0.0) or 0.0)
         expense += float(stats.get("expense", 0.0) or 0.0)
+        forecast_current_balance += float(forecast.get("current_balance", 0.0) or 0.0)
+        forecast_planned_income += float(forecast.get("planned_income", 0.0) or 0.0)
+        forecast_planned_expense += float(forecast.get("planned_expense", 0.0) or 0.0)
+        forecast_executed_planned_income += float(forecast.get("executed_planned_income", 0.0) or 0.0)
+        forecast_executed_planned_expense += float(forecast.get("executed_planned_expense", 0.0) or 0.0)
+        forecast_monthly_budget += float(forecast.get("monthly_budget", 0.0) or 0.0)
+        forecast_total_budgets += float(forecast.get("total_budgets", 0.0) or 0.0)
+        forecast_current_expenses += float(forecast.get("current_expenses", 0.0) or 0.0)
+        forecast_budget_remaining += float(forecast.get("budget_remaining", 0.0) or 0.0)
+        forecast_combined_pending_expense += float(forecast.get("combined_pending_expense", 0.0) or 0.0)
+        forecast_combined_executed_expense += float(forecast.get("combined_executed_expense", 0.0) or 0.0)
+        forecast_projected += float(forecast.get("projected_balance", forecast.get("projected", 0.0)) or 0.0)
+        forecast_end_date = str(forecast.get("end_date") or forecast_end_date)
 
         for item in items:
             if item.status == "planned":
@@ -172,6 +200,22 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
             income=round(income, 2),
             expense=round(expense, 2),
             difference=round(income - expense, 2),
+        ),
+        forecast=ForecastResponse(
+            current_balance=round(forecast_current_balance, 2),
+            planned_income=round(forecast_planned_income, 2),
+            planned_expense=round(forecast_planned_expense, 2),
+            executed_planned_income=round(forecast_executed_planned_income, 2),
+            executed_planned_expense=round(forecast_executed_planned_expense, 2),
+            monthly_budget=round(forecast_monthly_budget, 2),
+            total_budgets=round(forecast_total_budgets, 2),
+            current_expenses=round(forecast_current_expenses, 2),
+            budget_remaining=round(forecast_budget_remaining, 2),
+            combined_pending_expense=round(forecast_combined_pending_expense, 2),
+            combined_executed_expense=round(forecast_combined_executed_expense, 2),
+            projected=round(forecast_projected, 2),
+            projected_balance=round(forecast_projected, 2),
+            end_date=forecast_end_date,
         ),
         capital_accounts=[FamilyCapitalAccountItemResponse(**item) for item in capital_accounts],
         current_member_capital_target=FamilyCapitalSelectionResponse(

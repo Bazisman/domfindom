@@ -12,6 +12,7 @@ import {
   getCategories,
   getDashboard,
   getDuePlannedTransactions,
+  getFamilyDashboard,
   getMyFamilies,
   getRecurringTemplates,
   updateBudget,
@@ -111,10 +112,18 @@ export function PlanningPage() {
   });
 
   const selectedFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
+  const useFamilyWorkspace = selectedFamilyId !== null && preferencesQuery.data?.workspace_mode === "family";
 
   const categories = useQuery({
     queryKey: ["categories"],
     queryFn: getCategories,
+  });
+
+  const familyDashboardQuery = useQuery({
+    queryKey: ["families", selectedFamilyId, "dashboard", "planning-forecast"],
+    queryFn: () => getFamilyDashboard(selectedFamilyId as number),
+    enabled: useFamilyWorkspace,
+    retry: false,
   });
 
   const budgets = useQuery({
@@ -166,6 +175,8 @@ export function PlanningPage() {
       (item) => item.type === recurringForm.type || item.type === "both",
     );
   }, [categories.data, recurringForm.type]);
+
+  const activeForecast = useFamilyWorkspace ? familyDashboardQuery.data?.forecast : dashboard.data?.forecast;
 
   const familyBudgetAvailable = selectedFamilyId !== null;
 
@@ -415,9 +426,9 @@ export function PlanningPage() {
         <div className="summary-grid summary-grid-3 planning-summary-grid">
           <article className="summary-card summary-card-main planning-summary-card planning-summary-main">
             <span className="panel-label">Прогноз на конец месяца</span>
-            <h3>{formatMoney(dashboard.data?.forecast.projected_balance ?? 0)}</h3>
+            <h3>{formatMoney(activeForecast?.projected_balance ?? 0)}</h3>
             <p className="muted">
-              До {dashboard.data?.forecast.end_date ?? "конца месяца"}
+              До {activeForecast?.end_date ?? "конца месяца"}
             </p>
           </article>
 
@@ -425,21 +436,21 @@ export function PlanningPage() {
             <span className="panel-label">Запланированные доходы</span>
             <strong className="money plus">
               {formatMoney(
-                (dashboard.data?.forecast.planned_income ?? 0) +
-                  (dashboard.data?.forecast.executed_planned_income ?? 0),
+                (activeForecast?.planned_income ?? 0) +
+                  (activeForecast?.executed_planned_income ?? 0),
               )}
             </strong>
             <div className="planning-summary-stats">
               <div className="planning-summary-stat">
                 <span className="muted">Не исполнено</span>
                 <strong className="money plus">
-                  {formatMoney(dashboard.data?.forecast.planned_income ?? 0)}
+                  {formatMoney(activeForecast?.planned_income ?? 0)}
                 </strong>
               </div>
               <div className="planning-summary-stat">
                 <span className="muted">Исполнено</span>
                 <strong className="money">
-                  {formatMoney(dashboard.data?.forecast.executed_planned_income ?? 0)}
+                  {formatMoney(activeForecast?.executed_planned_income ?? 0)}
                 </strong>
               </div>
             </div>
@@ -448,19 +459,19 @@ export function PlanningPage() {
           <article className="summary-card planning-summary-card">
             <span className="panel-label">Запланированные расходы</span>
             <strong className="money minus">
-              {formatMoney(dashboard.data?.forecast.combined_pending_expense ?? 0)}
+              {formatMoney(activeForecast?.combined_pending_expense ?? 0)}
             </strong>
             <div className="planning-summary-stats">
               <div className="planning-summary-stat">
                 <span className="muted">Не исполнено</span>
                 <strong className="money minus">
-                  {formatMoney(dashboard.data?.forecast.combined_pending_expense ?? 0)}
+                  {formatMoney(activeForecast?.combined_pending_expense ?? 0)}
                 </strong>
               </div>
               <div className="planning-summary-stat">
                 <span className="muted">Исполнено</span>
                 <strong className="money">
-                  {formatMoney(dashboard.data?.forecast.combined_executed_expense ?? 0)}
+                  {formatMoney(activeForecast?.combined_executed_expense ?? 0)}
                 </strong>
               </div>
             </div>
