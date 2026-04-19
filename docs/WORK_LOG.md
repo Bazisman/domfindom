@@ -138,3 +138,11 @@
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_dashboard_auto_executes_planned_transactions_scheduled_for_today -v`
 - Выкладка на `domfindom.ru` выполнена: коммит `78eb838` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена архивом `frontend-dist-78eb838.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
 - После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
+- В статусе бюджетов добавлен семейный режим: при включении флага `Семейный бюджет` лимит текущего пользователя теперь сравнивается с расходами всех участников семьи за текущий месяц, а не только с личными тратами.
+- Проверено:
+  - `python tools/check_encoding.py --root .`
+  - `npm run build`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_budget_status_supports_family_scope -v`
+  - `python -m unittest tests.test_web_api.WebApiTestCase.test_budget_crud_via_api -v`
+- Выкладка на `domfindom.ru` выполнена: коммит `26f70b7` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена архивом `frontend-dist-26f70b7.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
+- После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
