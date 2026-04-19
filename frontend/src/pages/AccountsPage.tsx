@@ -175,10 +175,19 @@ export function AccountsPage() {
   }, [familyDashboard.data]);
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
   const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
+  const personalAccountsPublishedToFamily = useMemo(
+    () =>
+      new Set(
+        familyVisibleAccounts
+          .filter((account) => account.owner_user_id === me.data?.id)
+          .map((account) => account.capital_account_id),
+      ),
+    [familyVisibleAccounts, me.data?.id],
+  );
   const autoCapitalTargetOptions = useMemo(
     () => [
       ...capitalAccounts
-        .filter((account) => account.is_active)
+        .filter((account) => account.is_active && !personalAccountsPublishedToFamily.has(account.id))
         .map((account) => ({
           key: `personal:${account.id}`,
           label: account.name,
@@ -190,17 +199,24 @@ export function AccountsPage() {
         description: `Семейный счет · ${account.owner_display_name || account.owner_email || "Семья"}`,
       })),
     ],
-    [capitalAccounts, familyVisibleAccounts],
+    [capitalAccounts, familyVisibleAccounts, personalAccountsPublishedToFamily],
   );
   const currentAutoCapitalTargetKey = useMemo(() => {
     if (familyTarget) {
       return `family:${familyTarget.owner_user_id}:${familyTarget.capital_account_id}`;
     }
     if (defaultPersonalCapitalAccount) {
+      const publishedFamilyAccount = familyVisibleAccounts.find(
+        (account) =>
+          account.owner_user_id === me.data?.id && account.capital_account_id === defaultPersonalCapitalAccount.id,
+      );
+      if (publishedFamilyAccount) {
+        return `family:${publishedFamilyAccount.owner_user_id}:${publishedFamilyAccount.capital_account_id}`;
+      }
       return `personal:${defaultPersonalCapitalAccount.id}`;
     }
     return "";
-  }, [defaultPersonalCapitalAccount, familyTarget]);
+  }, [defaultPersonalCapitalAccount, familyTarget, familyVisibleAccounts, me.data?.id]);
   const effectiveAutoCapitalTargetKey = savingAutoCapitalTargetKey ?? currentAutoCapitalTargetKey;
   const activeAutoCapitalTarget = useMemo(() => {
     if (effectiveAutoCapitalTargetKey.startsWith("personal:")) {
