@@ -162,3 +162,11 @@
   - `npm run build`
 - Р’С‹РєР»Р°РґРєР° РЅР° `domfindom.ru` РІС‹РїРѕР»РЅРµРЅР°: РєРѕРјРјРёС‚ `a0d9e27` РѕС‚РїСЂР°РІР»РµРЅ РІ `origin/main`, backend РЅР° production РѕР±РЅРѕРІР»РµРЅ С‡РµСЂРµР· `git pull --ff-only`, frontend-СЃС‚Р°С‚РёРєР° Р·Р°РіСЂСѓР¶РµРЅР° Р°СЂС…РёРІРѕРј `frontend-dist-a0d9e27.tar.gz` Рё СЂР°СЃРїР°РєРѕРІР°РЅР° РІ `/var/www/u3480024/data/www/domfindom.ru`, Р·Р°С‚РµРј РІС‹РїРѕР»РЅРµРЅ restart С‡РµСЂРµР· `tmp/restart.txt`.
 - РџРѕСЃР»Рµ РІС‹РєР»Р°РґРєРё РїСЂРѕРІРµСЂРµРЅ `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
+- Карточки Баланс на конец месяца на главной упрощены до такого же формата, как текущий баланс: убраны лишние подписи, оставлены только ключевые суммы и остаток по плану.
+- В семейном режиме переключение между личным и общим прогнозом на главной теперь использует тот же свайп и анимацию, что и блок текущего баланса.
+- Проверено:
+  - python tools/check_encoding.py --root .
+  - 
+pm run build
+- Выкладка на domfindom.ru выполнена: коммит  c45c5c отправлен в origin/main, backend на production обновлен через git pull --ff-only, frontend-статика загружена архивом rontend-dist-0c45c5c.tar.gz и распакована в /var/www/u3480024/data/www/domfindom.ru, затем выполнен restart через 	mp/restart.txt.
+- После выкладки проверен https://domfindom.ru/api/v1/health -> {"status":"ok"}.
