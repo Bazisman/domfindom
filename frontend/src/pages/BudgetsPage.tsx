@@ -52,7 +52,7 @@ export function BudgetsPage() {
 
   const budgetStatus = useQuery({
     queryKey: ["budgets", "status"],
-    queryFn: getBudgetStatus,
+    queryFn: () => getBudgetStatus(),
   });
 
   const availableCategories = useMemo(() => {
@@ -78,6 +78,7 @@ export function BudgetsPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["budgets", "status"] }),
       ]);
     },
     onError: (error: Error) => {
@@ -100,6 +101,7 @@ export function BudgetsPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["budgets", "status"] }),
       ]);
     },
     onError: (error: Error) => {
@@ -114,6 +116,7 @@ export function BudgetsPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+        queryClient.invalidateQueries({ queryKey: ["budgets", "status"] }),
       ]);
     },
     onError: (error: Error) => {

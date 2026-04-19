@@ -1,8 +1,12 @@
+from collections import defaultdict
+from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import core
+from backend.auth.dependencies import require_user
+from backend.auth.service import auth_service
 from backend.schemas.budgets import (
     BudgetCreateRequest,
     BudgetReportItem,
@@ -32,6 +36,63 @@ def _get_budget_or_404(budget_id: int):
         if item["id"] == budget_id:
             return item
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Бюджет не найден")
+
+
+def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
+    personal_status = core.get_budget_status()
+    members = auth_service.list_family_members(family_id)
+    spent_by_category_name: Dict[str, float] = defaultdict(float)
+
+    today = datetime.now()
+    start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
+    end_of_month = today.strftime("%Y-%m-%d")
+
+    for member in members:
+        user_id = int(member["user_id"])
+        user_db_path = auth_service.ensure_user_finance_db(user_id)
+        db_token = core.push_db_name(user_db_path)
+        try:
+            with core.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT category, COALESCE(SUM(amount), 0) AS spent
+                    FROM transactions
+                    WHERE type = 'expense'
+                      AND date >= ?
+                      AND date <= ?
+                      AND (status = 'actual' OR status IS NULL)
+                    GROUP BY category
+                    """,
+                    (start_of_month, end_of_month),
+                )
+                for row in cursor.fetchall():
+                    spent_by_category_name[str(row["category"])] += float(row["spent"] or 0.0)
+        finally:
+            core.pop_db_name(db_token)
+
+    result: List[BudgetStatusItem] = []
+    for item in personal_status:
+        category_id = int(item["category_id"])
+        category_name = str(item["category_name"])
+        budget_amount = float(item["budget_amount"])
+        spent = round(spent_by_category_name.get(category_name, 0.0), 2)
+        remaining = round(budget_amount - spent, 2)
+        percent = round((spent / budget_amount * 100) if budget_amount > 0 else 0.0, 1)
+        result.append(
+            BudgetStatusItem(
+                category_id=category_id,
+                category_name=category_name,
+                icon=str(item["icon"]),
+                color=str(item["color"]),
+                budget_amount=round(budget_amount, 2),
+                spent=spent,
+                remaining=remaining,
+                percent=percent,
+                over_budget=remaining < 0,
+            )
+        )
+    return result
 
 
 @router.get("", response_model=List[BudgetResponse])
@@ -85,7 +146,16 @@ def budget_report(month: Optional[str] = Query(default=None)) -> List[BudgetRepo
 
 
 @router.get("/status", response_model=List[BudgetStatusItem])
-def budget_status() -> List[BudgetStatusItem]:
+def budget_status(
+    family_id: Optional[int] = Query(default=None, ge=1),
+    current_user=Depends(require_user),
+) -> List[BudgetStatusItem]:
+    if family_id is not None:
+        membership = auth_service.get_family_membership(family_id=family_id, user_id=int(current_user["id"]))
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Семья не найдена или доступ запрещен.")
+        return _build_family_budget_status(family_id)
+
     status_items = core.get_budget_status()
     return [BudgetStatusItem(**item) for item in status_items]
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -6,11 +6,13 @@ import {
   createRecurringTemplate,
   deleteBudget,
   deleteRecurringTemplate,
+  getAccountPreferences,
   getBudgetStatus,
   getBudgets,
   getCategories,
   getDashboard,
   getDuePlannedTransactions,
+  getMyFamilies,
   getRecurringTemplates,
   updateBudget,
   updateRecurringTemplate,
@@ -81,6 +83,7 @@ export function PlanningPage() {
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [budgetForm, setBudgetForm] = useState(getBudgetInitialForm);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [useFamilyBudgetScope, setUseFamilyBudgetScope] = useState(false);
   const budgetFormPanelRef = useRef<HTMLElement | null>(null);
   const budgetAmountInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -95,6 +98,20 @@ export function PlanningPage() {
     queryFn: getDashboard,
   });
 
+  const preferencesQuery = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
+    retry: false,
+  });
+
+  const familiesQuery = useQuery({
+    queryKey: ["families", "me"],
+    queryFn: getMyFamilies,
+    retry: false,
+  });
+
+  const selectedFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
+
   const categories = useQuery({
     queryKey: ["categories"],
     queryFn: getCategories,
@@ -106,8 +123,11 @@ export function PlanningPage() {
   });
 
   const budgetStatus = useQuery({
-    queryKey: ["budgets", "status"],
-    queryFn: getBudgetStatus,
+    queryKey: ["budgets", "status", useFamilyBudgetScope, selectedFamilyId],
+    queryFn: () =>
+      getBudgetStatus({
+        familyId: useFamilyBudgetScope ? (selectedFamilyId as number) : undefined,
+      }),
   });
 
   const recurringTemplates = useQuery({
@@ -147,10 +167,21 @@ export function PlanningPage() {
     );
   }, [categories.data, recurringForm.type]);
 
+  const familyBudgetAvailable = selectedFamilyId !== null;
+
+  useEffect(() => {
+    if (!familyBudgetAvailable) {
+      setUseFamilyBudgetScope(false);
+      return;
+    }
+    setUseFamilyBudgetScope(preferencesQuery.data?.workspace_mode === "family");
+  }, [familyBudgetAvailable, preferencesQuery.data?.workspace_mode]);
+
   async function refreshPlanningData() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+      queryClient.invalidateQueries({ queryKey: ["budgets", "status"] }),
       queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
       queryClient.invalidateQueries({ queryKey: ["transactions"] }),
       queryClient.invalidateQueries({ queryKey: ["accounts"] }),
@@ -805,6 +836,21 @@ export function PlanningPage() {
             <div className="panel-header">
               <h2>Статус бюджетов</h2>
             </div>
+
+            {familyBudgetAvailable ? (
+              <label className="field field-inline field-compact">
+                <span>Семейный бюджет</span>
+                <input
+                  checked={useFamilyBudgetScope}
+                  onChange={(event) => setUseFamilyBudgetScope(event.target.checked)}
+                  type="checkbox"
+                />
+              </label>
+            ) : null}
+
+            {useFamilyBudgetScope ? (
+              <p className="muted">В статусе бюджетов учитываются траты всех участников семьи.</p>
+            ) : null}
 
             <div className="category-card-grid">
               {(budgetStatus.data ?? []).map((item) => {

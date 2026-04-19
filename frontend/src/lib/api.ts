@@ -893,8 +893,13 @@ export function getBudgets() {
   return request<Budget[]>("/budgets");
 }
 
-export function getBudgetStatus() {
-  return request<BudgetStatusItem[]>("/budgets/status");
+export function getBudgetStatus(params?: { familyId?: number }) {
+  const search = new URLSearchParams();
+  if (params?.familyId !== undefined) {
+    search.set("family_id", String(params.familyId));
+  }
+  const suffix = search.size ? `?${search.toString()}` : "";
+  return request<BudgetStatusItem[]>(`/budgets/status${suffix}`);
 }
 
 export function createBudget(payload: BudgetCreatePayload) {
