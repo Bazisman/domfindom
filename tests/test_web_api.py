@@ -1545,6 +1545,35 @@ class WebApiTestCase(unittest.TestCase):
             any(item["comment"] == "Auto due income" and item["status"] == "actual" for item in transactions)
         )
 
+    def test_dashboard_auto_executes_planned_transactions_scheduled_for_today(self):
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        due_today = datetime.now().strftime("%Y-%m-%d")
+
+        db_token = self._push_current_user_db()
+        try:
+            with core.get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO transactions (type, category, amount, comment, date, status, template_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("income", income_category, 1700.0, "Auto today income", due_today, "planned", 502),
+                )
+                conn.commit()
+        finally:
+            core.pop_db_name(db_token)
+
+        dashboard_response = self.client.get("/api/v1/dashboard")
+        self.assertEqual(dashboard_response.status_code, 200)
+
+        transactions_response = self.client.get("/api/v1/transactions?period=all")
+        self.assertEqual(transactions_response.status_code, 200)
+        transactions = transactions_response.json()
+
+        self.assertTrue(
+            any(item["comment"] == "Auto today income" and item["status"] == "actual" for item in transactions)
+        )
+
     def test_dashboard_balance_income_and_expense_use_current_month_only(self):
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
         income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]

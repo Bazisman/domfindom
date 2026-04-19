@@ -298,7 +298,7 @@ def get_planned_transactions_due(get_connection):
                    rt.name as template_name
             FROM transactions t
             LEFT JOIN recurring_templates rt ON t.template_id = rt.id
-            WHERE t.status = 'planned' AND t.date < ?
+            WHERE t.status = 'planned' AND t.date <= ?
             ORDER BY t.date
             """,
             (today,),
