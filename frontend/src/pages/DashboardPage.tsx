@@ -46,11 +46,11 @@ function getQueryErrorMessage(error: unknown, fallback: string) {
 
 function getForecastMonthLabel(endDate: string | undefined) {
   if (!endDate) {
-    return "текущий месяц";
+    return "РЎвЂљР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р СР ВµРЎРѓРЎРЏРЎвЂ ";
   }
   const date = new Date(`${endDate}T00:00:00`);
   if (Number.isNaN(date.getTime())) {
-    return "текущий месяц";
+    return "РЎвЂљР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р СР ВµРЎРѓРЎРЏРЎвЂ ";
   }
   return date.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
 }
@@ -64,7 +64,15 @@ export function DashboardPage() {
   const quickEntryFormRef = useRef<HTMLFormElement | null>(null);
   const quickAmountInputRef = useRef<HTMLInputElement | null>(null);
   const balanceCarouselRef = useRef<HTMLDivElement | null>(null);
+  const forecastCarouselRef = useRef<HTMLDivElement | null>(null);
   const balanceDragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startOffset: number;
+    lastClientX: number;
+    lastDirection: -1 | 0 | 1;
+  } | null>(null);
+  const forecastDragStateRef = useRef<{
     pointerId: number;
     startX: number;
     startOffset: number;
@@ -73,7 +81,10 @@ export function DashboardPage() {
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
   const balanceSettleStartRef = useRef<number | null>(null);
+  const forecastSettleFrameRef = useRef<number | null>(null);
+  const forecastSettleStartRef = useRef<number | null>(null);
   const balanceLogicalIndexRef = useRef(0);
+  const forecastLogicalIndexRef = useRef(0);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -136,15 +147,18 @@ export function DashboardPage() {
   const [quickSuccess, setQuickSuccess] = useState<string | null>(null);
   const [pendingIncomePayload, setPendingIncomePayload] = useState<Parameters<typeof createTransaction>[0] | null>(null);
   const [autoCapitalModalOpen, setAutoCapitalModalOpen] = useState(false);
-  const [autoCapitalAccountName, setAutoCapitalAccountName] = useState("Копилка");
+  const [autoCapitalAccountName, setAutoCapitalAccountName] = useState("Р С™Р С•Р С—Р С‘Р В»Р С”Р В°");
   const [autoCapitalDontAskAgain, setAutoCapitalDontAskAgain] = useState(false);
   const [autoCapitalError, setAutoCapitalError] = useState<string | null>(null);
   const [autoCapitalBusy, setAutoCapitalBusy] = useState(false);
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
   const [indicatorBalanceSlide, setIndicatorBalanceSlide] = useState(0);
   const [activeForecastSlide, setActiveForecastSlide] = useState(0);
+  const [indicatorForecastSlide, setIndicatorForecastSlide] = useState(0);
   const [isBalanceDragging, setIsBalanceDragging] = useState(false);
   const [balanceDragOffset, setBalanceDragOffset] = useState(0);
+  const [isForecastDragging, setIsForecastDragging] = useState(false);
+  const [forecastDragOffset, setForecastDragOffset] = useState(0);
 
   const visibleTransactions = useMemo(() => {
     if (useFamilyFeed) {
@@ -189,6 +203,17 @@ export function DashboardPage() {
         : [0],
     [activeBalanceSlide, showFamilyBalanceSlide],
   );
+  const desktopForecastSlides = useMemo(
+    () =>
+      showFamilyForecastSlide
+        ? [
+            normalizeCarouselIndex(activeForecastSlide - 1, 2),
+            normalizeCarouselIndex(activeForecastSlide, 2),
+            normalizeCarouselIndex(activeForecastSlide + 1, 2),
+          ]
+        : [0],
+    [activeForecastSlide, showFamilyForecastSlide],
+  );
 
   const selectedCategory = useMemo(
     () => categories.data?.find((item) => item.id === quickCategoryId) ?? null,
@@ -204,7 +229,7 @@ export function DashboardPage() {
   const quickEntryMutation = useMutation({
     mutationFn: createTransaction,
     onSuccess: async () => {
-      setQuickSuccess("Операция добавлена");
+      setQuickSuccess("Р С›Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘РЎРЏ Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р…Р В°");
       setQuickError(null);
       setQuickAmount("");
       await Promise.all([
@@ -226,7 +251,7 @@ export function DashboardPage() {
   function resetAutoCapitalModal() {
     setAutoCapitalModalOpen(false);
     setPendingIncomePayload(null);
-    setAutoCapitalAccountName("Копилка");
+    setAutoCapitalAccountName("Р С™Р С•Р С—Р С‘Р В»Р С”Р В°");
     setAutoCapitalDontAskAgain(false);
     setAutoCapitalError(null);
     setAutoCapitalBusy(false);
@@ -299,7 +324,7 @@ export function DashboardPage() {
       capital_account_id: undefined,
     });
     setAutoCapitalModalOpen(true);
-    setAutoCapitalAccountName("Копилка");
+    setAutoCapitalAccountName("Р С™Р С•Р С—Р С‘Р В»Р С”Р В°");
     setAutoCapitalDontAskAgain(false);
     setAutoCapitalError(null);
     return true;
@@ -332,7 +357,7 @@ export function DashboardPage() {
       });
       resetAutoCapitalModal();
     } catch (error) {
-      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось сохранить доход без автоотчислений.");
+      setAutoCapitalError(error instanceof Error ? error.message : "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р С‘РЎвЂљРЎРЉ Р Т‘Р С•РЎвЂ¦Р С•Р Т‘ Р В±Р ВµР В· Р В°Р Р†РЎвЂљР С•Р С•РЎвЂљРЎвЂЎР С‘РЎРѓР В»Р ВµР Р…Р С‘Р в„–.");
       setAutoCapitalBusy(false);
     }
   }
@@ -345,7 +370,7 @@ export function DashboardPage() {
 
     const accountName = autoCapitalAccountName.trim();
     if (!accountName) {
-      setAutoCapitalError("Укажите название счета для автоотчислений.");
+      setAutoCapitalError("Р Р€Р С”Р В°Р В¶Р С‘РЎвЂљР Вµ Р Р…Р В°Р В·Р Р†Р В°Р Р…Р С‘Р Вµ РЎРѓРЎвЂЎР ВµРЎвЂљР В° Р Т‘Р В»РЎРЏ Р В°Р Р†РЎвЂљР С•Р С•РЎвЂљРЎвЂЎР С‘РЎРѓР В»Р ВµР Р…Р С‘Р в„–.");
       return;
     }
 
@@ -368,7 +393,7 @@ export function DashboardPage() {
       });
       resetAutoCapitalModal();
     } catch (error) {
-      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось создать счет для автоотчислений.");
+      setAutoCapitalError(error instanceof Error ? error.message : "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В·Р Т‘Р В°РЎвЂљРЎРЉ РЎРѓРЎвЂЎР ВµРЎвЂљ Р Т‘Р В»РЎРЏ Р В°Р Р†РЎвЂљР С•Р С•РЎвЂљРЎвЂЎР С‘РЎРѓР В»Р ВµР Р…Р С‘Р в„–.");
       setAutoCapitalBusy(false);
     }
   }
@@ -427,13 +452,25 @@ export function DashboardPage() {
   }, [selectedFamilyId, showFamilyBalanceSlide]);
 
   useEffect(() => {
+    if (forecastSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(forecastSettleFrameRef.current);
+      forecastSettleFrameRef.current = null;
+    }
+    forecastSettleStartRef.current = null;
+    forecastDragStateRef.current = null;
     setActiveForecastSlide(0);
+    setIndicatorForecastSlide(0);
+    forecastLogicalIndexRef.current = 0;
+    setForecastDragOffset(0);
   }, [selectedFamilyId, showFamilyForecastSlide]);
 
   useEffect(() => {
     return () => {
       if (balanceSettleFrameRef.current !== null) {
         window.cancelAnimationFrame(balanceSettleFrameRef.current);
+      }
+      if (forecastSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(forecastSettleFrameRef.current);
       }
     };
   }, []);
@@ -444,13 +481,13 @@ export function DashboardPage() {
     setQuickSuccess(null);
 
     if (!selectedCategory) {
-      setQuickError("Выбери категорию.");
+      setQuickError("Р вЂ™РЎвЂ№Р В±Р ВµРЎР‚Р С‘ Р С”Р В°РЎвЂљР ВµР С–Р С•РЎР‚Р С‘РЎР‹.");
       return;
     }
 
     const amount = evaluateAmountExpression(quickAmount);
     if (amount === null || amount <= 0) {
-      setQuickError("Укажи сумму больше нуля.");
+      setQuickError("Р Р€Р С”Р В°Р В¶Р С‘ РЎРѓРЎС“Р СР СРЎС“ Р В±Р С•Р В»РЎРЉРЎв‚¬Р Вµ Р Р…РЎС“Р В»РЎРЏ.");
       return;
     }
 
@@ -466,7 +503,7 @@ export function DashboardPage() {
       type: transactionType,
       category_id: selectedCategory.id,
       amount,
-      comment: `Быстрый ввод: ${selectedCategory.name}`,
+      comment: `Р вЂРЎвЂ№РЎРѓРЎвЂљРЎР‚РЎвЂ№Р в„– Р Р†Р Р†Р С•Р Т‘: ${selectedCategory.name}`,
       date: today,
       auto_capital_percent: transactionType === "income" && autoCapitalEnabled ? settingsQuery.data?.auto_capital_percent : undefined,
       capital_account_id: transactionType === "income" ? defaultCapitalAccount?.id : undefined,
@@ -599,6 +636,126 @@ export function DashboardPage() {
     animateDesktopBalanceFlight(logicalIndex === activeBalanceSlide ? 0 : nextDirection);
   }
 
+  function handleForecastPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!showFamilyForecastSlide) {
+      return;
+    }
+    const viewport = forecastCarouselRef.current;
+    if (!viewport) {
+      return;
+    }
+    if (forecastSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(forecastSettleFrameRef.current);
+      forecastSettleFrameRef.current = null;
+      setActiveForecastSlide(indicatorForecastSlide);
+      forecastLogicalIndexRef.current = indicatorForecastSlide;
+      setForecastDragOffset(0);
+    }
+    forecastSettleStartRef.current = null;
+    forecastDragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startOffset: forecastDragOffset,
+      lastClientX: event.clientX,
+      lastDirection: 0,
+    };
+    event.preventDefault();
+    setIsForecastDragging(true);
+    viewport.setPointerCapture(event.pointerId);
+  }
+
+  function handleForecastPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const viewport = forecastCarouselRef.current;
+    const dragState = forecastDragStateRef.current;
+    if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - dragState.startX;
+    const stepX = event.clientX - dragState.lastClientX;
+    if (stepX !== 0) {
+      dragState.lastDirection = stepX < 0 ? 1 : -1;
+      dragState.lastClientX = event.clientX;
+    }
+    event.preventDefault();
+    const maxOffset = Math.max((viewport.clientWidth || 1) * 0.92, 1);
+    const nextOffset = dragState.startOffset + deltaX;
+    setForecastDragOffset(Math.max(-maxOffset, Math.min(maxOffset, nextOffset)));
+  }
+
+  function animateDesktopForecastFlight(direction: -1 | 0 | 1) {
+    const viewport = forecastCarouselRef.current;
+    if (!viewport) {
+      return;
+    }
+    const width = viewport.clientWidth || 1;
+    const startOffset = forecastDragOffset;
+    const targetOffset = direction === 0 ? 0 : direction > 0 ? -width : width;
+    const nextIndex =
+      direction === 0 ? forecastLogicalIndexRef.current : normalizeCarouselIndex(forecastLogicalIndexRef.current + direction, 2);
+    if (direction !== 0) {
+      setIndicatorForecastSlide(nextIndex);
+    }
+    if (forecastSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(forecastSettleFrameRef.current);
+    }
+    forecastSettleStartRef.current = null;
+
+    function animate(timestamp: number) {
+      if (forecastSettleStartRef.current === null) {
+        forecastSettleStartRef.current = timestamp;
+      }
+      const elapsed = timestamp - forecastSettleStartRef.current;
+      const progress = Math.min(elapsed / 760, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setForecastDragOffset(startOffset + (targetOffset - startOffset) * eased);
+
+      if (progress < 1) {
+        forecastSettleFrameRef.current = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      forecastLogicalIndexRef.current = nextIndex;
+      setActiveForecastSlide(nextIndex);
+      setIndicatorForecastSlide(nextIndex);
+      setForecastDragOffset(0);
+      forecastSettleFrameRef.current = null;
+      forecastSettleStartRef.current = null;
+    }
+
+    forecastSettleFrameRef.current = window.requestAnimationFrame(animate);
+  }
+
+  function finishForecastDrag(event: PointerEvent<HTMLDivElement>) {
+    const viewport = forecastCarouselRef.current;
+    const dragState = forecastDragStateRef.current;
+    if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    forecastDragStateRef.current = null;
+    setIsForecastDragging(false);
+    if (viewport.hasPointerCapture(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
+    const totalDeltaX = event.clientX - dragState.startX;
+    const direction =
+      dragState.lastDirection !== 0
+        ? dragState.lastDirection
+        : totalDeltaX <= -6
+          ? 1
+          : totalDeltaX >= 6
+            ? -1
+            : 0;
+    animateDesktopForecastFlight(direction);
+  }
+
+  function handleForecastDotClick(logicalIndex: number) {
+    if (!showFamilyForecastSlide) {
+      return;
+    }
+    const nextDirection = logicalIndex === normalizeCarouselIndex(activeForecastSlide + 1, 2) ? 1 : -1;
+    animateDesktopForecastFlight(logicalIndex === activeForecastSlide ? 0 : nextDirection);
+  }
+
   function renderPersonalBalanceSlide(key: string) {
     const personalReceivedIncome = personalBalance?.income ?? 0;
     const personalPendingIncome = personalForecast?.planned_income ?? 0;
@@ -612,23 +769,23 @@ export function DashboardPage() {
     const personalRemainingExpense = personalPlannedExpenseTotal - personalExecutedExpense;
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Текущий баланс</p>
-        <h2>{dashboard.data?.balance.main_balance !== undefined ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
+        <p className="panel-label">Р СћР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р В±Р В°Р В»Р В°Р Р…РЎРѓ</p>
+        <h2>{dashboard.data?.balance.main_balance !== undefined ? formatMoney(dashboard.data.balance.main_balance) : "РІР‚вЂќ"}</h2>
         <div className="stats-row">
           <div>
-            <span>Доход за месяц (получено / план)</span>
-            <strong>{dashboard.data ? `${formatMoney(personalReceivedIncome)} / ${formatMoney(personalExpectedIncomeTotal)}` : "—"}</strong>
-            <p className="stat-note">Еще поступит: {formatMoney(personalRemainingIncome)}</p>
+            <span>Р вЂќР С•РЎвЂ¦Р С•Р Т‘ Р В·Р В° Р СР ВµРЎРѓРЎРЏРЎвЂ  (Р С—Р С•Р В»РЎС“РЎвЂЎР ВµР Р…Р С• / Р С—Р В»Р В°Р Р…)</span>
+            <strong>{dashboard.data ? `${formatMoney(personalReceivedIncome)} / ${formatMoney(personalExpectedIncomeTotal)}` : "РІР‚вЂќ"}</strong>
+            <p className="stat-note">Р вЂўРЎвЂ°Р Вµ Р С—Р С•РЎРѓРЎвЂљРЎС“Р С—Р С‘РЎвЂљ: {formatMoney(personalRemainingIncome)}</p>
           </div>
           <div>
-            <span>Расход за месяц (потрачено / план)</span>
+            <span>Р В Р В°РЎРѓРЎвЂ¦Р С•Р Т‘ Р В·Р В° Р СР ВµРЎРѓРЎРЏРЎвЂ  (Р С—Р С•РЎвЂљРЎР‚Р В°РЎвЂЎР ВµР Р…Р С• / Р С—Р В»Р В°Р Р…)</span>
             <strong className={personalIsExpenseOverPlan ? "money minus" : undefined}>
-              {dashboard.data ? `${formatMoney(personalExecutedExpense)} / ${formatMoney(personalPlannedExpenseTotal)}` : "—"}
+              {dashboard.data ? `${formatMoney(personalExecutedExpense)} / ${formatMoney(personalPlannedExpenseTotal)}` : "РІР‚вЂќ"}
             </strong>
             <p className={personalIsExpenseOverPlan ? "stat-note stat-note-alert" : "stat-note"}>
               {personalRemainingExpense >= 0
-                ? `Еще предстоит потратить: ${formatMoney(personalRemainingExpense)}`
-                : `Перерасход: ${formatMoney(Math.abs(personalRemainingExpense))}`}
+                ? `Р вЂўРЎвЂ°Р Вµ Р С—РЎР‚Р ВµР Т‘РЎРѓРЎвЂљР С•Р С‘РЎвЂљ Р С—Р С•РЎвЂљРЎР‚Р В°РЎвЂљР С‘РЎвЂљРЎРЉ: ${formatMoney(personalRemainingExpense)}`
+                : `Р СџР ВµРЎР‚Р ВµРЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘: ${formatMoney(Math.abs(personalRemainingExpense))}`}
             </p>
           </div>
         </div>
@@ -639,21 +796,21 @@ export function DashboardPage() {
   function renderFamilyBalanceSlide(key: string) {
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Текущий баланс семьи</p>
-        <h2>{familyBalance ? formatMoney(familyBalance.main_balance) : "—"}</h2>
+        <p className="panel-label">Р СћР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р В±Р В°Р В»Р В°Р Р…РЎРѓ РЎРѓР ВµР СРЎРЉР С‘</p>
+        <h2>{familyBalance ? formatMoney(familyBalance.main_balance) : "РІР‚вЂќ"}</h2>
         <div className="stats-row">
           <div>
-            <span>Доход семьи</span>
-            <strong className="money plus">{familyBalance ? formatMoney(familyBalance.income) : "—"}</strong>
-            <p className="stat-note">Сумма по всем участникам семьи</p>
+            <span>Р вЂќР С•РЎвЂ¦Р С•Р Т‘ РЎРѓР ВµР СРЎРЉР С‘</span>
+            <strong className="money plus">{familyBalance ? formatMoney(familyBalance.income) : "РІР‚вЂќ"}</strong>
+            <p className="stat-note">Р РЋРЎС“Р СР СР В° Р С—Р С• Р Р†РЎРѓР ВµР С РЎС“РЎвЂЎР В°РЎРѓРЎвЂљР Р…Р С‘Р С”Р В°Р С РЎРѓР ВµР СРЎРЉР С‘</p>
           </div>
           <div>
-            <span>Расход семьи</span>
-            <strong className="money minus">{familyBalance ? formatMoney(familyBalance.expense) : "—"}</strong>
+            <span>Р В Р В°РЎРѓРЎвЂ¦Р С•Р Т‘ РЎРѓР ВµР СРЎРЉР С‘</span>
+            <strong className="money minus">{familyBalance ? formatMoney(familyBalance.expense) : "РІР‚вЂќ"}</strong>
             <p className="stat-note">
               {familyDashboardQuery.data?.family_name
-                ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count ?? 0} участ.`
-                : "Семейный режим"}
+                ? `${familyDashboardQuery.data.family_name}: ${familyDashboardQuery.data.members_count ?? 0} РЎС“РЎвЂЎР В°РЎРѓРЎвЂљ.`
+                : "Р РЋР ВµР СР ВµР в„–Р Р…РЎвЂ№Р в„– РЎР‚Р ВµР В¶Р С‘Р С"}
             </p>
           </div>
         </div>
@@ -671,28 +828,24 @@ export function DashboardPage() {
       (personalForecast?.planned_expense ?? 0);
     const personalRemainingIncome = Math.max(personalExpectedIncomeTotal - personalReceivedIncome, 0);
     const personalRemainingExpense = personalPlannedExpenseTotal - personalExecutedExpense;
-    const personalForecastMonthLabel = getForecastMonthLabel(personalForecast?.end_date);
 
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Личный баланс на конец месяца</p>
-        <h2>{personalForecast ? formatMoney(personalForecast.projected_balance) : "—"}</h2>
+        <p className="panel-label">Р вЂєР С‘РЎвЂЎР Р…РЎвЂ№Р в„– Р В±Р В°Р В»Р В°Р Р…РЎРѓ Р Р…Р В° Р С”Р С•Р Р…Р ВµРЎвЂ  Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°</p>
+        <h2>{personalForecast ? formatMoney(personalForecast.projected_balance) : "РІР‚вЂќ"}</h2>
         <div className="stats-row">
           <div>
-            <span>Личные доходы до конца месяца</span>
-            <strong>{personalForecast ? `${formatMoney(personalReceivedIncome)} / ${formatMoney(personalExpectedIncomeTotal)}` : "—"}</strong>
-            <p className="stat-note">Еще поступит: {formatMoney(personalRemainingIncome)}</p>
+            <span>Р вЂєР С‘РЎвЂЎР Р…РЎвЂ№Р Вµ Р Т‘Р С•РЎвЂ¦Р С•Р Т‘РЎвЂ№ Р Т‘Р С• Р С”Р С•Р Р…РЎвЂ Р В° Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°</span>
+            <strong>{personalForecast ? `${formatMoney(personalReceivedIncome)} / ${formatMoney(personalExpectedIncomeTotal)}` : "РІР‚вЂќ"}</strong>
+            <p className="stat-note">Р вЂўРЎвЂ°Р Вµ Р С—Р С•РЎРѓРЎвЂљРЎС“Р С—Р С‘РЎвЂљ: {formatMoney(personalRemainingIncome)}</p>
           </div>
           <div>
-            <span>Личные расходы до конца месяца</span>
-            <strong>{personalForecast ? `${formatMoney(personalExecutedExpense)} / ${formatMoney(personalPlannedExpenseTotal)}` : "—"}</strong>
-            <p className="stat-note">
-              {personalForecast ? `Прогноз на ${personalForecastMonthLabel}` : "Личный режим"}
-            </p>
+            <span>Р вЂєР С‘РЎвЂЎР Р…РЎвЂ№Р Вµ РЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘РЎвЂ№ Р Т‘Р С• Р С”Р С•Р Р…РЎвЂ Р В° Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°</span>
+            <strong>{personalForecast ? `${formatMoney(personalExecutedExpense)} / ${formatMoney(personalPlannedExpenseTotal)}` : "РІР‚вЂќ"}</strong>
             <p className={personalRemainingExpense < 0 ? "stat-note stat-note-alert" : "stat-note"}>
               {personalRemainingExpense >= 0
-                ? `Еще предстоит потратить: ${formatMoney(personalRemainingExpense)}`
-                : `Перерасход: ${formatMoney(Math.abs(personalRemainingExpense))}`}
+                ? `Р вЂўРЎвЂ°Р Вµ Р С—РЎР‚Р ВµР Т‘РЎРѓРЎвЂљР С•Р С‘РЎвЂљ Р С—Р С•РЎвЂљРЎР‚Р В°РЎвЂљР С‘РЎвЂљРЎРЉ: ${formatMoney(personalRemainingExpense)}`
+                : `Р СџР ВµРЎР‚Р ВµРЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘: ${formatMoney(Math.abs(personalRemainingExpense))}`}
             </p>
           </div>
         </div>
@@ -710,28 +863,24 @@ export function DashboardPage() {
       (familyForecast?.planned_expense ?? 0);
     const familyRemainingIncome = Math.max(familyExpectedIncomeTotal - familyReceivedIncome, 0);
     const familyRemainingExpense = familyPlannedExpenseTotal - familyExecutedExpense;
-    const familyForecastMonthLabel = getForecastMonthLabel(familyForecast?.end_date);
 
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Общий баланс на конец месяца</p>
-        <h2>{familyForecast ? formatMoney(familyForecast.projected_balance) : "—"}</h2>
+        <p className="panel-label">Р С›Р В±РЎвЂ°Р С‘Р в„– Р В±Р В°Р В»Р В°Р Р…РЎРѓ Р Р…Р В° Р С”Р С•Р Р…Р ВµРЎвЂ  Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°</p>
+        <h2>{familyForecast ? formatMoney(familyForecast.projected_balance) : "РІР‚вЂќ"}</h2>
         <div className="stats-row">
           <div>
-            <span>Доходы семьи до конца месяца</span>
-            <strong>{familyForecast ? `${formatMoney(familyReceivedIncome)} / ${formatMoney(familyExpectedIncomeTotal)}` : "—"}</strong>
-            <p className="stat-note">Еще поступит: {formatMoney(familyRemainingIncome)}</p>
+            <span>Р вЂќР С•РЎвЂ¦Р С•Р Т‘РЎвЂ№ РЎРѓР ВµР СРЎРЉР С‘ Р Т‘Р С• Р С”Р С•Р Р…РЎвЂ Р В° Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°</span>
+            <strong>{familyForecast ? `${formatMoney(familyReceivedIncome)} / ${formatMoney(familyExpectedIncomeTotal)}` : "РІР‚вЂќ"}</strong>
+            <p className="stat-note">Р вЂўРЎвЂ°Р Вµ Р С—Р С•РЎРѓРЎвЂљРЎС“Р С—Р С‘РЎвЂљ: {formatMoney(familyRemainingIncome)}</p>
           </div>
           <div>
-            <span>Расходы семьи до конца месяца</span>
-            <strong>{familyForecast ? `${formatMoney(familyExecutedExpense)} / ${formatMoney(familyPlannedExpenseTotal)}` : "—"}</strong>
-            <p className="stat-note">
-              {familyForecast ? `Прогноз на ${familyForecastMonthLabel}` : "Семейный режим"}
-            </p>
+            <span>Р В Р В°РЎРѓРЎвЂ¦Р С•Р Т‘РЎвЂ№ РЎРѓР ВµР СРЎРЉР С‘ Р Т‘Р С• Р С”Р С•Р Р…РЎвЂ Р В° Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°</span>
+            <strong>{familyForecast ? `${formatMoney(familyExecutedExpense)} / ${formatMoney(familyPlannedExpenseTotal)}` : "РІР‚вЂќ"}</strong>
             <p className={familyRemainingExpense < 0 ? "stat-note stat-note-alert" : "stat-note"}>
               {familyRemainingExpense >= 0
-                ? `Еще предстоит потратить: ${formatMoney(familyRemainingExpense)}`
-                : `Перерасход: ${formatMoney(Math.abs(familyRemainingExpense))}`}
+                ? `Р вЂўРЎвЂ°Р Вµ Р С—РЎР‚Р ВµР Т‘РЎРѓРЎвЂљР С•Р С‘РЎвЂљ Р С—Р С•РЎвЂљРЎР‚Р В°РЎвЂљР С‘РЎвЂљРЎРЉ: ${formatMoney(familyRemainingExpense)}`
+                : `Р СџР ВµРЎР‚Р ВµРЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘: ${formatMoney(Math.abs(familyRemainingExpense))}`}
             </p>
           </div>
         </div>
@@ -743,9 +892,9 @@ export function DashboardPage() {
     <>
       <header className="hero">
         <div className="hero-copy">
-          <h1>Домашняя бухгалтерия</h1>
+          <h1>Р вЂќР С•Р СР В°РЎв‚¬Р Р…РЎРЏРЎРЏ Р В±РЎС“РЎвЂ¦Р С–Р В°Р В»РЎвЂљР ВµРЎР‚Р С‘РЎРЏ</h1>
           <p className="hero-text">
-            Короткий обзор месяца: текущий баланс, факт и план по доходам и расходам, быстрый ввод.
+            Р С™Р С•РЎР‚Р С•РЎвЂљР С”Р С‘Р в„– Р С•Р В±Р В·Р С•РЎР‚ Р СР ВµРЎРѓРЎРЏРЎвЂ Р В°: РЎвЂљР ВµР С”РЎС“РЎвЂ°Р С‘Р в„– Р В±Р В°Р В»Р В°Р Р…РЎРѓ, РЎвЂћР В°Р С”РЎвЂљ Р С‘ Р С—Р В»Р В°Р Р… Р С—Р С• Р Т‘Р С•РЎвЂ¦Р С•Р Т‘Р В°Р С Р С‘ РЎР‚Р В°РЎРѓРЎвЂ¦Р С•Р Т‘Р В°Р С, Р В±РЎвЂ№РЎРѓРЎвЂљРЎР‚РЎвЂ№Р в„– Р Р†Р Р†Р С•Р Т‘.
           </p>
         </div>
       </header>
@@ -792,15 +941,15 @@ export function DashboardPage() {
             )}
 
             {showFamilyBalanceSlide ? (
-              <div className="balance-carousel-nav" aria-label="Переключение карточек баланса">
+              <div className="balance-carousel-nav" aria-label="Р СџР ВµРЎР‚Р ВµР С”Р В»РЎР‹РЎвЂЎР ВµР Р…Р С‘Р Вµ Р С”Р В°РЎР‚РЎвЂљР С•РЎвЂЎР ВµР С” Р В±Р В°Р В»Р В°Р Р…РЎРѓР В°">
                 <button
-                  aria-label="Личный баланс"
+                  aria-label="Р вЂєР С‘РЎвЂЎР Р…РЎвЂ№Р в„– Р В±Р В°Р В»Р В°Р Р…РЎРѓ"
                   className={indicatorBalanceSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                   onClick={() => handleBalanceDotClick(0)}
                   type="button"
                 />
                 <button
-                  aria-label="Баланс семьи"
+                  aria-label="Р вЂР В°Р В»Р В°Р Р…РЎРѓ РЎРѓР ВµР СРЎРЉР С‘"
                   className={indicatorBalanceSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                   onClick={() => handleBalanceDotClick(1)}
                   type="button"
@@ -813,34 +962,50 @@ export function DashboardPage() {
         <section className="panel panel-balance">
           <div className="balance-carousel" data-has-family-slide={showFamilyForecastSlide ? "true" : "false"}>
             {showFamilyForecastSlide ? (
-              <>
-                {activeForecastSlide === 0
-                  ? renderPersonalForecastSlide("forecast-personal")
-                  : renderFamilyForecastSlide("forecast-family")}
-                <div className="balance-carousel-nav" aria-label="Переключение прогноза на конец месяца">
-                  <button
-                    aria-label="Личный прогноз"
-                    className={activeForecastSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
-                    onClick={() => setActiveForecastSlide(0)}
-                    type="button"
-                  />
-                  <button
-                    aria-label="Семейный прогноз"
-                    className={activeForecastSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
-                    onClick={() => setActiveForecastSlide(1)}
-                    type="button"
-                  />
+              <div
+                className="balance-carousel-viewport"
+                onPointerDown={handleForecastPointerDown}
+                onPointerMove={handleForecastPointerMove}
+                onPointerUp={finishForecastDrag}
+                onPointerCancel={finishForecastDrag}
+                ref={forecastCarouselRef}
+              >
+                <div
+                  className={isForecastDragging ? "balance-carousel-track is-desktop is-dragging" : "balance-carousel-track is-desktop"}
+                  style={{ transform: `translate3d(calc(-100% + ${forecastDragOffset}px), 0, 0)` }}
+                >
+                  {desktopForecastSlides.map((slideIndex, index) =>
+                    slideIndex === 0
+                      ? renderPersonalForecastSlide(`desktop-forecast-${index}`)
+                      : renderFamilyForecastSlide(`desktop-forecast-${index}`),
+                  )}
                 </div>
-              </>
+              </div>
             ) : (
               renderPersonalForecastSlide("forecast-personal-single")
             )}
+            {showFamilyForecastSlide ? (
+              <div className="balance-carousel-nav" aria-label="Forecast carousel">
+                <button
+                  aria-label="Personal forecast"
+                  className={indicatorForecastSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                  onClick={() => handleForecastDotClick(0)}
+                  type="button"
+                />
+                <button
+                  aria-label="Family forecast"
+                  className={indicatorForecastSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                  onClick={() => handleForecastDotClick(1)}
+                  type="button"
+                />
+              </div>
+            ) : null}
           </div>
         </section>
 
         <section className="panel panel-full">
           <div className="panel-header">
-            <h3>Быстрый ввод по категориям</h3>
+            <h3>Р вЂРЎвЂ№РЎРѓРЎвЂљРЎР‚РЎвЂ№Р в„– Р Р†Р Р†Р С•Р Т‘ Р С—Р С• Р С”Р В°РЎвЂљР ВµР С–Р С•РЎР‚Р С‘РЎРЏР С</h3>
           </div>
           <div className="chips">
             {categories.data?.map((category) => (
@@ -857,8 +1022,8 @@ export function DashboardPage() {
             {!categories.data?.length && (
               <p className="empty">
                 {categories.isError
-                  ? getQueryErrorMessage(categories.error, "Не удалось загрузить категории")
-                  : "Категории пока не добавлены."}
+                  ? getQueryErrorMessage(categories.error, "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С‘РЎвЂљРЎРЉ Р С”Р В°РЎвЂљР ВµР С–Р С•РЎР‚Р С‘Р С‘")
+                  : "Р С™Р В°РЎвЂљР ВµР С–Р С•РЎР‚Р С‘Р С‘ Р С—Р С•Р С”Р В° Р Р…Р Вµ Р Т‘Р С•Р В±Р В°Р Р†Р В»Р ВµР Р…РЎвЂ№."}
               </p>
             )}
           </div>
@@ -872,20 +1037,20 @@ export function DashboardPage() {
                     onClick={() => setQuickType("expense")}
                     type="button"
                   >
-                    Расход
+                    Р В Р В°РЎРѓРЎвЂ¦Р С•Р Т‘
                   </button>
                   <button
                     className={quickType === "income" ? "toggle active" : "toggle"}
                     onClick={() => setQuickType("income")}
                     type="button"
                   >
-                    Доход
+                    Р вЂќР С•РЎвЂ¦Р С•Р Т‘
                   </button>
                 </div>
               )}
 
               <label className="field">
-                <span>Сумма для {selectedCategory.name}</span>
+                <span>Р РЋРЎС“Р СР СР В° Р Т‘Р В»РЎРЏ {selectedCategory.name}</span>
                 <input
                   autoFocus
                   inputMode="decimal"
@@ -897,7 +1062,7 @@ export function DashboardPage() {
               </label>
               <div className="action-row">
                 <button className="primary-button" disabled={quickEntryMutation.isPending} type="submit">
-                  {quickEntryMutation.isPending ? "Вносим..." : "Внести"}
+                  {quickEntryMutation.isPending ? "Р вЂ™Р Р…Р С•РЎРѓР С‘Р С..." : "Р вЂ™Р Р…Р ВµРЎРѓРЎвЂљР С‘"}
                 </button>
                 <button
                   className="ghost-button"
@@ -905,7 +1070,7 @@ export function DashboardPage() {
                   onClick={handleCancelQuickEntry}
                   type="button"
                 >
-                  Отмена
+                  Р С›РЎвЂљР СР ВµР Р…Р В°
                 </button>
               </div>
               {quickError && <p className="form-error">{quickError}</p>}
@@ -917,15 +1082,15 @@ export function DashboardPage() {
 
         <section className="panel panel-full">
           <div className="panel-header">
-            <h3>Последние транзакции</h3>
-            {selectedFamilyId !== null ? <span>{useFamilyFeed ? "Совместные операции семьи" : "Личные операции"}</span> : null}
+            <h3>Р СџР С•РЎРѓР В»Р ВµР Т‘Р Р…Р С‘Р Вµ РЎвЂљРЎР‚Р В°Р Р…Р В·Р В°Р С”РЎвЂ Р С‘Р С‘</h3>
+            {selectedFamilyId !== null ? <span>{useFamilyFeed ? "Р РЋР С•Р Р†Р СР ВµРЎРѓРЎвЂљР Р…РЎвЂ№Р Вµ Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘Р С‘ РЎРѓР ВµР СРЎРЉР С‘" : "Р вЂєР С‘РЎвЂЎР Р…РЎвЂ№Р Вµ Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘Р С‘"}</span> : null}
           </div>
           <div className="list">
             {visibleTransactions.map((item) => (
               <article className="list-item" key={`${item.owner_user_id ?? "self"}-${item.id}`}>
                 <div>
                   <strong>{item.category}</strong>
-                  <p>{item.comment || "Без комментария"}</p>
+                  <p>{item.comment || "Р вЂР ВµР В· Р С”Р С•Р СР СР ВµР Р…РЎвЂљР В°РЎР‚Р С‘РЎРЏ"}</p>
                 </div>
                 <div className="family-page-actions">
                   {item.owner_display_name || item.owner_email ? (
@@ -942,9 +1107,9 @@ export function DashboardPage() {
                 {(useFamilyFeed ? familyTransactionsQuery.isError : dashboard.isError)
                   ? getQueryErrorMessage(
                       useFamilyFeed ? familyTransactionsQuery.error : dashboard.error,
-                      "Не удалось загрузить транзакции",
+                      "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р В·Р В°Р С–РЎР‚РЎС“Р В·Р С‘РЎвЂљРЎРЉ РЎвЂљРЎР‚Р В°Р Р…Р В·Р В°Р С”РЎвЂ Р С‘Р С‘",
                     )
-                  : "Пока нет исполненных транзакций за выбранный период."}
+                  : "Р СџР С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р С‘РЎРѓР С—Р С•Р В»Р Р…Р ВµР Р…Р Р…РЎвЂ№РЎвЂ¦ РЎвЂљРЎР‚Р В°Р Р…Р В·Р В°Р С”РЎвЂ Р С‘Р в„– Р В·Р В° Р Р†РЎвЂ№Р В±РЎР‚Р В°Р Р…Р Р…РЎвЂ№Р в„– Р С—Р ВµРЎР‚Р С‘Р С•Р Т‘."}
               </p>
             )}
           </div>
