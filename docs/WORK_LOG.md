@@ -122,3 +122,5 @@
   - `npm run build`
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_capital_target_receives_member_auto_contribution -v`
   - `python -m unittest tests.test_web_api.WebApiTestCase.test_family_member_can_clear_family_capital_target_and_use_personal_default -v`
+- Выкладка на `domfindom.ru` выполнена: коммит `d842841` отправлен в `origin/main`, backend на production обновлен через `git pull --ff-only`, frontend-статика загружена архивом `frontend-dist-d842841.tar.gz` и распакована в `/var/www/u3480024/data/www/domfindom.ru`, затем выполнен restart через `tmp/restart.txt`.
+- После выкладки проверен `https://domfindom.ru/api/v1/health` -> `{"status":"ok"}`.
