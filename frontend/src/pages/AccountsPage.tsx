@@ -65,6 +65,7 @@ export function AccountsPage() {
   const [autoCapitalEnabled, setAutoCapitalEnabled] = useState(true);
   const [autoCapitalPercent, setAutoCapitalPercent] = useState("10");
   const [selectedTargetKey, setSelectedTargetKey] = useState("");
+  const [savingAutoCapitalTargetKey, setSavingAutoCapitalTargetKey] = useState<string | null>(null);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const lastSavedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
   const lastRequestedSettingsRef = useRef<{ enabled: boolean; percent: string } | null>(null);
@@ -200,10 +201,48 @@ export function AccountsPage() {
     }
     return "";
   }, [defaultPersonalCapitalAccount, familyTarget]);
+  const effectiveAutoCapitalTargetKey = savingAutoCapitalTargetKey ?? currentAutoCapitalTargetKey;
+  const activeAutoCapitalTarget = useMemo(() => {
+    if (effectiveAutoCapitalTargetKey.startsWith("personal:")) {
+      const accountId = Number(effectiveAutoCapitalTargetKey.slice("personal:".length));
+      const account = capitalAccounts.find((item) => item.id === accountId) ?? null;
+      if (!account) {
+        return null;
+      }
+      return {
+        key: effectiveAutoCapitalTargetKey,
+        name: account.name,
+        balance: account.balance,
+        color: account.color ?? "#5f6b76",
+        tone: "Личный счет для автоотчислений",
+      };
+    }
+    if (effectiveAutoCapitalTargetKey.startsWith("family:")) {
+      const [, ownerRaw, accountRaw] = effectiveAutoCapitalTargetKey.split(":");
+      const ownerUserId = Number(ownerRaw);
+      const capitalAccountId = Number(accountRaw);
+      const account =
+        familyVisibleAccounts.find(
+          (item) => item.owner_user_id === ownerUserId && item.capital_account_id === capitalAccountId,
+        ) ?? null;
+      if (!account) {
+        return null;
+      }
+      const ownerLabel = account.owner_display_name || account.owner_email || "Семья";
+      return {
+        key: effectiveAutoCapitalTargetKey,
+        name: account.name,
+        balance: account.balance,
+        color: account.color ?? "#5f6b76",
+        tone: `Семейный счет · ${ownerLabel}`,
+      };
+    }
+    return null;
+  }, [capitalAccounts, effectiveAutoCapitalTargetKey, familyVisibleAccounts]);
 
   useEffect(() => {
-    setSelectedTargetKey(currentAutoCapitalTargetKey);
-  }, [currentAutoCapitalTargetKey]);
+    setSelectedTargetKey(effectiveAutoCapitalTargetKey);
+  }, [effectiveAutoCapitalTargetKey]);
 
   useEffect(() => {
     if (!settings.data) {
@@ -379,8 +418,10 @@ export function AccountsPage() {
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard", "accounts-page"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "capital-history"] }),
       ]);
+      setSavingAutoCapitalTargetKey(null);
     },
     onError: (error: Error) => {
+      setSavingAutoCapitalTargetKey(null);
       setSettingsError(error.message);
     },
   });
@@ -555,21 +596,15 @@ export function AccountsPage() {
       return;
     }
     setSettingsSavedNotice(false);
+    setSavingAutoCapitalTargetKey(selectedTargetKey);
     updateAutoCapitalTargetMutation.mutate(selectedTargetKey);
   }
 
   function getAccountTone(account: Account) {
-    if (account.type === "main") {
-      return "Основной счёт";
-    }
-    if (account.is_default) {
-      return "Счёт капитала по умолчанию";
-    }
     return "Счёт капитала";
   }
 
-  const defaultCapitalAccountName = defaultPersonalCapitalAccount?.name ??
-    "счёт ещё не выбран";
+  const defaultCapitalAccountName = activeAutoCapitalTarget?.name ?? "счёт ещё не выбран";
 
   return (
     <main className="accounts-layout">
@@ -622,13 +657,13 @@ export function AccountsPage() {
             <div className="auto-capital-info">
               <div className="auto-capital-info-row">
                 <span className="auto-capital-info-label">Текущая цель</span>
-                <strong>{familyTarget?.name ?? defaultCapitalAccountName}</strong>
+                <strong>{defaultCapitalAccountName}</strong>
               </div>
 
               <div className="auto-capital-info-row">
                 <span className="auto-capital-info-label">Тип</span>
                 <strong>
-                  {familyTarget ? "Семейный счет" : defaultPersonalCapitalAccount ? "Личный счет капитала" : "Не выбрано"}
+                  {activeAutoCapitalTarget?.tone ?? "Не выбрано"}
                 </strong>
               </div>
             </div>
@@ -657,7 +692,7 @@ export function AccountsPage() {
               disabled={
                 updateAutoCapitalTargetMutation.isPending ||
                 !selectedTargetKey ||
-                selectedTargetKey === currentAutoCapitalTargetKey
+                selectedTargetKey === effectiveAutoCapitalTargetKey
               }
               onClick={saveFamilyTarget}
               type="button"
@@ -903,10 +938,10 @@ export function AccountsPage() {
             </article>
           </div>
 
-          {mainAccount && (
+          {activeAutoCapitalTarget ? (
             <div className="account-section">
               <div className="account-section-header">
-                <h3>Основной счёт</h3>
+                <h3>Счет для автоотчислений</h3>
               </div>
 
               <article className="account-card account-card-main">
@@ -914,19 +949,19 @@ export function AccountsPage() {
                   <span
                     aria-hidden="true"
                     className="category-dot"
-                    style={{ backgroundColor: mainAccount.color ?? "#1d8f61" }}
+                    style={{ backgroundColor: activeAutoCapitalTarget.color }}
                   />
                   <div>
-                    <strong>{mainAccount.name}</strong>
-                    <p>{getAccountTone(mainAccount)}</p>
+                    <strong>{activeAutoCapitalTarget.name}</strong>
+                    <p>{activeAutoCapitalTarget.tone}</p>
                   </div>
                 </div>
                 <div className="account-balance">
-                  <strong>{formatMoney(mainAccount.balance)}</strong>
+                  <strong>{formatMoney(activeAutoCapitalTarget.balance)}</strong>
                 </div>
               </article>
             </div>
-          )}
+          ) : null}
 
           <div className="account-section">
             <div className="account-section-header">
@@ -954,18 +989,6 @@ export function AccountsPage() {
                     <button className="ghost-button" onClick={() => fillAccountForm(account)} type="button">
                       Изменить
                     </button>
-                    {!account.is_default && (
-                      <button
-                        className="ghost-button"
-                        disabled={updateAccountMutation.isPending}
-                        onClick={() =>
-                          updateAccountMutation.mutate({ accountId: account.id, payload: { is_default: true } })
-                        }
-                        type="button"
-                      >
-                        Сделать основным
-                      </button>
-                    )}
                     <button
                       className="ghost-button"
                       disabled={deleteAccountMutation.isPending}
