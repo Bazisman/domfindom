@@ -64,7 +64,15 @@ export function DashboardPage() {
   const quickEntryFormRef = useRef<HTMLFormElement | null>(null);
   const quickAmountInputRef = useRef<HTMLInputElement | null>(null);
   const balanceCarouselRef = useRef<HTMLDivElement | null>(null);
+  const forecastCarouselRef = useRef<HTMLDivElement | null>(null);
   const balanceDragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startOffset: number;
+    lastClientX: number;
+    lastDirection: -1 | 0 | 1;
+  } | null>(null);
+  const forecastDragStateRef = useRef<{
     pointerId: number;
     startX: number;
     startOffset: number;
@@ -73,7 +81,10 @@ export function DashboardPage() {
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
   const balanceSettleStartRef = useRef<number | null>(null);
+  const forecastSettleFrameRef = useRef<number | null>(null);
+  const forecastSettleStartRef = useRef<number | null>(null);
   const balanceLogicalIndexRef = useRef(0);
+  const forecastLogicalIndexRef = useRef(0);
 
   const dashboard = useQuery({
     queryKey: ["dashboard"],
@@ -143,8 +154,11 @@ export function DashboardPage() {
   const [activeBalanceSlide, setActiveBalanceSlide] = useState(0);
   const [indicatorBalanceSlide, setIndicatorBalanceSlide] = useState(0);
   const [activeForecastSlide, setActiveForecastSlide] = useState(0);
+  const [indicatorForecastSlide, setIndicatorForecastSlide] = useState(0);
   const [isBalanceDragging, setIsBalanceDragging] = useState(false);
   const [balanceDragOffset, setBalanceDragOffset] = useState(0);
+  const [isForecastDragging, setIsForecastDragging] = useState(false);
+  const [forecastDragOffset, setForecastDragOffset] = useState(0);
 
   const visibleTransactions = useMemo(() => {
     if (useFamilyFeed) {
@@ -188,6 +202,17 @@ export function DashboardPage() {
           ]
         : [0],
     [activeBalanceSlide, showFamilyBalanceSlide],
+  );
+  const desktopForecastSlides = useMemo(
+    () =>
+      showFamilyForecastSlide
+        ? [
+            normalizeCarouselIndex(activeForecastSlide - 1, 2),
+            normalizeCarouselIndex(activeForecastSlide, 2),
+            normalizeCarouselIndex(activeForecastSlide + 1, 2),
+          ]
+        : [0],
+    [activeForecastSlide, showFamilyForecastSlide],
   );
 
   const selectedCategory = useMemo(
@@ -427,13 +452,25 @@ export function DashboardPage() {
   }, [selectedFamilyId, showFamilyBalanceSlide]);
 
   useEffect(() => {
+    if (forecastSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(forecastSettleFrameRef.current);
+      forecastSettleFrameRef.current = null;
+    }
+    forecastSettleStartRef.current = null;
+    forecastDragStateRef.current = null;
     setActiveForecastSlide(0);
+    setIndicatorForecastSlide(0);
+    forecastLogicalIndexRef.current = 0;
+    setForecastDragOffset(0);
   }, [selectedFamilyId, showFamilyForecastSlide]);
 
   useEffect(() => {
     return () => {
       if (balanceSettleFrameRef.current !== null) {
         window.cancelAnimationFrame(balanceSettleFrameRef.current);
+      }
+      if (forecastSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(forecastSettleFrameRef.current);
       }
     };
   }, []);
@@ -599,6 +636,126 @@ export function DashboardPage() {
     animateDesktopBalanceFlight(logicalIndex === activeBalanceSlide ? 0 : nextDirection);
   }
 
+  function handleForecastPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!showFamilyForecastSlide) {
+      return;
+    }
+    const viewport = forecastCarouselRef.current;
+    if (!viewport) {
+      return;
+    }
+    if (forecastSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(forecastSettleFrameRef.current);
+      forecastSettleFrameRef.current = null;
+      setActiveForecastSlide(indicatorForecastSlide);
+      forecastLogicalIndexRef.current = indicatorForecastSlide;
+      setForecastDragOffset(0);
+    }
+    forecastSettleStartRef.current = null;
+    forecastDragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startOffset: forecastDragOffset,
+      lastClientX: event.clientX,
+      lastDirection: 0,
+    };
+    event.preventDefault();
+    setIsForecastDragging(true);
+    viewport.setPointerCapture(event.pointerId);
+  }
+
+  function handleForecastPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const viewport = forecastCarouselRef.current;
+    const dragState = forecastDragStateRef.current;
+    if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - dragState.startX;
+    const stepX = event.clientX - dragState.lastClientX;
+    if (stepX !== 0) {
+      dragState.lastDirection = stepX < 0 ? 1 : -1;
+      dragState.lastClientX = event.clientX;
+    }
+    event.preventDefault();
+    const maxOffset = Math.max((viewport.clientWidth || 1) * 0.92, 1);
+    const nextOffset = dragState.startOffset + deltaX;
+    setForecastDragOffset(Math.max(-maxOffset, Math.min(maxOffset, nextOffset)));
+  }
+
+  function animateDesktopForecastFlight(direction: -1 | 0 | 1) {
+    const viewport = forecastCarouselRef.current;
+    if (!viewport) {
+      return;
+    }
+    const width = viewport.clientWidth || 1;
+    const startOffset = forecastDragOffset;
+    const targetOffset = direction === 0 ? 0 : direction > 0 ? -width : width;
+    const nextIndex =
+      direction === 0 ? forecastLogicalIndexRef.current : normalizeCarouselIndex(forecastLogicalIndexRef.current + direction, 2);
+    if (direction !== 0) {
+      setIndicatorForecastSlide(nextIndex);
+    }
+    if (forecastSettleFrameRef.current !== null) {
+      window.cancelAnimationFrame(forecastSettleFrameRef.current);
+    }
+    forecastSettleStartRef.current = null;
+
+    function animate(timestamp: number) {
+      if (forecastSettleStartRef.current === null) {
+        forecastSettleStartRef.current = timestamp;
+      }
+      const elapsed = timestamp - forecastSettleStartRef.current;
+      const progress = Math.min(elapsed / 760, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setForecastDragOffset(startOffset + (targetOffset - startOffset) * eased);
+
+      if (progress < 1) {
+        forecastSettleFrameRef.current = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      forecastLogicalIndexRef.current = nextIndex;
+      setActiveForecastSlide(nextIndex);
+      setIndicatorForecastSlide(nextIndex);
+      setForecastDragOffset(0);
+      forecastSettleFrameRef.current = null;
+      forecastSettleStartRef.current = null;
+    }
+
+    forecastSettleFrameRef.current = window.requestAnimationFrame(animate);
+  }
+
+  function finishForecastDrag(event: PointerEvent<HTMLDivElement>) {
+    const viewport = forecastCarouselRef.current;
+    const dragState = forecastDragStateRef.current;
+    if (!viewport || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+    forecastDragStateRef.current = null;
+    setIsForecastDragging(false);
+    if (viewport.hasPointerCapture(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
+    const totalDeltaX = event.clientX - dragState.startX;
+    const direction =
+      dragState.lastDirection !== 0
+        ? dragState.lastDirection
+        : totalDeltaX <= -6
+          ? 1
+          : totalDeltaX >= 6
+            ? -1
+            : 0;
+    animateDesktopForecastFlight(direction);
+  }
+
+  function handleForecastDotClick(logicalIndex: number) {
+    if (!showFamilyForecastSlide) {
+      return;
+    }
+    const nextDirection = logicalIndex === normalizeCarouselIndex(activeForecastSlide + 1, 2) ? 1 : -1;
+    animateDesktopForecastFlight(logicalIndex === activeForecastSlide ? 0 : nextDirection);
+  }
+
   function renderPersonalBalanceSlide(key: string) {
     const personalReceivedIncome = personalBalance?.income ?? 0;
     const personalPendingIncome = personalForecast?.planned_income ?? 0;
@@ -662,79 +819,25 @@ export function DashboardPage() {
   }
 
   function renderPersonalForecastSlide(key: string) {
-    const personalReceivedIncome = personalBalance?.income ?? 0;
-    const personalPendingIncome = personalForecast?.planned_income ?? 0;
-    const personalExpectedIncomeTotal = personalReceivedIncome + personalPendingIncome;
-    const personalExecutedExpense = personalBalance?.expense ?? 0;
-    const personalPlannedExpenseTotal =
-      (personalForecast?.total_budgets ?? personalForecast?.monthly_budget ?? 0) +
-      (personalForecast?.planned_expense ?? 0);
-    const personalRemainingIncome = Math.max(personalExpectedIncomeTotal - personalReceivedIncome, 0);
-    const personalRemainingExpense = personalPlannedExpenseTotal - personalExecutedExpense;
     const personalForecastMonthLabel = getForecastMonthLabel(personalForecast?.end_date);
 
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Личный баланс на конец месяца</p>
+        <p className="panel-label">Личный остаток</p>
         <h2>{personalForecast ? formatMoney(personalForecast.projected_balance) : "—"}</h2>
-        <div className="stats-row">
-          <div>
-            <span>Личные доходы до конца месяца</span>
-            <strong>{personalForecast ? `${formatMoney(personalReceivedIncome)} / ${formatMoney(personalExpectedIncomeTotal)}` : "—"}</strong>
-            <p className="stat-note">Еще поступит: {formatMoney(personalRemainingIncome)}</p>
-          </div>
-          <div>
-            <span>Личные расходы до конца месяца</span>
-            <strong>{personalForecast ? `${formatMoney(personalExecutedExpense)} / ${formatMoney(personalPlannedExpenseTotal)}` : "—"}</strong>
-            <p className="stat-note">
-              {personalForecast ? `Прогноз на ${personalForecastMonthLabel}` : "Личный режим"}
-            </p>
-            <p className={personalRemainingExpense < 0 ? "stat-note stat-note-alert" : "stat-note"}>
-              {personalRemainingExpense >= 0
-                ? `Еще предстоит потратить: ${formatMoney(personalRemainingExpense)}`
-                : `Перерасход: ${formatMoney(Math.abs(personalRemainingExpense))}`}
-            </p>
-          </div>
-        </div>
+        <p className="stat-note">{personalForecast ? `На конец ${personalForecastMonthLabel}` : "Личный режим"}</p>
       </article>
     );
   }
 
   function renderFamilyForecastSlide(key: string) {
-    const familyReceivedIncome = familyBalance?.income ?? 0;
-    const familyPendingIncome = familyForecast?.planned_income ?? 0;
-    const familyExpectedIncomeTotal = familyReceivedIncome + familyPendingIncome;
-    const familyExecutedExpense = familyBalance?.expense ?? 0;
-    const familyPlannedExpenseTotal =
-      (familyForecast?.total_budgets ?? familyForecast?.monthly_budget ?? 0) +
-      (familyForecast?.planned_expense ?? 0);
-    const familyRemainingIncome = Math.max(familyExpectedIncomeTotal - familyReceivedIncome, 0);
-    const familyRemainingExpense = familyPlannedExpenseTotal - familyExecutedExpense;
     const familyForecastMonthLabel = getForecastMonthLabel(familyForecast?.end_date);
 
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Общий баланс на конец месяца</p>
+        <p className="panel-label">Семейный остаток</p>
         <h2>{familyForecast ? formatMoney(familyForecast.projected_balance) : "—"}</h2>
-        <div className="stats-row">
-          <div>
-            <span>Доходы семьи до конца месяца</span>
-            <strong>{familyForecast ? `${formatMoney(familyReceivedIncome)} / ${formatMoney(familyExpectedIncomeTotal)}` : "—"}</strong>
-            <p className="stat-note">Еще поступит: {formatMoney(familyRemainingIncome)}</p>
-          </div>
-          <div>
-            <span>Расходы семьи до конца месяца</span>
-            <strong>{familyForecast ? `${formatMoney(familyExecutedExpense)} / ${formatMoney(familyPlannedExpenseTotal)}` : "—"}</strong>
-            <p className="stat-note">
-              {familyForecast ? `Прогноз на ${familyForecastMonthLabel}` : "Семейный режим"}
-            </p>
-            <p className={familyRemainingExpense < 0 ? "stat-note stat-note-alert" : "stat-note"}>
-              {familyRemainingExpense >= 0
-                ? `Еще предстоит потратить: ${formatMoney(familyRemainingExpense)}`
-                : `Перерасход: ${formatMoney(Math.abs(familyRemainingExpense))}`}
-            </p>
-          </div>
-        </div>
+        <p className="stat-note">{familyForecast ? `На конец ${familyForecastMonthLabel}` : "Семейный режим"}</p>
       </article>
     );
   }
@@ -813,28 +916,45 @@ export function DashboardPage() {
         <section className="panel panel-balance">
           <div className="balance-carousel" data-has-family-slide={showFamilyForecastSlide ? "true" : "false"}>
             {showFamilyForecastSlide ? (
-              <>
-                {activeForecastSlide === 0
-                  ? renderPersonalForecastSlide("forecast-personal")
-                  : renderFamilyForecastSlide("forecast-family")}
-                <div className="balance-carousel-nav" aria-label="Переключение прогноза на конец месяца">
-                  <button
-                    aria-label="Личный прогноз"
-                    className={activeForecastSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
-                    onClick={() => setActiveForecastSlide(0)}
-                    type="button"
-                  />
-                  <button
-                    aria-label="Семейный прогноз"
-                    className={activeForecastSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
-                    onClick={() => setActiveForecastSlide(1)}
-                    type="button"
-                  />
+              <div
+                className="balance-carousel-viewport"
+                onPointerDown={handleForecastPointerDown}
+                onPointerMove={handleForecastPointerMove}
+                onPointerUp={finishForecastDrag}
+                onPointerCancel={finishForecastDrag}
+                ref={forecastCarouselRef}
+              >
+                <div
+                  className={isForecastDragging ? "balance-carousel-track is-desktop is-dragging" : "balance-carousel-track is-desktop"}
+                  style={{ transform: `translate3d(calc(-100% + ${forecastDragOffset}px), 0, 0)` }}
+                >
+                  {desktopForecastSlides.map((slideIndex, index) =>
+                    slideIndex === 0
+                      ? renderPersonalForecastSlide(`desktop-forecast-${index}`)
+                      : renderFamilyForecastSlide(`desktop-forecast-${index}`),
+                  )}
                 </div>
-              </>
+              </div>
             ) : (
               renderPersonalForecastSlide("forecast-personal-single")
             )}
+
+            {showFamilyForecastSlide ? (
+              <div className="balance-carousel-nav" aria-label="Переключение карточек остатка">
+                  <button
+                    aria-label="Личный остаток"
+                    className={indicatorForecastSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                    onClick={() => handleForecastDotClick(0)}
+                    type="button"
+                  />
+                  <button
+                    aria-label="Семейный остаток"
+                    className={indicatorForecastSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
+                    onClick={() => handleForecastDotClick(1)}
+                    type="button"
+                  />
+                </div>
+            ) : null}
           </div>
         </section>
 
