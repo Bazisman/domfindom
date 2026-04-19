@@ -10,6 +10,7 @@ import {
   applyReconciliation,
   getAccountPreferences,
   getFamilyDashboard,
+  getFamilyMembers,
   getFamilyTransactions,
   getMe,
   getMyFamilies,
@@ -87,6 +88,7 @@ export function TransactionsPageNext() {
   const [period, setPeriod] = useState<TransactionPeriod>("month");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
+  const [transactionsScope, setTransactionsScope] = useState<"all" | "mine" | `user:${number}`>("all");
   const [type, setType] = useState<TransactionType>("expense");
   const [showPlanned, setShowPlanned] = useState(false);
   const [categoryId, setCategoryId] = useState<string>("");
@@ -153,6 +155,24 @@ export function TransactionsPageNext() {
   const useFamilyFeed = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
   const pageOffset = page * pageSize;
 
+  const familyMembers = useQuery({
+    queryKey: ["families", selectedFamilyId, "members"],
+    queryFn: () => getFamilyMembers(selectedFamilyId as number),
+    enabled: useFamilyFeed,
+    retry: false,
+  });
+
+  const scopedOwnerUserId = useMemo(() => {
+    if (transactionsScope === "mine") {
+      return me.data?.id ?? 0;
+    }
+    if (transactionsScope.startsWith("user:")) {
+      const parsed = Number(transactionsScope.slice(5));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }, [me.data?.id, transactionsScope]);
+
   const transactions = useQuery({
     queryKey: ["transactions", "page", period, page, pageSize, showPlanned],
     queryFn: () => getTransactionsPage({ limit: pageSize, offset: pageOffset, period, includePlanned: showPlanned }),
@@ -161,10 +181,11 @@ export function TransactionsPageNext() {
   });
 
   const familyTransactions = useQuery({
-    queryKey: ["families", selectedFamilyId, "transactions", period, page, pageSize, showPlanned],
+    queryKey: ["families", selectedFamilyId, "transactions", period, page, pageSize, showPlanned, scopedOwnerUserId],
     queryFn: () =>
       getFamilyTransactions({
         familyId: selectedFamilyId as number,
+        ownerUserId: scopedOwnerUserId > 0 ? scopedOwnerUserId : undefined,
         limit: pageSize,
         offset: pageOffset,
         period,
@@ -216,7 +237,17 @@ export function TransactionsPageNext() {
 
   useEffect(() => {
     setPage(0);
-  }, [period, showPlanned, useFamilyFeed, selectedFamilyId, pageSize]);
+  }, [period, showPlanned, useFamilyFeed, selectedFamilyId, pageSize, scopedOwnerUserId]);
+
+  useEffect(() => {
+    if (!useFamilyFeed) {
+      setTransactionsScope("all");
+    }
+  }, [useFamilyFeed]);
+
+  useEffect(() => {
+    setTransactionsScope("all");
+  }, [selectedFamilyId]);
 
   const transactionPage = useMemo<TransactionPage | null>(() => {
     if (useFamilyFeed) {
@@ -920,6 +951,28 @@ export function TransactionsPageNext() {
               />
               <span>Показывать неисполненные</span>
             </label>
+            {useFamilyFeed ? (
+              <label className="field field-inline field-compact">
+                <span>Участник</span>
+                <select
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "all" || value === "mine" || value.startsWith("user:")) {
+                      setTransactionsScope(value as "all" | "mine" | `user:${number}`);
+                    }
+                  }}
+                  value={transactionsScope}
+                >
+                  <option value="all">Все участники</option>
+                  <option value="mine">Только мои</option>
+                  {(familyMembers.data?.members ?? []).map((member) => (
+                    <option key={member.user_id} value={`user:${member.user_id}`}>
+                      {member.display_name || member.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <select
               className="period-select"
               onChange={(event) => setPeriod(event.target.value as TransactionPeriod)}

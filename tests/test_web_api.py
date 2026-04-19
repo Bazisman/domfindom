@@ -1207,6 +1207,86 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_transactions_can_be_filtered_by_owner(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья фильтр"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"member-filter-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+        second_user_id = int(second_register.json()["user"]["id"])
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+        invite_token = str(invite_response.json()["invite_token"])
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite_token},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]["name"]
+
+        owner_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 4000.0,
+                "comment": "Owner only item",
+                "date": "2026-04-05",
+            },
+        )
+        self.assertEqual(owner_income.status_code, 201)
+
+        member_expense = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category,
+                "amount": 900.0,
+                "comment": "Member only item",
+                "date": "2026-04-06",
+            },
+        )
+        self.assertEqual(member_expense.status_code, 201)
+
+        owner_user_id = self._current_user_id()
+        owner_filtered = self.client.get(
+            f"/api/v1/families/{family_id}/transactions?period=month&owner_user_id={owner_user_id}"
+        )
+        self.assertEqual(owner_filtered.status_code, 200)
+        owner_payload = owner_filtered.json()
+        self.assertEqual(owner_payload["owner_user_id"], owner_user_id)
+        self.assertEqual(owner_payload["total"], 1)
+        self.assertEqual([item["comment"] for item in owner_payload["transactions"]], ["Owner only item"])
+
+        member_filtered = self.client.get(
+            f"/api/v1/families/{family_id}/transactions?period=month&owner_user_id={second_user_id}"
+        )
+        self.assertEqual(member_filtered.status_code, 200)
+        member_payload = member_filtered.json()
+        self.assertEqual(member_payload["owner_user_id"], second_user_id)
+        self.assertEqual(member_payload["total"], 1)
+        self.assertEqual([item["comment"] for item in member_payload["transactions"]], ["Member only item"])
+
+        not_member_filtered = self.client.get(
+            f"/api/v1/families/{family_id}/transactions?period=month&owner_user_id=999999"
+        )
+        self.assertEqual(not_member_filtered.status_code, 404)
+
+        second_client.close()
+
     def test_category_summary_supports_personal_and_family_scope(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья сводка"})
         self.assertEqual(create_family.status_code, 201)
