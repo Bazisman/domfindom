@@ -171,12 +171,13 @@ def update_recurring_template(
                     (value, template_id),
                 )
         conn.commit()
+        schedule_changed = any(f in normalized_kwargs for f in ["day_of_month", "working_days_only"])
         if any(
             f in normalized_kwargs
             for f in ["type", "amount", "day_of_month", "category_id", "comment_template", "months_ahead", "working_days_only"]
         ):
             delete_planned_transactions_fn(template_id)
-            generate_planned_transactions_fn(template_id)
+            generate_planned_transactions_fn(template_id, include_current_due=schedule_changed)
         app_logger.info(f"Шаблон ID={template_id} обновлён: {normalized_kwargs}")
         return cursor.rowcount > 0
 
@@ -198,6 +199,7 @@ def generate_planned_transactions(
     adjust_to_workday_fn,
     template_id,
     months=None,
+    include_current_due=False,
 ):
     template = get_recurring_template_by_id_fn(template_id)
     if not template:
@@ -215,13 +217,19 @@ def generate_planned_transactions(
         while current_date <= end_date:
             day = min(template["day_of_month"], calendar.monthrange(current_date.year, current_date.month)[1])
             trans_date = datetime(current_date.year, current_date.month, day)
-            if trans_date <= start_date:
-                current_date = (current_date + timedelta(days=32)).replace(day=1)
-                continue
-
             date_str = trans_date.strftime("%Y-%m-%d")
             if template["working_days_only"]:
                 date_str = adjust_to_workday_fn(date_str)
+            scheduled_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            should_include_current_due = (
+                include_current_due
+                and current_date.year == start_date.year
+                and current_date.month == start_date.month
+                and scheduled_date <= start_date.date()
+            )
+            if scheduled_date <= start_date.date() and not should_include_current_due:
+                current_date = (current_date + timedelta(days=32)).replace(day=1)
+                continue
 
             comment = template["comment_template"] or f"{template['name']} (запланировано)"
             cursor.execute("SELECT name FROM categories WHERE id = ?", (template["category_id"],))

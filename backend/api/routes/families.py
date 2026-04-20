@@ -41,7 +41,6 @@ router = APIRouter()
 
 def _collect_family_forecast(
     members: List[Dict[str, object]],
-    current_user_id: int,
     now: datetime,
     current_balance: float,
     planned_income: float,
@@ -51,31 +50,33 @@ def _collect_family_forecast(
 ) -> ForecastResponse:
     start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
     today = now.strftime("%Y-%m-%d")
-    personal_budgets = _run_in_user_db(current_user_id, core.get_budgets)
     spent_by_category: Dict[str, float] = {}
+    budget_by_category: Dict[str, float] = {}
 
     for member in members:
         user_id = int(member["user_id"])
 
         def _action():
-            return core.get_expenses_by_category(start_of_month, today)
+            return core.get_expenses_by_category(start_of_month, today), core.get_budgets()
 
-        expenses = _run_in_user_db(user_id, _action)
+        expenses, budgets = _run_in_user_db(user_id, _action)
         for item in expenses:
             category_name = str(item["category"] or "")
             spent_by_category[category_name] = spent_by_category.get(category_name, 0.0) + float(item["total"] or 0.0)
+        for budget in budgets:
+            monthly_amount = float(
+                core._get_budget_monthly_limit(
+                    budget["amount"] or 0,
+                    budget["period"] if "period" in budget.keys() else "monthly",
+                )
+            )
+            category_name = str(budget["category"] or "")
+            budget_by_category[category_name] = budget_by_category.get(category_name, 0.0) + monthly_amount
 
     total_budgets = 0.0
     current_expenses = 0.0
-    for budget in personal_budgets:
-        monthly_amount = float(
-            core._get_budget_monthly_limit(
-                budget["amount"] or 0,
-                budget["period"] if "period" in budget.keys() else "monthly",
-            )
-        )
+    for category_name, monthly_amount in budget_by_category.items():
         total_budgets += monthly_amount
-        category_name = str(budget["category"] or "")
         spent = float(spent_by_category.get(category_name, 0.0))
         current_expenses += min(spent, monthly_amount)
 
@@ -238,7 +239,6 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         current_target = None
     family_forecast = _collect_family_forecast(
         members=members,
-        current_user_id=current_user_id,
         now=now,
         current_balance=main_balance,
         planned_income=forecast_planned_income,
@@ -468,7 +468,7 @@ def list_family_transactions(
 @router.get("/{family_id}/capital-history", response_model=FamilyCapitalContributionListResponse)
 def list_family_capital_history(family_id: int, current_user=Depends(require_user)) -> FamilyCapitalContributionListResponse:
     if family_id <= 0:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СЃРµРјСЊРё")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
 
     _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
     return _collect_family_capital_history(family_id)

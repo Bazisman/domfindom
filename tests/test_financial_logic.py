@@ -1,6 +1,8 @@
+import calendar
 import sqlite3
 import unittest
 from contextlib import contextmanager
+from datetime import datetime
 
 import core
 from services.transaction_service import TransactionService
@@ -193,11 +195,54 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertTrue(all(item["amount"] == 125000.0 for item in planned_after))
 
 
+    def test_update_recurring_template_executes_when_moved_to_today_or_past(self):
+        today = datetime.now().date()
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        initial_day = today.day + 1 if today.day < last_day else today.day
+        target_day = today.day if initial_day != today.day else max(today.day - 1, 1)
+
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
+        template_id = core.create_recurring_template(
+            template_type="expense",
+            name="Тест переноса",
+            amount=500.0,
+            day_of_month=initial_day,
+            category_id=category_id,
+            comment_template="Перенесенная операция",
+            months_ahead=2,
+            working_days_only=0,
+        )
+
+        service = TransactionService()
+        updated = service.update_recurring_template(template_id, day_of_month=target_day)
+        self.assertTrue(updated)
+
+        today_str = today.strftime("%Y-%m-%d")
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT status, date
+                FROM transactions
+                WHERE template_id = ?
+                ORDER BY date
+                """,
+                (template_id,),
+            )
+            rows = cursor.fetchall()
+
+        self.assertTrue(any(row["status"] == "actual" and row["date"] <= today_str for row in rows))
+        self.assertFalse(any(row["status"] == "planned" and row["date"] <= today_str for row in rows))
+
+        main_balance, _, _ = core.get_balance(force_update=True)
+        self.assertEqual(main_balance, -500.0)
+
     def test_budget_status_uses_monthly_equivalent_for_daily_budget(self):
-        category = core.get_category_by_name("РџСЂРѕРґСѓРєС‚С‹")
-        category_id = category["id"] if category else core.add_category("РџСЂРѕРґСѓРєС‚С‹", "expense")
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
-        core.add_expense(1000.0, "РџСЂРѕРґСѓРєС‚С‹", "Р¤Р°РєС‚", "2026-04-05")
+        core.add_expense(1000.0, "Продукты", "Факт", "2026-04-05")
 
         status_items = core.get_budget_status(category_id)
         products = next(item for item in status_items if item["category_id"] == category_id)
@@ -208,10 +253,10 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(products["percent"], 33.3)
 
     def test_check_budget_uses_monthly_equivalent_for_daily_budget(self):
-        category = core.get_category_by_name("РџСЂРѕРґСѓРєС‚С‹")
-        category_id = category["id"] if category else core.add_category("РџСЂРѕРґСѓРєС‚С‹", "expense")
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
-        core.add_expense(2500.0, "РџСЂРѕРґСѓРєС‚С‹", "Р¤Р°РєС‚", "2026-04-05")
+        core.add_expense(2500.0, "Продукты", "Факт", "2026-04-05")
 
         result = core.check_budget(category_id, 600.0, date="2026-04-06")
 

@@ -409,7 +409,7 @@ class WebApiTestCase(unittest.TestCase):
             "/api/v1/transactions",
             json={
                 "type": "expense",
-                "category_name": "РџСЂРѕРґСѓРєС‚С‹",
+                "category_name": "Продукты",
                 "amount": 111.0,
                 "comment": "before backup",
                 "date": "2026-04-08",
@@ -424,7 +424,7 @@ class WebApiTestCase(unittest.TestCase):
             "/api/v1/transactions",
             json={
                 "type": "expense",
-                "category_name": "РџСЂРѕРґСѓРєС‚С‹",
+                "category_name": "Продукты",
                 "amount": 222.0,
                 "comment": "after backup",
                 "date": "2026-04-09",
@@ -735,7 +735,7 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
-    def test_family_dashboard_forecast_uses_current_user_budgets_with_family_expenses(self):
+    def test_family_dashboard_forecast_aggregates_family_budgets_for_all_members(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья прогноз"})
         self.assertEqual(create_family.status_code, 201)
         family_id = int(create_family.json()["id"])
@@ -807,10 +807,100 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["forecast"]["budget_remaining"], 400.0)
         self.assertEqual(payload["forecast"]["projected_balance"], 500.0)
 
+        family_dashboard_for_member = second_client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard_for_member.status_code, 200)
+        member_payload = family_dashboard_for_member.json()
+        self.assertEqual(member_payload["forecast"]["monthly_budget"], 500.0)
+        self.assertEqual(member_payload["forecast"]["budget_remaining"], 400.0)
+        self.assertEqual(member_payload["forecast"]["projected_balance"], 500.0)
+
+        second_client.close()
+
+    def test_family_dashboard_forecast_sums_budgets_by_shared_category_without_double_counting_expenses(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья общий бюджет"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"family-shared-budget-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
+
+        owner_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 2000.0,
+                "comment": "Owner income shared budget",
+                "date": "2026-04-01",
+            },
+        )
+        self.assertEqual(owner_income.status_code, 201)
+
+        owner_budget = self.client.post(
+            "/api/v1/budgets",
+            json={
+                "category_id": expense_category["id"],
+                "amount": 500.0,
+                "period": "monthly",
+            },
+        )
+        self.assertEqual(owner_budget.status_code, 201)
+
+        member_budget = second_client.post(
+            "/api/v1/budgets",
+            json={
+                "category_id": expense_category["id"],
+                "amount": 700.0,
+                "period": "monthly",
+            },
+        )
+        self.assertEqual(member_budget.status_code, 201)
+
+        member_expense = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": expense_category["name"],
+                "amount": 1000.0,
+                "comment": "Member shared expense",
+                "date": "2026-04-11",
+            },
+        )
+        self.assertEqual(member_expense.status_code, 201)
+
+        family_dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard.status_code, 200)
+        payload = family_dashboard.json()
+
+        self.assertEqual(payload["forecast"]["monthly_budget"], 1200.0)
+        self.assertEqual(payload["forecast"]["current_expenses"], 1000.0)
+        self.assertEqual(payload["forecast"]["budget_remaining"], 200.0)
+        self.assertEqual(payload["forecast"]["projected_balance"], 800.0)
+
         second_client.close()
 
     def test_personal_accounts_and_dashboard_do_not_leak_between_family_members(self):
-        create_family = self.client.post("/api/v1/families", json={"name": "РЎРµРјСЊСЏ С‡СѓР¶РёРµ СЃС‡РµС‚Р°"})
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья чужие счета"})
         self.assertEqual(create_family.status_code, 201)
         family_id = int(create_family.json()["id"])
 
@@ -1114,7 +1204,7 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(register_member.status_code, 201)
 
-        create_family = self.client.post("/api/v1/families", json={"name": "РЎРµРјСЊСЏ РѕР±С‰РёР№ С‡С‘С‚"})
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья общий счёт"})
         self.assertEqual(create_family.status_code, 201)
         family_id = int(create_family.json()["id"])
 
@@ -1162,7 +1252,7 @@ class WebApiTestCase(unittest.TestCase):
                 "type": "income",
                 "category_name": income_category,
                 "amount": 1000.0,
-                "comment": "Р”РѕС…РѕРґ РІ РћР·РѕРЅ РќР°СЃС‚Рё",
+                "comment": "Доход в Озон Насти",
                 "date": "2026-04-18",
             },
         )

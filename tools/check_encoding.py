@@ -40,6 +40,9 @@ MOJIBAKE_PATTERNS = {
     "utf8-decoded-as-cp1251": re.compile(r"(?:[??][^\s]){4,}"),
 }
 
+RUSSIAN_LETTER_PATTERN = re.compile(r"[А-Яа-яЁё]")
+SUSPICIOUS_MARKER_PATTERN = re.compile(r"[РСЃѓјЅѕїЎўЏ]")
+
 
 def should_scan(path: Path, extensions: set[str]) -> bool:
     if path.suffix.lower() not in extensions:
@@ -60,7 +63,44 @@ def detect_mojibake(content: str) -> list[str]:
     for name, pattern in MOJIBAKE_PATTERNS.items():
         if pattern.search(content):
             issues.append(name)
+    if "cp1251-repairable-lines" not in issues and has_repairable_cp1251_mojibake(content):
+        issues.append("cp1251-repairable-lines")
     return issues
+
+
+def _count_russian_letters(value: str) -> int:
+    return len(RUSSIAN_LETTER_PATTERN.findall(value))
+
+
+def _count_suspicious_markers(value: str) -> int:
+    return len(SUSPICIOUS_MARKER_PATTERN.findall(value))
+
+
+def _repair_cp1251_mojibake_line(line: str) -> str | None:
+    if _count_suspicious_markers(line) < 3:
+        return None
+    try:
+        repaired = line.encode("cp1251").decode("utf-8")
+    except UnicodeError:
+        return None
+
+    before_letters = _count_russian_letters(line)
+    after_letters = _count_russian_letters(repaired)
+    before_markers = _count_suspicious_markers(line)
+    after_markers = _count_suspicious_markers(repaired)
+
+    if after_letters <= before_letters:
+        return None
+    if after_markers >= before_markers:
+        return None
+    return repaired
+
+
+def has_repairable_cp1251_mojibake(content: str) -> bool:
+    for line in content.splitlines():
+        if _repair_cp1251_mojibake_line(line):
+            return True
+    return False
 
 
 def main() -> int:

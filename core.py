@@ -645,7 +645,7 @@ def delete_recurring_template(template_id):
     return _recurring_delete_recurring_template(get_connection, app_logger, template_id)
 
 
-def generate_planned_transactions(template_id, months=None):
+def generate_planned_transactions(template_id, months=None, include_current_due=False):
     return _recurring_generate_planned_transactions(
         get_connection,
         app_logger,
@@ -653,6 +653,7 @@ def generate_planned_transactions(template_id, months=None):
         _adjust_to_workday,
         template_id,
         months=months,
+        include_current_due=include_current_due,
     )
 
 
@@ -724,7 +725,6 @@ def get_budget_status(category_id: int = None):
 if __name__ == "__main__":
     init_db()
     app_logger.info("База данных инициализирована")
-
 
 
 
