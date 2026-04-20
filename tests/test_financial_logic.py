@@ -238,6 +238,27 @@ class FinancialLogicTestCase(unittest.TestCase):
         main_balance, _, _ = core.get_balance(force_update=True)
         self.assertEqual(main_balance, -500.0)
 
+    def test_create_recurring_template_generates_current_day_planned_transaction(self):
+        today = datetime.now().date()
+        category = core.get_category_by_name("Интернет/связь")
+        category_id = category["id"] if category else core.add_category("Интернет/связь", "expense")
+
+        template_id = core.create_recurring_template(
+            template_type="expense",
+            name="Тест шаблона на сегодня",
+            amount=449.0,
+            day_of_month=today.day,
+            category_id=category_id,
+            comment_template="Подписка на сегодня",
+            months_ahead=2,
+            working_days_only=0,
+        )
+
+        planned = core.get_planned_transactions_by_template(template_id)
+        today_str = today.strftime("%Y-%m-%d")
+
+        self.assertTrue(any(item["date"] == today_str and item["status"] == "planned" for item in planned))
+
     def test_budget_status_uses_monthly_equivalent_for_daily_budget(self):
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")

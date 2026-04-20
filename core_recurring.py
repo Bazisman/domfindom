@@ -221,13 +221,12 @@ def generate_planned_transactions(
             if template["working_days_only"]:
                 date_str = adjust_to_workday_fn(date_str)
             scheduled_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            should_include_current_due = (
-                include_current_due
-                and current_date.year == start_date.year
-                and current_date.month == start_date.month
-                and scheduled_date <= start_date.date()
+            is_current_month = current_date.year == start_date.year and current_date.month == start_date.month
+            should_include_current_due = is_current_month and (
+                scheduled_date == start_date.date()
+                or (include_current_due and scheduled_date < start_date.date())
             )
-            if scheduled_date <= start_date.date() and not should_include_current_due:
+            if scheduled_date < start_date.date() and not should_include_current_due:
                 current_date = (current_date + timedelta(days=32)).replace(day=1)
                 continue
 
