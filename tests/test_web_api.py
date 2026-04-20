@@ -1128,6 +1128,54 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(len(capital_accounts), 1)
         self.assertEqual(capital_accounts[0]["capital_account_id"], first_capital_id)
 
+    def test_deactivated_family_capital_account_is_removed_from_family_visibility_and_targets(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья деактивация капитала"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        created = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Семейная копилка", "balance": 500.0, "color": "#228b22"},
+        )
+        self.assertEqual(created.status_code, 201)
+        capital_id = int(created.json()["id"])
+
+        published = self.client.patch(
+            f"/api/v1/accounts/{capital_id}",
+            json={"family_visible": True, "family_default_target": True},
+        )
+        self.assertEqual(published.status_code, 200)
+        self.assertTrue(published.json()["family_visible"])
+        self.assertTrue(published.json()["family_default_target"])
+
+        dashboard_before = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(dashboard_before.status_code, 200)
+        self.assertEqual(len(dashboard_before.json()["capital_accounts"]), 1)
+        self.assertEqual(
+            dashboard_before.json()["current_member_capital_target"]["target_capital_account_id"],
+            capital_id,
+        )
+
+        deactivated = self.client.patch(
+            f"/api/v1/accounts/{capital_id}",
+            json={"is_active": False},
+        )
+        self.assertEqual(deactivated.status_code, 200)
+        self.assertFalse(deactivated.json()["is_active"])
+        self.assertFalse(deactivated.json()["family_visible"])
+        self.assertFalse(deactivated.json()["family_default_target"])
+
+        family_meta = auth_service.get_family_capital_account(family_id, self._current_user_id(), capital_id)
+        self.assertIsNotNone(family_meta)
+        self.assertFalse(bool(family_meta["is_visible"]))
+        self.assertFalse(bool(family_meta["is_default_target"]))
+
+        dashboard_after = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(dashboard_after.status_code, 200)
+        self.assertEqual(dashboard_after.json()["capital_accounts"], [])
+        self.assertIsNone(dashboard_after.json()["current_member_capital_target"]["target_owner_user_id"])
+        self.assertIsNone(dashboard_after.json()["current_member_capital_target"]["target_capital_account_id"])
+
     def test_family_capital_contribution_appears_in_transfer_history(self):
         member_email = f"family-transfer-{uuid4().hex[:8]}@example.com"
         member_client = TestClient(app)

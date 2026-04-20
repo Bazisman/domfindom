@@ -1373,6 +1373,40 @@ class AuthService:
             conn.commit()
         return self.get_family_capital_account(family_id, owner_user_id, capital_account_id) or {}
 
+    def hide_family_capital_account(
+        self,
+        family_id: int,
+        owner_user_id: int,
+        capital_account_id: int,
+    ) -> None:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE family_capital_accounts
+                SET is_visible = 0,
+                    is_default_target = 0,
+                    updated_at = datetime('now')
+                WHERE family_id = ?
+                  AND owner_user_id = ?
+                  AND capital_account_id = ?
+                """,
+                (family_id, owner_user_id, capital_account_id),
+            )
+            cursor.execute(
+                """
+                UPDATE family_capital_member_settings
+                SET target_owner_user_id = NULL,
+                    target_capital_account_id = NULL,
+                    updated_at = datetime('now')
+                WHERE family_id = ?
+                  AND target_owner_user_id = ?
+                  AND target_capital_account_id = ?
+                """,
+                (family_id, owner_user_id, capital_account_id),
+            )
+            conn.commit()
+
     def get_family_default_capital_target(self, family_id: int) -> Optional[Dict[str, int]]:
         with self._auth_connection() as conn:
             cursor = conn.cursor()
