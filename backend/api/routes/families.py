@@ -5,7 +5,6 @@ from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 import core
-from core_budgets import get_budget_status_metrics
 from backend.auth.dependencies import require_user
 from backend.auth.mailer import auth_mailer
 from backend.auth.service import auth_service
@@ -52,7 +51,7 @@ def _collect_family_forecast(
     start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
     today = now.strftime("%Y-%m-%d")
     spent_by_category: Dict[str, float] = {}
-    budget_by_category: Dict[str, Dict[str, float | bool]] = {}
+    budget_by_category: Dict[str, float] = {}
 
     for member in members:
         user_id = int(member["user_id"])
@@ -65,45 +64,26 @@ def _collect_family_forecast(
             category_name = str(item["category"] or "")
             spent_by_category[category_name] = spent_by_category.get(category_name, 0.0) + float(item["total"] or 0.0)
         for budget in budgets:
-            category_name = str(budget["category"] or "")
-            period = budget["period"] if "period" in budget.keys() else "monthly"
-            monthly_amount = float(core._get_budget_monthly_limit(budget["amount"] or 0, period, today))
-            category_bucket = budget_by_category.setdefault(
-                category_name,
-                {
-                    "monthly_amount": 0.0,
-                    "daily_amount": 0.0,
-                    "has_non_daily": False,
-                },
+            monthly_amount = float(
+                core._get_budget_monthly_limit(
+                    budget["amount"] or 0,
+                    budget["period"] if "period" in budget.keys() else "monthly",
+                )
             )
-            category_bucket["monthly_amount"] += monthly_amount
-            if str(period).lower() == "daily":
-                category_bucket["daily_amount"] += float(budget["amount"] or 0.0)
-            else:
-                category_bucket["has_non_daily"] = True
+            category_name = str(budget["category"] or "")
+            budget_by_category[category_name] = budget_by_category.get(category_name, 0.0) + monthly_amount
 
     total_budgets = 0.0
     current_expenses = 0.0
-    budget_plan_remaining = 0.0
-    budget_forecast_remaining = 0.0
-    for category_name, budget_meta in budget_by_category.items():
-        monthly_amount = float(budget_meta["monthly_amount"])
+    for category_name, monthly_amount in budget_by_category.items():
         total_budgets += monthly_amount
         spent = float(spent_by_category.get(category_name, 0.0))
         current_expenses += min(spent, monthly_amount)
-        plan_remaining = max(monthly_amount - spent, 0.0)
-        budget_plan_remaining += plan_remaining
-        daily_amount = float(budget_meta["daily_amount"])
-        has_non_daily = bool(budget_meta["has_non_daily"])
-        if daily_amount > 0 and not has_non_daily:
-            metrics = get_budget_status_metrics(daily_amount, "daily", spent, today)
-            budget_forecast_remaining += max(float(metrics["forecast_remaining"]), 0.0)
-        else:
-            budget_forecast_remaining += plan_remaining
 
-    combined_pending_expense = planned_expense + budget_forecast_remaining
+    budget_remaining = max(total_budgets - current_expenses, 0.0)
+    combined_pending_expense = planned_expense + budget_remaining
     combined_executed_expense = executed_planned_expense + current_expenses
-    projected_balance = current_balance + planned_income - planned_expense - budget_forecast_remaining
+    projected_balance = current_balance + planned_income - planned_expense - budget_remaining
     end_date = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime("%Y-%m-%d")
 
     return ForecastResponse(
@@ -115,9 +95,7 @@ def _collect_family_forecast(
         monthly_budget=round(total_budgets, 2),
         total_budgets=round(total_budgets, 2),
         current_expenses=round(current_expenses, 2),
-        budget_plan_remaining=round(budget_plan_remaining, 2),
-        budget_remaining=round(budget_forecast_remaining, 2),
-        budget_forecast_remaining=round(budget_forecast_remaining, 2),
+        budget_remaining=round(budget_remaining, 2),
         combined_pending_expense=round(combined_pending_expense, 2),
         combined_executed_expense=round(combined_executed_expense, 2),
         projected=round(projected_balance, 2),

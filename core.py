@@ -412,8 +412,8 @@ def _normalize_budget_period(period):
     return _budgets_normalize_budget_period(period)
 
 
-def _get_budget_monthly_limit(amount, period, reference_date=None):
-    return _budgets_get_budget_monthly_limit(amount, period, reference_date)
+def _get_budget_monthly_limit(amount, period):
+    return _budgets_get_budget_monthly_limit(amount, period)
 
 
 def delete_budget(budget_id):
@@ -725,6 +725,7 @@ def get_budget_status(category_id: int = None):
 if __name__ == "__main__":
     init_db()
     app_logger.info("База данных инициализирована")
+
 
 
 

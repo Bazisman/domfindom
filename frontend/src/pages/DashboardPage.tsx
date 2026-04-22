@@ -825,21 +825,7 @@ export function DashboardPage() {
       <article className="balance-slide" key={key}>
         <p className="panel-label">Личный остаток</p>
         <h2>{personalForecast ? formatMoney(personalForecast.projected_balance) : "—"}</h2>
-        <p className="stat-note">
-          {personalForecast ? `На конец ${personalForecastMonthLabel} с учетом бюджетного прогноза` : "Личный режим"}
-        </p>
-        {personalForecast ? (
-          <div className="stats-row">
-            <div>
-              <span>Остаток по плану</span>
-              <strong>{formatMoney(personalForecast.budget_plan_remaining ?? 0)}</strong>
-            </div>
-            <div>
-              <span>Прогноз по бюджетам</span>
-              <strong>{formatMoney(personalForecast.budget_forecast_remaining ?? personalForecast.budget_remaining ?? 0)}</strong>
-            </div>
-          </div>
-        ) : null}
+        <p className="stat-note">{personalForecast ? `На конец ${personalForecastMonthLabel}` : "Личный режим"}</p>
       </article>
     );
   }
@@ -851,21 +837,7 @@ export function DashboardPage() {
       <article className="balance-slide" key={key}>
         <p className="panel-label">Семейный остаток</p>
         <h2>{familyForecast ? formatMoney(familyForecast.projected_balance) : "—"}</h2>
-        <p className="stat-note">
-          {familyForecast ? `На конец ${familyForecastMonthLabel} с учетом бюджетного прогноза` : "Семейный режим"}
-        </p>
-        {familyForecast ? (
-          <div className="stats-row">
-            <div>
-              <span>Остаток по плану</span>
-              <strong>{formatMoney(familyForecast.budget_plan_remaining ?? 0)}</strong>
-            </div>
-            <div>
-              <span>Прогноз по бюджетам</span>
-              <strong>{formatMoney(familyForecast.budget_forecast_remaining ?? familyForecast.budget_remaining ?? 0)}</strong>
-            </div>
-          </div>
-        ) : null}
+        <p className="stat-note">{familyForecast ? `На конец ${familyForecastMonthLabel}` : "Семейный режим"}</p>
       </article>
     );
   }

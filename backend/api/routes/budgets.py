@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import core
-from core_budgets import get_budget_status_metrics
 from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.budgets import (
@@ -41,7 +40,6 @@ def _get_budget_or_404(budget_id: int):
 
 def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
     personal_status = core.get_budget_status()
-    personal_budgets = {int(item["category_id"]): item for item in core.get_budgets()}
     members = auth_service.list_family_members(family_id)
     spent_by_category_name: Dict[str, float] = defaultdict(float)
 
@@ -77,23 +75,21 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
     for item in personal_status:
         category_id = int(item["category_id"])
         category_name = str(item["category_name"])
-        raw_budget = personal_budgets.get(category_id)
-        if raw_budget is None:
-            continue
+        budget_amount = float(item["budget_amount"])
         spent = round(spent_by_category_name.get(category_name, 0.0), 2)
-        metrics = get_budget_status_metrics(
-            raw_budget["amount"] or 0,
-            raw_budget["period"] if "period" in raw_budget.keys() else "monthly",
-            spent,
-            today,
-        )
+        remaining = round(budget_amount - spent, 2)
+        percent = round((spent / budget_amount * 100) if budget_amount > 0 else 0.0, 1)
         result.append(
             BudgetStatusItem(
                 category_id=category_id,
                 category_name=category_name,
                 icon=str(item["icon"]),
                 color=str(item["color"]),
-                **metrics,
+                budget_amount=round(budget_amount, 2),
+                spent=spent,
+                remaining=remaining,
+                percent=percent,
+                over_budget=remaining < 0,
             )
         )
     return result

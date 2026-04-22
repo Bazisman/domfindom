@@ -143,29 +143,6 @@ transaction_service.delete_budget(budget_id)
 status = transaction_service.get_budget_status(category_id)
 ```
 
-### Поведение расчета статуса бюджета
-
-- `daily` бюджет переводится в месячный эквивалент по фактическому числу дней в текущем месяце;
-- `monthly` бюджет использует заданный лимит как есть;
-- статус бюджета теперь разделяет:
-  - `remaining` / `plan_remaining` - остаток по полному плану лимита;
-  - `forecast_remaining` - прогнозируемый остаток до конца месяца;
-  - `forecast_mode` - способ расчета прогноза.
-
-Для `daily` бюджетов прогноз считается по оставшимся дням месяца:
-
-```python
-forecast_spend = spent + daily_limit * remaining_days
-forecast_remaining = max(monthly_limit - forecast_spend, 0)
-```
-
-Для `monthly` бюджетов отдельный "умный" прогноз пока не строится, поэтому:
-
-```python
-forecast_remaining = None
-forecast_mode = "none"
-```
-
 ---
 
 ## Модели данных
@@ -203,35 +180,7 @@ class Budget:
     id: int
     category_id: int
     amount: float
-    period: str      # "daily" или "monthly"
-```
-
-### BudgetStatusItem
-
-```python
-class BudgetStatusItem:
-    category: str
-    spent: float
-    budget: float
-    remaining: float
-    plan_remaining: float
-    forecast_remaining: float | None
-    forecast_mode: str
-    percent: float
-    over_budget: bool
-```
-
-### ForecastResponse
-
-```python
-class ForecastResponse:
-    projected_balance: float
-    planned_income: float
-    planned_expense: float
-    budget_remaining: float
-    budget_plan_remaining: float
-    budget_forecast_remaining: float
-    combined_pending_expense: float
+    period: str      # "monthly" или "yearly"
 ```
 
 ---

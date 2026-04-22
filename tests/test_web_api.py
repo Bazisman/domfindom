@@ -1755,9 +1755,6 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(personal_item["spent"], 1000.0)
         self.assertEqual(personal_item["remaining"], 2000.0)
-        self.assertEqual(personal_item["plan_remaining"], 2000.0)
-        self.assertIsNone(personal_item["forecast_remaining"])
-        self.assertEqual(personal_item["forecast_mode"], "none")
 
         family_status = self.client.get(f"/api/v1/budgets/status?family_id={family_id}")
         self.assertEqual(family_status.status_code, 200)
@@ -1766,9 +1763,6 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(family_item["spent"], 1700.0)
         self.assertEqual(family_item["remaining"], 1300.0)
-        self.assertEqual(family_item["plan_remaining"], 1300.0)
-        self.assertIsNone(family_item["forecast_remaining"])
-        self.assertEqual(family_item["forecast_mode"], "none")
 
         second_client.close()
 
@@ -2220,8 +2214,6 @@ class WebApiTestCase(unittest.TestCase):
         self.assertIn("projected_balance", payload)
         self.assertIn("current_balance", payload)
         self.assertIn("budget_remaining", payload)
-        self.assertIn("budget_plan_remaining", payload)
-        self.assertIn("budget_forecast_remaining", payload)
 
     def test_forecast_tracks_executed_and_pending_planned_amounts(self):
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
@@ -2296,61 +2288,9 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["planned_expense"], 200.0)
         self.assertEqual(payload["executed_planned_expense"], 150.0)
         self.assertEqual(payload["current_expenses"], 450.0)
-        self.assertEqual(payload["budget_plan_remaining"], 550.0)
         self.assertEqual(payload["budget_remaining"], 550.0)
-        self.assertEqual(payload["budget_forecast_remaining"], 550.0)
         self.assertEqual(payload["combined_pending_expense"], 750.0)
         self.assertEqual(payload["combined_executed_expense"], 600.0)
-
-    def test_daily_budget_api_exposes_forecast_remaining(self):
-        today = datetime.now()
-        days_in_month = calendar.monthrange(today.year, today.month)[1]
-        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
-
-        budget_created = self.client.post(
-            "/api/v1/budgets",
-            json={
-                "category_id": expense_category["id"],
-                "amount": 100.0,
-                "period": "daily",
-            },
-        )
-        self.assertEqual(budget_created.status_code, 201)
-
-        actual_expense = self.client.post(
-            "/api/v1/transactions",
-            json={
-                "type": "expense",
-                "category_id": expense_category["id"],
-                "amount": 1000.0,
-                "comment": "Daily budget expense",
-                "date": today.strftime("%Y-%m-05"),
-            },
-        )
-        self.assertEqual(actual_expense.status_code, 201)
-
-        status_response = self.client.get("/api/v1/budgets/status")
-        self.assertEqual(status_response.status_code, 200)
-        status_item = next(
-            item for item in status_response.json() if item["category_id"] == expense_category["id"]
-        )
-        expected_monthly_amount = float(days_in_month * 100)
-        expected_forecast_remaining = max(
-            expected_monthly_amount - (1000 + (days_in_month - today.day) * 100),
-            0.0,
-        )
-
-        self.assertEqual(status_item["budget_amount"], expected_monthly_amount)
-        self.assertEqual(status_item["plan_remaining"], expected_monthly_amount - 1000.0)
-        self.assertEqual(status_item["forecast_remaining"], expected_forecast_remaining)
-        self.assertEqual(status_item["forecast_mode"], "daily_tempo")
-
-        forecast_response = self.client.get("/api/v1/forecast/month-end")
-        self.assertEqual(forecast_response.status_code, 200)
-        forecast_payload = forecast_response.json()
-
-        self.assertEqual(forecast_payload["budget_plan_remaining"], expected_monthly_amount - 1000.0)
-        self.assertEqual(forecast_payload["budget_remaining"], expected_forecast_remaining)
 
     def test_accounts_endpoint_returns_main_account(self):
         response = self.client.get("/api/v1/accounts")

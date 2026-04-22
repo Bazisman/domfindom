@@ -46,8 +46,5 @@ class BudgetStatusItem(BaseModel):
     budget_amount: float
     spent: float
     remaining: float
-    plan_remaining: float
-    forecast_remaining: Optional[float] = None
-    forecast_mode: str = "none"
     percent: float
     over_budget: bool

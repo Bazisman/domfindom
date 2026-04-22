@@ -428,7 +428,7 @@ export function PlanningPage() {
             <span className="panel-label">Прогноз на конец месяца</span>
             <h3>{formatMoney(activeForecast?.projected_balance ?? 0)}</h3>
             <p className="muted">
-              До {activeForecast?.end_date ?? "конца месяца"} с учетом бюджетного прогноза
+              До {activeForecast?.end_date ?? "конца месяца"}
             </p>
           </article>
 
@@ -463,15 +463,9 @@ export function PlanningPage() {
             </strong>
             <div className="planning-summary-stats">
               <div className="planning-summary-stat">
-                <span className="muted">Плановые операции</span>
+                <span className="muted">Не исполнено</span>
                 <strong className="money minus">
-                  {formatMoney(activeForecast?.planned_expense ?? 0)}
-                </strong>
-              </div>
-              <div className="planning-summary-stat">
-                <span className="muted">Бюджетный прогноз</span>
-                <strong className="money minus">
-                  {formatMoney(activeForecast?.budget_remaining ?? 0)}
+                  {formatMoney(activeForecast?.combined_pending_expense ?? 0)}
                 </strong>
               </div>
               <div className="planning-summary-stat">
@@ -898,21 +892,12 @@ export function PlanningPage() {
                       <div className="budget-meta">
                         <span>{Math.round(item.percent)}%</span>
                         <div>
-                          <span>Остаток по плану</span>
+                          <span>Осталось</span>
                           <strong className={item.over_budget ? "money minus" : "money"}>
-                            {formatMoney(item.plan_remaining)}
+                            {formatMoney(item.remaining)}
                           </strong>
                         </div>
                       </div>
-                      {item.forecast_mode !== "none" && item.forecast_remaining !== null ? (
-                        <div className="budget-meta">
-                          <span>Прогноз</span>
-                          <div>
-                            <span>Прогнозируемый остаток</span>
-                            <strong className="money">{formatMoney(item.forecast_remaining)}</strong>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
 
                     {budget && (
