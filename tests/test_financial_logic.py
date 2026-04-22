@@ -320,34 +320,6 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(forecast["budget_remaining"], float(expected_forecast_remaining))
         self.assertEqual(forecast["budget_forecast_remaining"], float(expected_forecast_remaining))
 
-    def test_projected_balance_does_not_double_count_planned_budget_expense(self):
-        today = datetime.now()
-        end_of_month = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime("%Y-%m-%d")
-        category = core.get_category_by_name("Продукты")
-        category_id = category["id"] if category else core.add_category("Продукты", "expense")
-        core.set_budget(category_id, 5000.0, "monthly")
-        core.add_expense(3000.0, "Продукты", "Факт", today.strftime("%Y-%m-05"))
-
-        with core.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO transactions
-                (type, category, amount, comment, date, created_at, status)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
-                """,
-                ("expense", "Продукты", 700.0, "План по продуктам", end_of_month, "planned"),
-            )
-            conn.commit()
-
-        forecast = core.get_projected_balance(end_date=end_of_month)
-
-        self.assertEqual(forecast["planned_expense"], 700.0)
-        self.assertEqual(forecast["budget_plan_remaining"], 2000.0)
-        self.assertEqual(forecast["budget_remaining"], 1300.0)
-        self.assertEqual(forecast["combined_pending_expense"], 2000.0)
-        self.assertEqual(forecast["projected_balance"], -5000.0)
-
     def test_adjust_to_workday_moves_weekend_dates(self):
         # 2026-04-11 = суббота -> перенос на понедельник
         self.assertEqual(core._adjust_to_workday("2026-04-11"), "2026-04-13")

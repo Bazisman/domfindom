@@ -36,20 +36,6 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
         )
         planned_expense = cursor.fetchone()[0] or 0
 
-        cursor.execute(
-            """
-            SELECT category, COALESCE(SUM(amount), 0) as total
-            FROM transactions
-            WHERE status = 'planned' AND type = 'expense' AND date <= ?
-            GROUP BY category
-            """,
-            (end_date,),
-        )
-        planned_expense_by_category = {
-            str(row["category"] or ""): float(row["total"] or 0.0)
-            for row in cursor.fetchall()
-        }
-
         start_of_month = today[:8] + "01"
         cursor.execute(
             """
@@ -120,11 +106,10 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
                 today,
             )
             budget_plan_remaining += max(float(metrics["plan_remaining"]), 0.0)
-            raw_forecast_remaining = metrics["forecast_remaining"]
-            if raw_forecast_remaining is None:
-                raw_forecast_remaining = max(float(metrics["plan_remaining"]), 0.0)
-            planned_category_expense = planned_expense_by_category.get(str(budget["category_name"] or ""), 0.0)
-            budget_forecast_remaining += max(float(raw_forecast_remaining) - planned_category_expense, 0.0)
+            forecast_remaining = metrics["forecast_remaining"]
+            if forecast_remaining is None:
+                forecast_remaining = max(float(metrics["plan_remaining"]), 0.0)
+            budget_forecast_remaining += max(float(forecast_remaining), 0.0)
 
         combined_pending_expense = planned_expense + budget_forecast_remaining
         combined_executed_expense = executed_planned_expense + current_expenses
