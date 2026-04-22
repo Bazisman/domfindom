@@ -2352,6 +2352,58 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(forecast_payload["budget_plan_remaining"], expected_monthly_amount - 1000.0)
         self.assertEqual(forecast_payload["budget_remaining"], expected_forecast_remaining)
 
+    def test_forecast_does_not_double_count_planned_expense_inside_budget(self):
+        today = datetime.now()
+        end_of_month = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime("%Y-%m-%d")
+        expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
+
+        budget_created = self.client.post(
+            "/api/v1/budgets",
+            json={
+                "category_id": expense_category["id"],
+                "amount": 5000.0,
+                "period": "monthly",
+            },
+        )
+        self.assertEqual(budget_created.status_code, 201)
+
+        actual_expense = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_id": expense_category["id"],
+                "amount": 3000.0,
+                "comment": "Actual budget expense",
+                "date": today.strftime("%Y-%m-05"),
+            },
+        )
+        self.assertEqual(actual_expense.status_code, 201)
+
+        db_token = self._push_current_user_db()
+        try:
+            with core.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO transactions (type, category, amount, comment, date, status, template_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("expense", expense_category["name"], 700.0, "Budget planned expense", end_of_month, "planned", 901),
+                )
+                conn.commit()
+        finally:
+            core.pop_db_name(db_token)
+
+        forecast_response = self.client.get("/api/v1/forecast/month-end")
+        self.assertEqual(forecast_response.status_code, 200)
+        payload = forecast_response.json()
+
+        self.assertEqual(payload["planned_expense"], 700.0)
+        self.assertEqual(payload["budget_plan_remaining"], 2000.0)
+        self.assertEqual(payload["budget_remaining"], 1300.0)
+        self.assertEqual(payload["budget_forecast_remaining"], 1300.0)
+        self.assertEqual(payload["combined_pending_expense"], 2000.0)
+
     def test_accounts_endpoint_returns_main_account(self):
         response = self.client.get("/api/v1/accounts")
         payload = response.json()

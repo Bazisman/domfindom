@@ -51,19 +51,36 @@ def _collect_family_forecast(
 ) -> ForecastResponse:
     start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
     today = now.strftime("%Y-%m-%d")
+    end_date = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime("%Y-%m-%d")
     spent_by_category: Dict[str, float] = {}
+    planned_expense_by_category: Dict[str, float] = {}
     budget_by_category: Dict[str, Dict[str, float | bool]] = {}
 
     for member in members:
         user_id = int(member["user_id"])
 
         def _action():
-            return core.get_expenses_by_category(start_of_month, today), core.get_budgets()
+            with core.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT category, COALESCE(SUM(amount), 0) as total
+                    FROM transactions
+                    WHERE status = 'planned' AND type = 'expense' AND date <= ?
+                    GROUP BY category
+                    """,
+                    (end_date,),
+                )
+                planned_expenses = cursor.fetchall()
+            return core.get_expenses_by_category(start_of_month, today), core.get_budgets(), planned_expenses
 
-        expenses, budgets = _run_in_user_db(user_id, _action)
+        expenses, budgets, planned_expenses = _run_in_user_db(user_id, _action)
         for item in expenses:
             category_name = str(item["category"] or "")
             spent_by_category[category_name] = spent_by_category.get(category_name, 0.0) + float(item["total"] or 0.0)
+        for item in planned_expenses:
+            category_name = str(item["category"] or "")
+            planned_expense_by_category[category_name] = planned_expense_by_category.get(category_name, 0.0) + float(item["total"] or 0.0)
         for budget in budgets:
             category_name = str(budget["category"] or "")
             period = budget["period"] if "period" in budget.keys() else "monthly"
@@ -95,16 +112,16 @@ def _collect_family_forecast(
         budget_plan_remaining += plan_remaining
         daily_amount = float(budget_meta["daily_amount"])
         has_non_daily = bool(budget_meta["has_non_daily"])
+        planned_category_expense = float(planned_expense_by_category.get(category_name, 0.0))
         if daily_amount > 0 and not has_non_daily:
             metrics = get_budget_status_metrics(daily_amount, "daily", spent, today)
-            budget_forecast_remaining += max(float(metrics["forecast_remaining"]), 0.0)
+            budget_forecast_remaining += max(float(metrics["forecast_remaining"]) - planned_category_expense, 0.0)
         else:
-            budget_forecast_remaining += plan_remaining
+            budget_forecast_remaining += max(plan_remaining - planned_category_expense, 0.0)
 
     combined_pending_expense = planned_expense + budget_forecast_remaining
     combined_executed_expense = executed_planned_expense + current_expenses
     projected_balance = current_balance + planned_income - planned_expense - budget_forecast_remaining
-    end_date = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime("%Y-%m-%d")
 
     return ForecastResponse(
         current_balance=round(current_balance, 2),
