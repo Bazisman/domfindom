@@ -260,6 +260,7 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertTrue(any(item["date"] == today_str and item["status"] == "planned" for item in planned))
 
     def test_budget_status_uses_monthly_equivalent_for_daily_budget(self):
+        days_in_month = calendar.monthrange(datetime.now().year, datetime.now().month)[1]
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
@@ -268,12 +269,14 @@ class FinancialLogicTestCase(unittest.TestCase):
         status_items = core.get_budget_status(category_id)
         products = next(item for item in status_items if item["category_id"] == category_id)
 
-        self.assertEqual(products["budget_amount"], 3000.0)
+        self.assertEqual(products["budget_amount"], float(days_in_month * 100))
         self.assertEqual(products["spent"], 1000.0)
-        self.assertEqual(products["remaining"], 2000.0)
-        self.assertEqual(products["percent"], 33.3)
+        self.assertEqual(products["remaining"], float(days_in_month * 100 - 1000))
+        self.assertEqual(products["plan_remaining"], float(days_in_month * 100 - 1000))
+        self.assertEqual(products["forecast_mode"], "daily_tempo")
 
     def test_check_budget_uses_monthly_equivalent_for_daily_budget(self):
+        days_in_month = calendar.monthrange(datetime.now().year, datetime.now().month)[1]
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
@@ -285,7 +288,37 @@ class FinancialLogicTestCase(unittest.TestCase):
         over, spent, budget = result
         self.assertTrue(over)
         self.assertEqual(spent, 2500.0)
-        self.assertEqual(budget, 3000.0)
+        self.assertEqual(budget, float(days_in_month * 100))
+
+    def test_daily_budget_status_includes_forecast_remaining(self):
+        today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
+        core.set_budget(category_id, 100.0, "daily")
+        core.add_expense(1000.0, "Продукты", "Факт", today.strftime("%Y-%m-05"))
+
+        status_items = core.get_budget_status(category_id)
+        products = next(item for item in status_items if item["category_id"] == category_id)
+        expected_forecast_remaining = max((days_in_month * 100) - (1000 + (days_in_month - today.day) * 100), 0)
+
+        self.assertEqual(products["forecast_remaining"], float(expected_forecast_remaining))
+
+    def test_projected_balance_uses_daily_forecast_remaining(self):
+        today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
+        core.set_budget(category_id, 100.0, "daily")
+        core.add_expense(1000.0, "Продукты", "Факт", today.strftime("%Y-%m-05"))
+
+        forecast = core.get_projected_balance()
+        expected_plan_remaining = max(days_in_month * 100 - 1000, 0)
+        expected_forecast_remaining = max((days_in_month * 100) - (1000 + (days_in_month - today.day) * 100), 0)
+
+        self.assertEqual(forecast["budget_plan_remaining"], float(expected_plan_remaining))
+        self.assertEqual(forecast["budget_remaining"], float(expected_forecast_remaining))
+        self.assertEqual(forecast["budget_forecast_remaining"], float(expected_forecast_remaining))
 
     def test_adjust_to_workday_moves_weekend_dates(self):
         # 2026-04-11 = суббота -> перенос на понедельник

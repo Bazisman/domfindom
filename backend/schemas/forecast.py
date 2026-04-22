@@ -10,7 +10,9 @@ class ForecastResponse(BaseModel):
     monthly_budget: float
     total_budgets: float
     current_expenses: float
+    budget_plan_remaining: float
     budget_remaining: float
+    budget_forecast_remaining: float
     combined_pending_expense: float
     combined_executed_expense: float
     projected: float

@@ -14,7 +14,9 @@ export type DashboardResponse = {
     monthly_budget: number;
     total_budgets: number;
     current_expenses: number;
+    budget_plan_remaining: number;
     budget_remaining: number;
+    budget_forecast_remaining: number;
     combined_pending_expense: number;
     combined_executed_expense: number;
     projected_balance: number;
@@ -35,6 +37,9 @@ export type DashboardResponse = {
     budget_amount: number;
     spent: number;
     remaining: number;
+    plan_remaining: number;
+    forecast_remaining: number | null;
+    forecast_mode: string;
     percent: number;
     over_budget: boolean;
     color: string;
@@ -155,6 +160,9 @@ export type BudgetStatusItem = {
   budget_amount: number;
   spent: number;
   remaining: number;
+  plan_remaining: number;
+  forecast_remaining: number | null;
+  forecast_mode: string;
   percent: number;
   over_budget: boolean;
 };

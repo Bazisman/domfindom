@@ -312,12 +312,21 @@ export function BudgetsPage() {
                   <div className="budget-meta">
                     <span>{Math.round(item.percent)}%</span>
                     <div>
-                      <span>Осталось</span>
+                      <span>Остаток по плану</span>
                       <strong className={item.over_budget ? "money minus" : "money"}>
-                        {formatMoney(item.remaining)}
+                        {formatMoney(item.plan_remaining)}
                       </strong>
                     </div>
                   </div>
+                  {item.forecast_mode !== "none" && item.forecast_remaining !== null ? (
+                    <div className="budget-meta">
+                      <span>Прогноз</span>
+                      <div>
+                        <span>Прогнозируемый остаток</span>
+                        <strong className="money">{formatMoney(item.forecast_remaining)}</strong>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {budget && (
