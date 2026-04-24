@@ -227,6 +227,8 @@ def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
 def _collect_family_dashboard(family_id: int, family_name: str, current_user_id: int) -> FamilyDashboardResponse:
     members = auth_service.list_family_members(family_id)
     now = datetime.now()
+    start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
 
     main_balance = 0.0
     capital_balance = 0.0
@@ -239,6 +241,15 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     recent_transactions: List[Dict[str, object]] = []
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
+    family_capital_outflow_by_source_user: Dict[int, float] = {}
+    for item in auth_service.list_family_capital_contributions_for_family(family_id=family_id, limit=300):
+        item_date = str(item["date"] or "")
+        if not (start_of_month <= item_date <= today):
+            continue
+        source_user_id = int(item["source_user_id"])
+        family_capital_outflow_by_source_user[source_user_id] = (
+            family_capital_outflow_by_source_user.get(source_user_id, 0.0) + float(item["amount"] or 0.0)
+        )
 
     for member in members:
         user_id = int(member["user_id"])
@@ -248,18 +259,21 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         def _action():
             balance = transaction_service.get_balance(force_update=True)
             stats = transaction_service.get_monthly_stats(now.year, now.month)
+            capital_outflow = core.get_capital_outflow_for_period(start_of_month, today)
             items = transaction_service.get_transactions(limit=100, period="all", offset=0)
             forecast = core.get_projected_balance()
-            return balance, stats, items, forecast
+            return balance, stats, capital_outflow, items, forecast
 
-        balance, stats, items, forecast = _run_in_user_db(user_id, _action)
+        balance, stats, direct_capital_outflow, items, forecast = _run_in_user_db(user_id, _action)
+        family_capital_outflow = float(family_capital_outflow_by_source_user.get(user_id, 0.0))
+        capital_outflow = float(direct_capital_outflow or 0.0) + family_capital_outflow
         main_balance += float(balance.main_balance)
         income += float(stats.get("income", 0.0) or 0.0)
-        expense += float(stats.get("expense", 0.0) or 0.0)
+        expense += float(stats.get("expense", 0.0) or 0.0) + capital_outflow
         forecast_planned_income += float(forecast.get("planned_income", 0.0) or 0.0)
         forecast_planned_expense += float(forecast.get("planned_expense", 0.0) or 0.0)
         forecast_executed_planned_income += float(forecast.get("executed_planned_income", 0.0) or 0.0)
-        forecast_executed_planned_expense += float(forecast.get("executed_planned_expense", 0.0) or 0.0)
+        forecast_executed_planned_expense += float(forecast.get("executed_planned_expense", 0.0) or 0.0) + family_capital_outflow
 
         for item in items:
             if item.status == "planned":

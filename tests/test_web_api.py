@@ -1972,6 +1972,57 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["balance"]["income"], 10000.0)
         self.assertEqual(payload["balance"]["expense"], 0.0)
 
+    def test_dashboard_balance_and_forecast_include_capital_outflow(self):
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        current_month_date = datetime.now().strftime("%Y-%m-08")
+
+        settings_response = self.client.patch(
+            "/api/v1/settings",
+            json={"auto_capital_enabled": False},
+        )
+        self.assertEqual(settings_response.status_code, 200)
+
+        created_capital = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Копилка тест", "balance": 0.0, "color": "#228b22"},
+        )
+        self.assertEqual(created_capital.status_code, 201)
+        capital_id = int(created_capital.json()["id"])
+
+        created_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 10000.0,
+                "comment": "Income before capital transfer",
+                "date": current_month_date,
+            },
+        )
+        self.assertEqual(created_income.status_code, 201)
+
+        created_transfer = self.client.post(
+            "/api/v1/transfers",
+            json={
+                "from_account_id": 1,
+                "to_account_id": capital_id,
+                "amount": 1500.0,
+                "date": current_month_date,
+                "comment": "Move to capital",
+            },
+        )
+        self.assertEqual(created_transfer.status_code, 201)
+
+        response = self.client.get("/api/v1/dashboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["balance"]["income"], 10000.0)
+        self.assertEqual(payload["balance"]["expense"], 1500.0)
+        self.assertEqual(payload["balance"]["difference"], 8500.0)
+        self.assertEqual(payload["forecast"]["executed_planned_expense"], 1500.0)
+        self.assertEqual(payload["forecast"]["projected_balance"], 8500.0)
+
     def test_categories_endpoint_returns_seed_categories(self):
         response = self.client.get("/api/v1/categories")
         payload = response.json()

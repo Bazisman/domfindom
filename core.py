@@ -54,6 +54,7 @@ from core_reports import (
     get_expenses_by_category as _reports_get_expenses_by_category,
     get_income_by_category as _reports_get_income_by_category,
     get_capital_contributions_for_period as _reports_get_capital_contributions_for_period,
+    get_capital_outflow_for_period as _reports_get_capital_outflow_for_period,
     get_available_periods as _reports_get_available_periods,
 )
 from core_reconciliation import (
@@ -480,6 +481,14 @@ def get_capital_contributions_for_period(start_date=None, end_date=None):
     )
 
 
+def get_capital_outflow_for_period(start_date=None, end_date=None):
+    return _reports_get_capital_outflow_for_period(
+        get_connection,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
 def get_available_periods():
     return _reports_get_available_periods(get_connection)
 
@@ -725,6 +734,5 @@ def get_budget_status(category_id: int = None):
 if __name__ == "__main__":
     init_db()
     app_logger.info("База данных инициализирована")
-
 
 

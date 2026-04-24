@@ -47,6 +47,23 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
         cursor.execute(
             """
             SELECT COALESCE(SUM(amount), 0) as total
+            FROM transfers
+            WHERE is_active = 1
+              AND to_account_id IN (
+                  SELECT id
+                  FROM capital_accounts
+                  WHERE is_active = 1
+              )
+              AND date >= ?
+              AND date <= ?
+            """,
+            (start_of_month, today),
+        )
+        actual_expense += cursor.fetchone()[0] or 0
+
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) as total
             FROM transactions
             WHERE status = 'planned' AND type = 'income' AND date <= ?
             """,

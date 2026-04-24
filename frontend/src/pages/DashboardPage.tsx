@@ -120,6 +120,7 @@ export function DashboardPage() {
 
   const selectedFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
   const useFamilyFeed = selectedFamilyId !== null && preferencesQuery.data?.workspace_mode === "family";
+  const showFamilyCards = selectedFamilyId !== null;
 
   const familyTransactionsQuery = useQuery({
     queryKey: ["families", selectedFamilyId, "transactions", "dashboard"],
@@ -136,7 +137,7 @@ export function DashboardPage() {
   const familyDashboardQuery = useQuery({
     queryKey: ["families", selectedFamilyId, "dashboard", "home-balance"],
     queryFn: () => getFamilyDashboard(selectedFamilyId as number),
-    enabled: useFamilyFeed,
+    enabled: showFamilyCards,
     retry: false,
   });
 
@@ -190,8 +191,8 @@ export function DashboardPage() {
   const personalBalance = dashboard.data?.balance;
   const familyForecast = familyDashboardQuery.data?.forecast;
   const familyBalance = familyDashboardQuery.data?.balance;
-  const showFamilyBalanceSlide = useFamilyFeed && familyBalance !== undefined;
-  const showFamilyForecastSlide = useFamilyFeed && familyForecast !== undefined;
+  const showFamilyBalanceSlide = showFamilyCards && familyBalance !== undefined;
+  const showFamilyForecastSlide = showFamilyCards && familyForecast !== undefined;
   const desktopBalanceSlides = useMemo(
     () =>
       showFamilyBalanceSlide

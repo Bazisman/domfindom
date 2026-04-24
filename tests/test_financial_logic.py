@@ -150,6 +150,21 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(forecast["budget_remaining"], float(remaining_days_including_today * 100))
         self.assertEqual(forecast["projected_balance"], float(10000 - 1000 - (remaining_days_including_today * 100)))
 
+    def test_projected_balance_counts_transfer_to_capital_as_month_expense(self):
+        capital_account_id = core.add_capital_account("Капитал", balance=0.0)
+        core.add_income_with_capital(10000.0, "Зарплата", "Доход", "2026-04-05", 0, None)
+        core.add_transfer_record(1, capital_account_id, 1500.0, date="2026-04-10", comment="Вклад")
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE accounts SET balance = ? WHERE id = 1", (8500.0,))
+            conn.commit()
+
+        forecast = core.get_projected_balance(end_date="2026-04-30")
+
+        self.assertEqual(forecast["current_balance"], 8500.0)
+        self.assertEqual(forecast["executed_planned_expense"], 1500.0)
+        self.assertEqual(forecast["projected_balance"], 8500.0)
+
     def test_export_path_returns_all_transactions_without_ui_limit(self):
         with core.get_connection() as conn:
             cursor = conn.cursor()

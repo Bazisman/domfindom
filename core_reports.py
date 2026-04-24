@@ -62,6 +62,33 @@ def get_capital_contributions_for_period(get_connection, start_date=None, end_da
         return cursor.fetchone()[0] or 0
 
 
+def get_capital_outflow_for_period(get_connection, start_date=None, end_date=None):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM transfers
+            WHERE is_active = 1
+              AND to_account_id IN (
+                  SELECT id
+                  FROM capital_accounts
+                  WHERE is_active = 1
+              )
+        """
+        params = []
+        if start_date and end_date:
+            query += " AND date BETWEEN ? AND ?"
+            params = [start_date, end_date]
+        elif start_date:
+            query += " AND date >= ?"
+            params = [start_date]
+        elif end_date:
+            query += " AND date <= ?"
+            params = [end_date]
+        cursor.execute(query, params)
+        return cursor.fetchone()[0] or 0
+
+
 def get_available_periods(get_connection):
     with get_connection() as conn:
         cursor = conn.cursor()
