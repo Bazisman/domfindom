@@ -674,7 +674,7 @@ export function FamilyPage() {
                 </article>
                 <article className="list-item audit-summary-card">
                   <div>
-                    <strong>Операций в группе</strong>
+                    <strong>В истории за всё время</strong>
                     <p>{categoryBindingPreview.affected_transaction_count}</p>
                   </div>
                 </article>
@@ -692,7 +692,9 @@ export function FamilyPage() {
                       <strong>{candidate.local_category_name}</strong>
                       <p>{candidate.owner_name}</p>
                       <p className="muted">
-                        Операций: {candidate.transaction_count}, бюджетов: {candidate.budget_count}, шаблонов: {candidate.recurring_count}
+                        История за всё время: {candidate.transaction_count}
+                        {candidate.planned_transaction_count > 0 ? `, плановых: ${candidate.planned_transaction_count}` : ""}, бюджетов: {candidate.budget_count},
+                        шаблонов: {candidate.recurring_count}
                       </p>
                     </div>
                     <div className="family-page-actions category-audit-tags">
