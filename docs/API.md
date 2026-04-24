@@ -143,6 +143,15 @@ transaction_service.delete_budget(budget_id)
 status = transaction_service.get_budget_status(category_id)
 ```
 
+### Семантика статуса бюджета
+
+- `monthly` и `yearly` бюджеты в `status` показывают обычный лимит периода и остаток до него.
+- `daily` бюджет в `status` показывает ожидаемый итог категории к концу текущего месяца:
+  - `spent` — уже потрачено по категории на текущую дату;
+  - `budget_amount = spent + daily_amount * remaining_days_including_today`;
+  - `remaining = daily_amount * remaining_days_including_today`.
+- В семейном режиме та же логика применяется к общему факту семьи по категории, а не к личным тратам текущего пользователя.
+
 ---
 
 ## Модели данных
