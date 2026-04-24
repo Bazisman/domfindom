@@ -1766,6 +1766,96 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_daily_budget_status_projects_from_family_spent(self):
+        today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        remaining_days_including_today = days_in_month - today.day + 1
+
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья daily бюджет"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"family-daily-budget-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        products_category = next(
+            item for item in self.client.get("/api/v1/categories?type=expense").json() if item["name"] == "Продукты"
+        )
+
+        budget_created = self.client.post(
+            "/api/v1/budgets",
+            json={
+                "category_id": products_category["id"],
+                "amount": 100.0,
+                "period": "daily",
+            },
+        )
+        self.assertEqual(budget_created.status_code, 201)
+
+        self.assertEqual(
+            self.client.post(
+                "/api/v1/transactions",
+                json={
+                    "type": "expense",
+                    "category_name": "Продукты",
+                    "amount": 1000.0,
+                    "comment": "Owner daily family expense",
+                    "date": "2026-04-05",
+                },
+            ).status_code,
+            201,
+        )
+        self.assertEqual(
+            second_client.post(
+                "/api/v1/transactions",
+                json={
+                    "type": "expense",
+                    "category_name": "Продукты",
+                    "amount": 700.0,
+                    "comment": "Member daily family expense",
+                    "date": "2026-04-12",
+                },
+            ).status_code,
+            201,
+        )
+
+        personal_status = self.client.get("/api/v1/budgets/status")
+        self.assertEqual(personal_status.status_code, 200)
+        personal_item = next(
+            item for item in personal_status.json() if item["category_id"] == products_category["id"]
+        )
+        self.assertEqual(personal_item["spent"], 1000.0)
+        self.assertEqual(personal_item["remaining"], float(remaining_days_including_today * 100))
+        self.assertEqual(personal_item["budget_amount"], float(1000.0 + remaining_days_including_today * 100))
+
+        family_status = self.client.get(f"/api/v1/budgets/status?family_id={family_id}")
+        self.assertEqual(family_status.status_code, 200)
+        family_item = next(
+            item for item in family_status.json() if item["category_id"] == products_category["id"]
+        )
+        self.assertEqual(family_item["spent"], 1700.0)
+        self.assertEqual(family_item["remaining"], float(remaining_days_including_today * 100))
+        self.assertEqual(family_item["budget_amount"], float(1700.0 + remaining_days_including_today * 100))
+
+        second_client.close()
+
     def test_dashboard_endpoint_returns_core_sections(self):
         response = self.client.get("/api/v1/dashboard")
         payload = response.json()

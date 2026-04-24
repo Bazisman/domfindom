@@ -328,8 +328,10 @@ class FinancialLogicTestCase(unittest.TestCase):
 
         self.assertTrue(any(item["date"] == today_str and item["status"] == "planned" for item in planned))
 
-    def test_budget_status_uses_elapsed_days_for_daily_budget(self):
+    def test_budget_status_projects_daily_budget_to_month_end(self):
         today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        remaining_days_including_today = days_in_month - today.day + 1
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
@@ -338,10 +340,11 @@ class FinancialLogicTestCase(unittest.TestCase):
         status_items = core.get_budget_status(category_id)
         products = next(item for item in status_items if item["category_id"] == category_id)
 
-        self.assertEqual(products["budget_amount"], float(today.day * 100))
+        expected_budget_amount = float(1000.0 + (remaining_days_including_today * 100))
+        self.assertEqual(products["budget_amount"], expected_budget_amount)
         self.assertEqual(products["spent"], 1000.0)
-        self.assertEqual(products["remaining"], float(today.day * 100 - 1000))
-        self.assertEqual(products["percent"], round(1000.0 / float(today.day * 100) * 100, 1))
+        self.assertEqual(products["remaining"], float(remaining_days_including_today * 100))
+        self.assertEqual(products["percent"], round(1000.0 / expected_budget_amount * 100, 1))
 
     def test_check_budget_uses_monthly_equivalent_for_daily_budget(self):
         days_in_month = calendar.monthrange(datetime.now().year, datetime.now().month)[1]

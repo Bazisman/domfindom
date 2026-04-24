@@ -170,6 +170,8 @@ def get_budget_status(get_connection, get_budget_monthly_limit_fn, category_id: 
     today = datetime.now()
     start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
     end_of_month = today.strftime("%Y-%m-%d")
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    remaining_days_including_today = max(days_in_month - today.day + 1, 0)
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -184,13 +186,6 @@ def get_budget_status(get_connection, get_budget_monthly_limit_fn, category_id: 
         for budget in budgets:
             period = budget["period"] if "period" in budget.keys() else "monthly"
             normalized_period = normalize_budget_period(period)
-            if normalized_period == "daily":
-                budget_amount = float(budget["budget_amount"] or 0) * today.day
-            else:
-                budget_amount = get_budget_monthly_limit_fn(
-                    budget["budget_amount"] or 0,
-                    period,
-                )
             cursor.execute(
                 """
                 SELECT COALESCE(SUM(amount), 0) as spent
@@ -204,6 +199,14 @@ def get_budget_status(get_connection, get_budget_monthly_limit_fn, category_id: 
                 (budget["category_name"], start_of_month, end_of_month),
             )
             spent = cursor.fetchone()[0] or 0
+            if normalized_period == "daily":
+                daily_amount = float(budget["budget_amount"] or 0)
+                budget_amount = spent + (daily_amount * remaining_days_including_today)
+            else:
+                budget_amount = get_budget_monthly_limit_fn(
+                    budget["budget_amount"] or 0,
+                    period,
+                )
             remaining = budget_amount - spent
             percent = (spent / budget_amount * 100) if budget_amount > 0 else 0
             result.append(

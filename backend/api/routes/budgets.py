@@ -1,3 +1,4 @@
+import calendar
 from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -40,12 +41,18 @@ def _get_budget_or_404(budget_id: int):
 
 def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
     personal_status = core.get_budget_status()
+    budgets = {
+        int(item["category_id"]): item
+        for item in transaction_service.get_budgets()
+    }
     members = auth_service.list_family_members(family_id)
     spent_by_category_name: Dict[str, float] = defaultdict(float)
 
     today = datetime.now()
     start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
     end_of_month = today.strftime("%Y-%m-%d")
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    remaining_days_including_today = max(days_in_month - today.day + 1, 0)
 
     for member in members:
         user_id = int(member["user_id"])
@@ -75,8 +82,15 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
     for item in personal_status:
         category_id = int(item["category_id"])
         category_name = str(item["category_name"])
-        budget_amount = float(item["budget_amount"])
         spent = round(spent_by_category_name.get(category_name, 0.0), 2)
+        budget_config = budgets.get(category_id)
+        period = budget_config["period"] if budget_config and "period" in budget_config.keys() else "monthly"
+        normalized_period = (period or "monthly").lower()
+        if normalized_period == "daily":
+            daily_amount = float(budget_config["amount"] or 0.0) if budget_config else 0.0
+            budget_amount = spent + (daily_amount * remaining_days_including_today)
+        else:
+            budget_amount = float(item["budget_amount"])
         remaining = round(budget_amount - spent, 2)
         percent = round((spent / budget_amount * 100) if budget_amount > 0 else 0.0, 1)
         result.append(
