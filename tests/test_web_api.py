@@ -899,6 +899,84 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_daily_budget_forecast_skips_today_after_family_spend(self):
+        today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        remaining_days_after_today = days_in_month - today.day
+
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья daily forecast"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"family-daily-forecast-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        products_category = next(
+            item for item in self.client.get("/api/v1/categories?type=expense").json() if item["name"] == "Продукты"
+        )
+
+        income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 10000.0,
+                "comment": "Owner income daily forecast",
+                "date": today.strftime("%Y-%m-01"),
+            },
+        )
+        self.assertEqual(income.status_code, 201)
+
+        budget = self.client.post(
+            "/api/v1/budgets",
+            json={
+                "category_id": products_category["id"],
+                "amount": 100.0,
+                "period": "daily",
+            },
+        )
+        self.assertEqual(budget.status_code, 201)
+
+        today_expense = second_client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": "Продукты",
+                "amount": 1000.0,
+                "comment": "Member daily forecast today",
+                "date": today.strftime("%Y-%m-%d"),
+            },
+        )
+        self.assertEqual(today_expense.status_code, 201)
+
+        family_dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard.status_code, 200)
+        payload = family_dashboard.json()
+
+        expected_budget_remaining = float(remaining_days_after_today * 100)
+        self.assertEqual(payload["forecast"]["budget_remaining"], expected_budget_remaining)
+        self.assertEqual(payload["forecast"]["projected_balance"], float(10000 - 1000 - expected_budget_remaining))
+
+        second_client.close()
+
     def test_personal_accounts_and_dashboard_do_not_leak_between_family_members(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья чужие счета"})
         self.assertEqual(create_family.status_code, 201)

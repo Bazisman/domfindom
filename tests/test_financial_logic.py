@@ -150,6 +150,32 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(forecast["budget_remaining"], float(remaining_days_including_today * 100))
         self.assertEqual(forecast["projected_balance"], float(10000 - 1000 - (remaining_days_including_today * 100)))
 
+    def test_daily_budget_forecast_skips_today_after_today_spend(self):
+        today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        remaining_days_after_today = days_in_month - today.day
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
+        core.set_budget(category_id, 100.0, "daily")
+
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                (type, category, amount, comment, date, created_at, status)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+                """,
+                ("income", "Зарплата", 10000.0, "Доход месяца", today.strftime("%Y-%m-01"), "actual"),
+            )
+            conn.commit()
+
+        core.add_expense(1000.0, "Продукты", "Факт сегодня", today.strftime("%Y-%m-%d"))
+        forecast = core.get_projected_balance()
+
+        self.assertEqual(forecast["budget_remaining"], float(remaining_days_after_today * 100))
+        self.assertEqual(forecast["projected_balance"], float(10000 - 1000 - (remaining_days_after_today * 100)))
+
     def test_projected_balance_counts_transfer_to_capital_as_month_expense(self):
         capital_account_id = core.add_capital_account("Капитал", balance=0.0)
         core.add_income_with_capital(10000.0, "Зарплата", "Доход", "2026-04-05", 0, None)

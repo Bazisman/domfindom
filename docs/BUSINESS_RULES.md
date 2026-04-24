@@ -61,6 +61,15 @@
 - `z` не вычитается повторно в прогнозе;
 - `v` не должен целиком уходить в прогноз поверх уже случившегося факта.
 
+Уточнение по текущему дню:
+- если сегодня по daily-категории уже есть фактический расход, `days_left` для forecast считается с завтрашнего дня;
+- если сегодня фактического расхода еще нет, `days_left` включает сегодня.
+
+Формально:
+- `days_to_reserve = days_after_today`, если `spent_today > 0`;
+- `days_to_reserve = days_including_today`, если `spent_today == 0`;
+- `budget_future_expense_for_category = a * days_to_reserve`.
+
 ### 3.3. Monthly-бюджет в forecast
 
 Базовое правило:

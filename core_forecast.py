@@ -12,6 +12,7 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
     reference = datetime.strptime(today, "%Y-%m-%d")
     days_in_month = calendar.monthrange(reference.year, reference.month)[1]
     remaining_days_including_today = max(days_in_month - reference.day + 1, 0)
+    remaining_days_after_today = max(days_in_month - reference.day, 0)
     start_of_month = today[:8] + "01"
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -118,7 +119,20 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
 
             normalized_period = str(period or "monthly").lower()
             if normalized_period == "daily":
-                future_budget_expense = float(budget["amount"] or 0) * remaining_days_including_today
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount), 0) as spent_today
+                    FROM transactions
+                    WHERE type = 'expense'
+                      AND category = ?
+                      AND date = ?
+                      AND (status = 'actual' OR status IS NULL)
+                    """,
+                    (budget["category_name"], today),
+                )
+                spent_today = cursor.fetchone()[0] or 0
+                days_to_reserve = remaining_days_after_today if spent_today > 0 else remaining_days_including_today
+                future_budget_expense = float(budget["amount"] or 0) * days_to_reserve
                 budget_remaining += max(future_budget_expense, 0.0)
             else:
                 budget_remaining += max(monthly_amount - spent, 0.0)
