@@ -2287,6 +2287,14 @@ body {
   gap: 14px;
 }
 
+.family-category-audit-panel {
+  grid-column: 1 / -1;
+}
+
+.family-category-audit-panel .family-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 .audit-summary-card p {
   margin-top: 6px;
   font-size: 1.35rem;
@@ -2295,29 +2303,47 @@ body {
 
 .category-audit-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .category-audit-list {
   gap: 10px;
+  min-width: 0;
 }
 
 .category-audit-subheader {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: var(--muted);
 }
 
+.category-audit-subheader strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .category-audit-finding,
 .category-audit-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   align-items: flex-start;
 }
 
+.category-audit-finding > div,
+.category-audit-group > div {
+  min-width: 0;
+}
+
 .category-audit-tags {
-  justify-content: flex-end;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .audit-severity-chip,
@@ -2380,6 +2406,12 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .category-audit-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1120px) {
   .category-audit-columns {
     grid-template-columns: 1fr;
   }
