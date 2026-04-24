@@ -20,6 +20,7 @@ import {
   type FamilyCategoryBindingPreviewResponse,
   type FamilyCategoryAuditSeverity,
 } from "../lib/api";
+import { categoryTypeLabel } from "../lib/labels";
 
 type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish";
 type CategoryBindingPayloadWithoutFamily = Omit<FamilyCategoryBindingPreviewPayload, "familyId">;
@@ -698,7 +699,7 @@ export function FamilyPage() {
                       </p>
                     </div>
                     <div className="family-page-actions category-audit-tags">
-                      <span className="audit-category-chip">{candidate.local_category_type}</span>
+                      <span className="audit-category-chip">{categoryTypeLabel(candidate.local_category_type)}</span>
                       {candidate.already_bound ? <span className="audit-severity-chip audit-severity-info">Уже связано</span> : null}
                     </div>
                   </article>

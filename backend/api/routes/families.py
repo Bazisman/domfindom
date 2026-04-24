@@ -193,6 +193,19 @@ def _semantic_type(semantic_key: str, fallback: str = "both") -> str:
     return fallback if fallback in {"income", "expense", "both"} else "both"
 
 
+def _category_type_label(category_type: object) -> str:
+    labels = {
+        "income": "доход",
+        "expense": "расход",
+        "both": "доход и расход",
+    }
+    return labels.get(str(category_type or "").strip().lower(), str(category_type or "не указано"))
+
+
+def _category_type_list_label(category_types: set[str]) -> str:
+    return ", ".join(_category_type_label(item) for item in sorted(category_types))
+
+
 def _display_owner_name(member: Dict[str, object]) -> str:
     display_name = str(member.get("display_name") or "").strip()
     if display_name:
@@ -931,8 +944,8 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                     severity="warning",
                     code="category_type_conflict",
                     title="Разные типы у одного смысла",
-                    description=f"Категории `{', '.join(names)}` похожи на один смысл, но используются как разные типы: {', '.join(sorted(types))}.",
-                    recommended_action="Перед синхронизацией нужно вручную решить, это одна категория `both` или разные категории.",
+                    description=f"Категории `{', '.join(names)}` похожи на один смысл, но используются как разные типы: {_category_type_list_label(types)}.",
+                    recommended_action="Перед синхронизацией нужно вручную решить, это одна категория с типом `доход и расход` или разные категории.",
                     category_names=names,
                     owner_names=owner_names,
                     affected_transaction_count=int(group["transaction_count"]),

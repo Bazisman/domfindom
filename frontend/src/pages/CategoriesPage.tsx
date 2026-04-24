@@ -9,6 +9,7 @@ import {
   type Category,
   type CategoryType,
 } from "../lib/api";
+import { categoryTypeLabel } from "../lib/labels";
 
 const CATEGORY_TYPE_OPTIONS: Array<{ value: CategoryType; label: string }> = [
   { value: "expense", label: "Расход" },
@@ -275,13 +276,7 @@ export function CategoriesPage() {
                 />
                 <div>
                   <strong>{category.name}</strong>
-                  <p>
-                    {category.type === "both"
-                      ? "Доход и расход"
-                      : category.type === "income"
-                        ? "Доход"
-                        : "Расход"}
-                  </p>
+                  <p>{categoryTypeLabel(category.type)}</p>
                 </div>
               </div>
               <div className="category-card-actions">
