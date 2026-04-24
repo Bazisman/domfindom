@@ -182,10 +182,15 @@ def get_budget_status(get_connection, get_budget_monthly_limit_fn, category_id: 
         budgets = cursor.fetchall()
         result = []
         for budget in budgets:
-            budget_amount = get_budget_monthly_limit_fn(
-                budget["budget_amount"] or 0,
-                budget["period"] if "period" in budget.keys() else "monthly",
-            )
+            period = budget["period"] if "period" in budget.keys() else "monthly"
+            normalized_period = normalize_budget_period(period)
+            if normalized_period == "daily":
+                budget_amount = float(budget["budget_amount"] or 0) * today.day
+            else:
+                budget_amount = get_budget_monthly_limit_fn(
+                    budget["budget_amount"] or 0,
+                    period,
+                )
             cursor.execute(
                 """
                 SELECT COALESCE(SUM(amount), 0) as spent
