@@ -635,6 +635,7 @@ PATCH  /api/v1/families/{family_id}/categories/{family_category_id}
 DELETE /api/v1/families/{family_id}/categories/{family_category_id}
 
 GET    /api/v1/families/{family_id}/categories/audit
+POST   /api/v1/families/{family_id}/categories/bindings/preview
 POST   /api/v1/families/{family_id}/categories/bindings
 PATCH  /api/v1/families/{family_id}/categories/bindings/{binding_id}
 
@@ -725,7 +726,8 @@ UI должен говорить простым языком:
 Статус на 2026-04-24:
 - реализован backend endpoint `GET /api/v1/families/{family_id}/categories/audit`;
 - добавлен первый UI-блок `Аудит категорий` на странице `Семья`;
-- аудит пока не создает binding и не применяет merge, а только показывает findings и группы-кандидаты.
+- аудит показывает findings, группы-кандидаты и уже подтвержденные binding-связи;
+- добавлен безопасный preview/apply для подтверждения связи категорий без merge.
 
 ### 13.2. Этап 1: системные шаблоны и алиасы
 
@@ -742,6 +744,13 @@ UI должен говорить простым языком:
 - `family_categories`;
 - `family_category_bindings`;
 - UI/endpoint для подтверждения связей.
+
+Статус на 2026-04-24:
+- таблицы `family_categories` и `family_category_bindings` добавлены в `auth.db`;
+- `POST /api/v1/families/{family_id}/categories/bindings/preview` показывает кандидатов и блокирующие причины без изменений данных;
+- `POST /api/v1/families/{family_id}/categories/bindings` доступен владельцу семьи и подтверждает только связь смысла;
+- личные названия, транзакции, бюджеты и регулярные шаблоны не изменяются;
+- аудит после подтверждения показывает группу как `confirmed`.
 
 Семейные отчеты пока могут продолжать использовать старый fallback, но должны показывать несвязанные категории.
 

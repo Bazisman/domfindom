@@ -430,7 +430,7 @@ export type FamilyTransactionListResponse = {
 };
 
 export type FamilyCategoryAuditSeverity = "critical" | "warning" | "info";
-export type FamilyCategoryAuditGroupStatus = "suggested" | "unlinked" | "conflict";
+export type FamilyCategoryAuditGroupStatus = "confirmed" | "suggested" | "unlinked" | "conflict";
 
 export type FamilyCategoryAuditResponse = {
   family_id: number;
@@ -465,6 +465,7 @@ export type FamilyCategoryAuditResponse = {
     category_names: string[];
     owner_names: string[];
     types: string[];
+    confirmed_bindings_count: number;
     transaction_count: number;
     planned_transaction_count: number;
     transaction_total: number;
@@ -486,6 +487,47 @@ export type FamilyCategoryAuditResponse = {
     recommended_action: string;
     can_apply_automatically: boolean;
   }>;
+};
+
+export type FamilyCategoryBindingPreviewPayload = {
+  familyId: number;
+  semanticKey: string;
+  displayName?: string;
+  categoryNames: string[];
+};
+
+export type FamilyCategoryBindingPreviewResponse = {
+  family_id: number;
+  semantic_key: string;
+  display_name: string;
+  type: string;
+  candidates: Array<{
+    user_id: number;
+    owner_name: string;
+    local_category_id: number;
+    local_category_name: string;
+    local_category_type: string;
+    transaction_count: number;
+    planned_transaction_count: number;
+    transaction_total: number;
+    budget_count: number;
+    recurring_count: number;
+    already_bound: boolean;
+  }>;
+  candidate_count: number;
+  already_bound_count: number;
+  new_binding_count: number;
+  affected_transaction_count: number;
+  affected_budget_count: number;
+  affected_recurring_count: number;
+  can_apply: boolean;
+  message: string;
+};
+
+export type FamilyCategoryBindingApplyResponse = {
+  message: string;
+  preview: FamilyCategoryBindingPreviewResponse;
+  applied_bindings_count: number;
 };
 
 export type CategorySummaryItem = {
@@ -822,6 +864,28 @@ export function getFamilyTransactions(params: {
 
 export function getFamilyCategoryAudit(familyId: number) {
   return request<FamilyCategoryAuditResponse>(`/families/${familyId}/categories/audit`);
+}
+
+function familyCategoryBindingPayload(payload: FamilyCategoryBindingPreviewPayload) {
+  return {
+    semantic_key: payload.semanticKey,
+    display_name: payload.displayName,
+    category_names: payload.categoryNames,
+  };
+}
+
+export function previewFamilyCategoryBinding(payload: FamilyCategoryBindingPreviewPayload) {
+  return request<FamilyCategoryBindingPreviewResponse>(`/families/${payload.familyId}/categories/bindings/preview`, {
+    method: "POST",
+    body: JSON.stringify(familyCategoryBindingPayload(payload)),
+  });
+}
+
+export function applyFamilyCategoryBinding(payload: FamilyCategoryBindingPreviewPayload) {
+  return request<FamilyCategoryBindingApplyResponse>(`/families/${payload.familyId}/categories/bindings`, {
+    method: "POST",
+    body: JSON.stringify(familyCategoryBindingPayload(payload)),
+  });
 }
 
 export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {

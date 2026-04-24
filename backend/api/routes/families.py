@@ -21,6 +21,10 @@ from backend.schemas.families import (
     FamilyCategoryAuditMemberResponse,
     FamilyCategoryAuditResponse,
     FamilyCategoryAuditSummaryResponse,
+    FamilyCategoryBindingApplyResponse,
+    FamilyCategoryBindingCandidateResponse,
+    FamilyCategoryBindingPreviewPayload,
+    FamilyCategoryBindingPreviewResponse,
     FamilyCreatePayload,
     FamilyDashboardBalanceResponse,
     FamilyDashboardResponse,
@@ -179,6 +183,14 @@ def _semantic_display_name(semantic_key: Optional[str], fallback: str) -> str:
     if semantic_key and semantic_key in _SEMANTIC_CATEGORY_TEMPLATES:
         return str(_SEMANTIC_CATEGORY_TEMPLATES[semantic_key]["display_name"])
     return fallback
+
+
+def _semantic_type(semantic_key: str, fallback: str = "both") -> str:
+    if semantic_key.startswith(("salary", "benefits", "side_job", "business_project", "sale", "interest_cashback", "opening_balance")):
+        return "income"
+    if semantic_key == "gifts":
+        return "both"
+    return fallback if fallback in {"income", "expense", "both"} else "both"
 
 
 def _display_owner_name(member: Dict[str, object]) -> str:
@@ -680,6 +692,15 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
     members = auth_service.list_family_members(family_id)
     snapshots = [_collect_member_category_audit_snapshot(member) for member in members]
     member_ids = {int(snapshot["user_id"]) for snapshot in snapshots}
+    existing_bindings = auth_service.list_family_category_bindings(family_id)
+    bindings_by_local_category = {
+        (int(item["user_id"]), int(item["local_category_id"])): item
+        for item in existing_bindings
+    }
+    bindings_by_local_name = {
+        (int(item["user_id"]), _normalize_category_name(item["local_category_name"])): item
+        for item in existing_bindings
+    }
 
     category_names_by_user: Dict[int, set[str]] = {}
     active_category_names_by_user: Dict[int, set[str]] = {}
@@ -689,20 +710,24 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
     groups: Dict[str, Dict[str, Any]] = {}
     findings: List[Dict[str, object]] = []
 
-    def _group_for(name: str) -> Dict[str, Any]:
+    def _group_for(name: str, binding: Optional[Dict[str, object]] = None) -> Dict[str, Any]:
         normalized = _normalize_category_name(name)
-        semantic_key = _semantic_key_for_category_name(normalized)
+        semantic_key = str(binding.get("semantic_key") or "") if binding else ""
+        if not semantic_key:
+            semantic_key = _semantic_key_for_category_name(normalized) or ""
+        semantic_key_or_none = semantic_key or None
         group_key = semantic_key or f"name:{normalized}"
         if group_key not in groups:
             groups[group_key] = {
                 "group_key": group_key,
-                "semantic_key": semantic_key,
-                "display_name": _semantic_display_name(semantic_key, name),
+                "semantic_key": semantic_key_or_none,
+                "display_name": str(binding.get("family_category_name") or "") if binding else _semantic_display_name(semantic_key_or_none, name),
                 "category_names": set(),
                 "normalized_names": set(),
                 "owner_names": set(),
                 "user_ids": set(),
                 "types": set(),
+                "confirmed_bindings_count": 0,
                 "transaction_count": 0,
                 "planned_transaction_count": 0,
                 "transaction_total": 0.0,
@@ -726,15 +751,18 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
             normalized = _normalize_category_name(category_name)
             if not normalized:
                 continue
+            binding = bindings_by_local_category.get((user_id, int(category.get("id") or 0)))
             category_names_by_user[user_id].add(normalized)
             if bool(category.get("is_active")):
                 active_category_names_by_user[user_id].add(normalized)
-            group = _group_for(category_name)
+            group = _group_for(category_name, binding)
             group["category_names"].add(category_name)
             group["normalized_names"].add(normalized)
             group["owner_names"].add(owner_name)
             group["user_ids"].add(user_id)
             group["types"].add(str(category.get("type") or ""))
+            if binding:
+                group["confirmed_bindings_count"] += 1
 
         for item in snapshot["transactions"]:
             category_name = str(item.get("category") or "")
@@ -751,7 +779,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
             usage["total"] = float(usage["total"]) + total
             if str(item.get("status") or "actual") == "planned":
                 usage["planned_count"] = int(usage["planned_count"]) + count
-            group = _group_for(category_name)
+            group = _group_for(category_name, bindings_by_local_name.get((user_id, normalized)))
             group["category_names"].add(category_name)
             group["normalized_names"].add(normalized)
             group["owner_names"].add(owner_name)
@@ -781,7 +809,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
             budget_usage = budget_usage_by_user[user_id].setdefault(normalized, {"count": 0, "total": 0.0})
             budget_usage["count"] = int(budget_usage["count"]) + 1
             budget_usage["total"] = float(budget_usage["total"]) + float(budget.get("amount") or 0.0)
-            group = _group_for(category_name)
+            group = _group_for(category_name, bindings_by_local_category.get((user_id, int(budget.get("category_id") or 0))))
             group["category_names"].add(category_name)
             group["normalized_names"].add(normalized)
             group["owner_names"].add(owner_name)
@@ -821,7 +849,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                 )
                 continue
             recurring_usage_by_user[user_id][normalized] = recurring_usage_by_user[user_id].get(normalized, 0) + 1
-            group = _group_for(category_name)
+            group = _group_for(category_name, bindings_by_local_category.get((user_id, int(template.get("category_id") or 0))))
             group["category_names"].add(category_name)
             group["normalized_names"].add(normalized)
             group["owner_names"].add(owner_name)
@@ -989,7 +1017,12 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
     for group in groups.values():
         concrete_types = {item for item in group["types"] if item and item != "both"}
         has_conflict = len(concrete_types) > 1
-        status_value = "conflict" if has_conflict else ("suggested" if group["semantic_key"] else "unlinked")
+        if has_conflict:
+            status_value = "conflict"
+        elif int(group["confirmed_bindings_count"]) > 0:
+            status_value = "confirmed"
+        else:
+            status_value = "suggested" if group["semantic_key"] else "unlinked"
         category_groups.append(
             FamilyCategoryAuditGroupResponse(
                 group_key=str(group["group_key"]),
@@ -998,6 +1031,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                 category_names=sorted(group["category_names"]),
                 owner_names=sorted(group["owner_names"]),
                 types=sorted(item for item in group["types"] if item),
+                confirmed_bindings_count=int(group["confirmed_bindings_count"]),
                 transaction_count=int(group["transaction_count"]),
                 planned_transaction_count=int(group["planned_transaction_count"]),
                 transaction_total=round(float(group["transaction_total"]), 2),
@@ -1009,7 +1043,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
         )
     category_groups.sort(
         key=lambda item: (
-            0 if item.status == "conflict" else 1 if item.status == "suggested" else 2,
+            0 if item.status == "conflict" else 1 if item.status == "suggested" else 2 if item.status == "confirmed" else 3,
             -(item.transaction_count + item.budget_count + item.recurring_count),
             item.display_name,
         )
@@ -1055,6 +1089,122 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
         members=member_responses,
         category_groups=category_groups,
         findings=response_findings,
+    )
+
+
+def _build_family_category_binding_preview(
+    family_id: int,
+    payload: FamilyCategoryBindingPreviewPayload,
+) -> FamilyCategoryBindingPreviewResponse:
+    semantic_key = payload.semantic_key.strip().lower()
+    category_names = [name.strip() for name in payload.category_names if name.strip()]
+    normalized_targets = {_normalize_category_name(name) for name in category_names if _normalize_category_name(name)}
+    display_name = (payload.display_name or "").strip() or _semantic_display_name(semantic_key, category_names[0] if category_names else semantic_key)
+    members = auth_service.list_family_members(family_id)
+    snapshots = [_collect_member_category_audit_snapshot(member) for member in members]
+    existing_bindings = auth_service.list_family_category_bindings(family_id)
+    bindings_by_local_category = {
+        (int(item["user_id"]), int(item["local_category_id"])): item
+        for item in existing_bindings
+    }
+
+    candidates: List[FamilyCategoryBindingCandidateResponse] = []
+    local_types: set[str] = set()
+    blocks: List[str] = []
+
+    for snapshot in snapshots:
+        user_id = int(snapshot["user_id"])
+        owner_name = str(snapshot["owner_name"])
+        transaction_metrics: Dict[str, Dict[str, float | int]] = {}
+        for item in snapshot["transactions"]:
+            normalized = _normalize_category_name(item.get("category"))
+            if not normalized:
+                continue
+            bucket = transaction_metrics.setdefault(
+                normalized,
+                {"count": 0, "planned_count": 0, "total": 0.0},
+            )
+            count = int(item.get("count") or 0)
+            bucket["count"] = int(bucket["count"]) + count
+            bucket["total"] = float(bucket["total"]) + float(item.get("total") or 0.0)
+            if str(item.get("status") or "actual") == "planned":
+                bucket["planned_count"] = int(bucket["planned_count"]) + count
+
+        budget_counts: Dict[int, int] = {}
+        for budget in snapshot["budgets"]:
+            category_id = int(budget.get("category_id") or 0)
+            budget_counts[category_id] = budget_counts.get(category_id, 0) + 1
+
+        recurring_counts: Dict[int, int] = {}
+        for template in snapshot["recurring_templates"]:
+            if not bool(template.get("is_active")):
+                continue
+            category_id = int(template.get("category_id") or 0)
+            recurring_counts[category_id] = recurring_counts.get(category_id, 0) + 1
+
+        for category in snapshot["categories"]:
+            if not bool(category.get("is_active")):
+                continue
+            category_name = str(category.get("name") or "")
+            normalized = _normalize_category_name(category_name)
+            if normalized not in normalized_targets:
+                continue
+            local_category_id = int(category.get("id") or 0)
+            local_category_type = str(category.get("type") or "both")
+            local_types.add(local_category_type)
+            binding = bindings_by_local_category.get((user_id, local_category_id))
+            if binding and str(binding.get("semantic_key") or "") != semantic_key:
+                blocks.append(
+                    f"{owner_name}: `{category_name}` уже связана с `{binding.get('family_category_name')}`"
+                )
+            metrics = transaction_metrics.get(normalized, {"count": 0, "planned_count": 0, "total": 0.0})
+            candidates.append(
+                FamilyCategoryBindingCandidateResponse(
+                    user_id=user_id,
+                    owner_name=owner_name,
+                    local_category_id=local_category_id,
+                    local_category_name=category_name,
+                    local_category_type=local_category_type,
+                    transaction_count=int(metrics["count"]),
+                    planned_transaction_count=int(metrics["planned_count"]),
+                    transaction_total=round(float(metrics["total"]), 2),
+                    budget_count=budget_counts.get(local_category_id, 0),
+                    recurring_count=recurring_counts.get(local_category_id, 0),
+                    already_bound=bool(binding and str(binding.get("semantic_key") or "") == semantic_key),
+                )
+            )
+
+    concrete_types = {item for item in local_types if item != "both"}
+    inferred_type = _semantic_type(semantic_key, next(iter(concrete_types), "both"))
+    if inferred_type != "both" and any(item not in {inferred_type, "both"} for item in local_types):
+        blocks.append("У выбранных категорий разные типы. Для такой связи нужен отдельный ручной разбор.")
+
+    candidate_count = len(candidates)
+    already_bound_count = sum(1 for item in candidates if item.already_bound)
+    can_apply = bool(candidate_count) and not blocks
+    if not candidate_count:
+        message = "Не найдено активных локальных категорий для выбранных названий."
+    elif blocks:
+        message = "Связь нельзя применить автоматически: " + "; ".join(blocks)
+    elif already_bound_count == candidate_count:
+        message = "Все найденные категории уже связаны с этим смыслом."
+    else:
+        message = "Можно подтвердить связь. История, бюджеты и шаблоны не будут переписаны."
+
+    return FamilyCategoryBindingPreviewResponse(
+        family_id=family_id,
+        semantic_key=semantic_key,
+        display_name=display_name,
+        type=inferred_type,
+        candidates=candidates,
+        candidate_count=candidate_count,
+        already_bound_count=already_bound_count,
+        new_binding_count=candidate_count - already_bound_count,
+        affected_transaction_count=sum(item.transaction_count for item in candidates),
+        affected_budget_count=sum(item.budget_count for item in candidates),
+        affected_recurring_count=sum(item.recurring_count for item in candidates),
+        can_apply=can_apply,
+        message=message,
     )
 
 
@@ -1117,6 +1267,61 @@ def get_family_category_audit(family_id: int, current_user=Depends(require_user)
     membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
     family_name = str(membership.get("family_name") or "Семья")
     return _collect_family_category_audit(family_id=family_id, family_name=family_name)
+
+
+@router.post("/{family_id}/categories/bindings/preview", response_model=FamilyCategoryBindingPreviewResponse)
+def preview_family_category_binding(
+    family_id: int,
+    payload: FamilyCategoryBindingPreviewPayload,
+    current_user=Depends(require_user),
+) -> FamilyCategoryBindingPreviewResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
+    return _build_family_category_binding_preview(family_id=family_id, payload=payload)
+
+
+@router.post("/{family_id}/categories/bindings", response_model=FamilyCategoryBindingApplyResponse)
+def apply_family_category_binding(
+    family_id: int,
+    payload: FamilyCategoryBindingPreviewPayload,
+    current_user=Depends(require_user),
+) -> FamilyCategoryBindingApplyResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    _require_family_admin_access(family_id=family_id, user_id=int(current_user["id"]))
+    preview = _build_family_category_binding_preview(family_id=family_id, payload=payload)
+    if not preview.can_apply:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=preview.message)
+
+    family_category = auth_service.ensure_family_category(
+        family_id=family_id,
+        semantic_key=preview.semantic_key,
+        display_name=preview.display_name,
+        category_type=preview.type,
+        created_by_user_id=int(current_user["id"]),
+    )
+    applied_count = 0
+    for candidate in preview.candidates:
+        auth_service.upsert_family_category_binding(
+            family_id=family_id,
+            family_category_id=int(family_category["id"]),
+            user_id=candidate.user_id,
+            local_category_id=candidate.local_category_id,
+            local_category_name=candidate.local_category_name,
+            local_category_type=candidate.local_category_type,
+            confirmed_by_user_id=int(current_user["id"]),
+        )
+        applied_count += 1
+
+    refreshed_preview = _build_family_category_binding_preview(family_id=family_id, payload=payload)
+    return FamilyCategoryBindingApplyResponse(
+        message=f"Связи категорий подтверждены: {applied_count}. История операций не изменялась.",
+        preview=refreshed_preview,
+        applied_bindings_count=applied_count,
+    )
 
 
 @router.put("/{family_id}/capital-target", response_model=FamilyCapitalSelectionResponse)

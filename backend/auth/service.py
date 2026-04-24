@@ -366,6 +366,58 @@ class AuthService:
                 ON family_capital_contributions(family_id, reversed_at)
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    semantic_key TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    type TEXT NOT NULL DEFAULT 'both',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_by_user_id INTEGER,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (created_by_user_id) REFERENCES users(id),
+                    UNIQUE(family_id, semantic_key)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_family_categories_family
+                ON family_categories(family_id, is_active)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_category_bindings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    family_category_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    local_category_id INTEGER NOT NULL,
+                    local_category_name TEXT NOT NULL,
+                    local_category_type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'confirmed',
+                    confirmed_by_user_id INTEGER,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (family_category_id) REFERENCES family_categories(id),
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (confirmed_by_user_id) REFERENCES users(id),
+                    UNIQUE(family_id, user_id, local_category_id)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_family_category_bindings_family
+                ON family_category_bindings(family_id, status)
+                """
+            )
             conn.commit()
         self.cleanup_expired_sessions()
         self.cleanup_password_reset_tokens()
@@ -820,10 +872,19 @@ class AuthService:
 
             if owned_family_ids:
                 marks = ",".join("?" for _ in owned_family_ids)
+                cursor.execute(f"DELETE FROM family_category_bindings WHERE family_id IN ({marks})", owned_family_ids)
+                cursor.execute(f"DELETE FROM family_categories WHERE family_id IN ({marks})", owned_family_ids)
+                cursor.execute(f"DELETE FROM family_capital_contributions WHERE family_id IN ({marks})", owned_family_ids)
+                cursor.execute(f"DELETE FROM family_capital_member_settings WHERE family_id IN ({marks})", owned_family_ids)
+                cursor.execute(f"DELETE FROM family_capital_accounts WHERE family_id IN ({marks})", owned_family_ids)
                 cursor.execute(f"DELETE FROM family_invites WHERE family_id IN ({marks})", owned_family_ids)
                 cursor.execute(f"DELETE FROM family_memberships WHERE family_id IN ({marks})", owned_family_ids)
                 cursor.execute(f"DELETE FROM families WHERE id IN ({marks})", owned_family_ids)
 
+            cursor.execute("DELETE FROM family_category_bindings WHERE user_id = ? OR confirmed_by_user_id = ?", (user_id, user_id))
+            cursor.execute("DELETE FROM family_capital_contributions WHERE source_user_id = ? OR target_owner_user_id = ?", (user_id, user_id))
+            cursor.execute("DELETE FROM family_capital_member_settings WHERE user_id = ? OR target_owner_user_id = ?", (user_id, user_id))
+            cursor.execute("DELETE FROM family_capital_accounts WHERE owner_user_id = ?", (user_id,))
             cursor.execute(
                 "DELETE FROM family_invites WHERE invited_by_user_id = ? OR lower(email) = ?",
                 (user_id, normalized_email),
@@ -1257,6 +1318,190 @@ class AuthService:
             }
             for row in rows
         ]
+
+    def ensure_family_category(
+        self,
+        family_id: int,
+        semantic_key: str,
+        display_name: str,
+        category_type: str,
+        created_by_user_id: int,
+    ) -> Dict[str, object]:
+        clean_semantic_key = (semantic_key or "").strip().lower()
+        clean_display_name = (display_name or clean_semantic_key).strip()
+        clean_type = (category_type or "both").strip().lower()
+        if clean_type not in {"income", "expense", "both"}:
+            clean_type = "both"
+        if not clean_semantic_key:
+            raise ValueError("semantic_key_required")
+
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO family_categories (
+                    family_id,
+                    semantic_key,
+                    display_name,
+                    type,
+                    is_active,
+                    created_by_user_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(family_id, semantic_key) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    type = excluded.type,
+                    is_active = 1,
+                    updated_at = datetime('now')
+                """,
+                (family_id, clean_semantic_key, clean_display_name, clean_type, created_by_user_id),
+            )
+            conn.commit()
+        category = self.get_family_category_by_semantic_key(family_id, clean_semantic_key)
+        if not category:
+            raise RuntimeError("family_category_not_found_after_upsert")
+        return category
+
+    def get_family_category_by_semantic_key(self, family_id: int, semantic_key: str) -> Optional[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, family_id, semantic_key, display_name, type, is_active, created_by_user_id, created_at, updated_at
+                FROM family_categories
+                WHERE family_id = ?
+                  AND semantic_key = ?
+                LIMIT 1
+                """,
+                (family_id, semantic_key),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row["id"]),
+            "family_id": int(row["family_id"]),
+            "semantic_key": str(row["semantic_key"] or ""),
+            "display_name": str(row["display_name"] or ""),
+            "type": str(row["type"] or "both"),
+            "is_active": bool(row["is_active"]),
+            "created_by_user_id": int(row["created_by_user_id"]) if row["created_by_user_id"] is not None else None,
+            "created_at": str(row["created_at"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+        }
+
+    def list_family_category_bindings(self, family_id: int) -> List[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT fcb.id,
+                       fcb.family_id,
+                       fcb.family_category_id,
+                       fcb.user_id,
+                       fcb.local_category_id,
+                       fcb.local_category_name,
+                       fcb.local_category_type,
+                       fcb.status,
+                       fcb.confirmed_by_user_id,
+                       fcb.updated_at,
+                       fc.semantic_key,
+                       fc.display_name AS family_category_name,
+                       fc.type AS family_category_type,
+                       u.email,
+                       COALESCE(up.display_name, '') AS display_name
+                FROM family_category_bindings fcb
+                JOIN family_categories fc ON fc.id = fcb.family_category_id
+                JOIN users u ON u.id = fcb.user_id
+                LEFT JOIN user_preferences up ON up.user_id = fcb.user_id
+                WHERE fcb.family_id = ?
+                  AND fcb.status = 'confirmed'
+                  AND fc.is_active = 1
+                ORDER BY fc.display_name, fcb.user_id, fcb.local_category_name
+                """,
+                (family_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "family_id": int(row["family_id"]),
+                "family_category_id": int(row["family_category_id"]),
+                "user_id": int(row["user_id"]),
+                "local_category_id": int(row["local_category_id"]),
+                "local_category_name": str(row["local_category_name"] or ""),
+                "local_category_type": str(row["local_category_type"] or ""),
+                "status": str(row["status"] or "confirmed"),
+                "confirmed_by_user_id": int(row["confirmed_by_user_id"]) if row["confirmed_by_user_id"] is not None else None,
+                "updated_at": str(row["updated_at"] or ""),
+                "semantic_key": str(row["semantic_key"] or ""),
+                "family_category_name": str(row["family_category_name"] or ""),
+                "family_category_type": str(row["family_category_type"] or "both"),
+                "owner_email": str(row["email"] or ""),
+                "owner_display_name": str(row["display_name"] or "").strip(),
+            }
+            for row in rows
+        ]
+
+    def upsert_family_category_binding(
+        self,
+        family_id: int,
+        family_category_id: int,
+        user_id: int,
+        local_category_id: int,
+        local_category_name: str,
+        local_category_type: str,
+        confirmed_by_user_id: int,
+    ) -> Dict[str, object]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO family_category_bindings (
+                    family_id,
+                    family_category_id,
+                    user_id,
+                    local_category_id,
+                    local_category_name,
+                    local_category_type,
+                    status,
+                    confirmed_by_user_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, datetime('now'), datetime('now'))
+                ON CONFLICT(family_id, user_id, local_category_id) DO UPDATE SET
+                    family_category_id = excluded.family_category_id,
+                    local_category_name = excluded.local_category_name,
+                    local_category_type = excluded.local_category_type,
+                    status = 'confirmed',
+                    confirmed_by_user_id = excluded.confirmed_by_user_id,
+                    updated_at = datetime('now')
+                """,
+                (
+                    family_id,
+                    family_category_id,
+                    user_id,
+                    local_category_id,
+                    local_category_name,
+                    local_category_type,
+                    confirmed_by_user_id,
+                ),
+            )
+            conn.commit()
+            binding_id = int(cursor.lastrowid or 0)
+
+        bindings = self.list_family_category_bindings(family_id)
+        if binding_id:
+            for binding in bindings:
+                if int(binding["id"]) == binding_id:
+                    return binding
+        for binding in bindings:
+            if int(binding["user_id"]) == user_id and int(binding["local_category_id"]) == local_category_id:
+                return binding
+        return {}
 
     def list_family_capital_accounts(self, family_id: int) -> List[Dict[str, object]]:
         with self._auth_connection() as conn:

@@ -736,6 +736,73 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_category_binding_preview_and_apply_confirm_semantic_mapping(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья связи категорий"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"category-binding-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        member_food_category = second_client.post(
+            "/api/v1/categories",
+            json={"name": "Еда", "type": "expense"},
+        )
+        self.assertEqual(member_food_category.status_code, 201)
+
+        preview_payload = {
+            "semantic_key": "groceries",
+            "display_name": "Продукты",
+            "category_names": ["Продукты", "Еда"],
+        }
+        preview = second_client.post(
+            f"/api/v1/families/{family_id}/categories/bindings/preview",
+            json=preview_payload,
+        )
+        self.assertEqual(preview.status_code, 200)
+        preview_payload_response = preview.json()
+        self.assertTrue(preview_payload_response["can_apply"])
+        self.assertGreaterEqual(preview_payload_response["candidate_count"], 2)
+        self.assertGreaterEqual(preview_payload_response["new_binding_count"], 2)
+
+        member_cannot_apply = second_client.post(
+            f"/api/v1/families/{family_id}/categories/bindings",
+            json=preview_payload,
+        )
+        self.assertEqual(member_cannot_apply.status_code, 403)
+
+        applied = self.client.post(
+            f"/api/v1/families/{family_id}/categories/bindings",
+            json=preview_payload,
+        )
+        self.assertEqual(applied.status_code, 200)
+        self.assertGreaterEqual(applied.json()["applied_bindings_count"], 2)
+
+        audit_response = self.client.get(f"/api/v1/families/{family_id}/categories/audit")
+        self.assertEqual(audit_response.status_code, 200)
+        groceries_group = next(item for item in audit_response.json()["category_groups"] if item["semantic_key"] == "groceries")
+        self.assertEqual(groceries_group["status"], "confirmed")
+        self.assertGreaterEqual(groceries_group["confirmed_bindings_count"], 2)
+
+        second_client.close()
+
     def test_family_dashboard_sums_each_member_balance_without_cache_bleed(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья баланс"})
         self.assertEqual(create_family.status_code, 201)

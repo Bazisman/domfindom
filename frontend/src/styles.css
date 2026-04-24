@@ -2360,6 +2360,21 @@ body {
   color: var(--muted);
 }
 
+.category-binding-preview {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--green) 28%, var(--line));
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--green) 12%, transparent), transparent 34%),
+    color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.category-binding-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 @media (max-width: 960px) {
   .family-summary-grid {
     grid-template-columns: 1fr;

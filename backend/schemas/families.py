@@ -7,7 +7,7 @@ from backend.schemas.forecast import ForecastResponse
 FamilyRole = Literal["owner", "member", "viewer"]
 InviteRole = Literal["member", "viewer"]
 CategoryAuditSeverity = Literal["critical", "warning", "info"]
-CategoryAuditGroupStatus = Literal["suggested", "unlinked", "conflict"]
+CategoryAuditGroupStatus = Literal["confirmed", "suggested", "unlinked", "conflict"]
 
 
 class FamilyCreatePayload(BaseModel):
@@ -204,6 +204,7 @@ class FamilyCategoryAuditGroupResponse(BaseModel):
     category_names: List[str]
     owner_names: List[str]
     types: List[str]
+    confirmed_bindings_count: int = 0
     transaction_count: int = 0
     planned_transaction_count: int = 0
     transaction_total: float = 0
@@ -235,3 +236,45 @@ class FamilyCategoryAuditResponse(BaseModel):
     members: List[FamilyCategoryAuditMemberResponse]
     category_groups: List[FamilyCategoryAuditGroupResponse]
     findings: List[FamilyCategoryAuditFindingResponse]
+
+
+class FamilyCategoryBindingPreviewPayload(BaseModel):
+    semantic_key: str = Field(min_length=2, max_length=120)
+    display_name: Optional[str] = Field(default=None, max_length=120)
+    category_names: List[str] = Field(min_length=1)
+
+
+class FamilyCategoryBindingCandidateResponse(BaseModel):
+    user_id: int
+    owner_name: str
+    local_category_id: int
+    local_category_name: str
+    local_category_type: str
+    transaction_count: int = 0
+    planned_transaction_count: int = 0
+    transaction_total: float = 0
+    budget_count: int = 0
+    recurring_count: int = 0
+    already_bound: bool = False
+
+
+class FamilyCategoryBindingPreviewResponse(BaseModel):
+    family_id: int
+    semantic_key: str
+    display_name: str
+    type: str
+    candidates: List[FamilyCategoryBindingCandidateResponse]
+    candidate_count: int
+    already_bound_count: int
+    new_binding_count: int
+    affected_transaction_count: int
+    affected_budget_count: int
+    affected_recurring_count: int
+    can_apply: bool
+    message: str
+
+
+class FamilyCategoryBindingApplyResponse(BaseModel):
+    message: str
+    preview: FamilyCategoryBindingPreviewResponse
+    applied_bindings_count: int
