@@ -1,4 +1,5 @@
-from datetime import datetime
+import calendar
+from datetime import date, datetime
 
 
 def normalize_budget_period(period):
@@ -8,10 +9,23 @@ def normalize_budget_period(period):
     return "monthly"
 
 
-def get_budget_monthly_limit(amount, period):
+def _coerce_reference_date(reference_date=None):
+    if reference_date is None:
+        return datetime.now()
+    if isinstance(reference_date, datetime):
+        return reference_date
+    if isinstance(reference_date, date):
+        return datetime.combine(reference_date, datetime.min.time())
+    if isinstance(reference_date, str):
+        return datetime.strptime(reference_date[:10], "%Y-%m-%d")
+    return datetime.now()
+
+
+def get_budget_monthly_limit(amount, period, reference_date=None):
     normalized_period = normalize_budget_period(period)
     if normalized_period == "daily":
-        return amount * 30
+        reference = _coerce_reference_date(reference_date)
+        return amount * calendar.monthrange(reference.year, reference.month)[1]
     if normalized_period == "weekly":
         return amount * 4
     if normalized_period == "yearly":

@@ -96,6 +96,60 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(forecast["budget_remaining"], 2000.0)
         self.assertEqual(forecast["projected_balance"], -5000.0)
 
+    def test_projected_balance_uses_month_result_not_current_balance(self):
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                (type, category, amount, comment, date, created_at, status)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+                """,
+                ("income", "Зарплата", 4000.0, "Доход прошлого месяца", "2026-03-31", "actual"),
+            )
+            cursor.execute("UPDATE accounts SET balance = ? WHERE id = 1", (4000.0,))
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                (type, category, amount, comment, date, created_at, status)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+                """,
+                ("income", "Зарплата", 1000.0, "Доход месяца", "2026-04-05", "actual"),
+            )
+            conn.commit()
+
+        forecast = core.get_projected_balance(end_date="2026-04-30")
+
+        self.assertEqual(forecast["current_balance"], 4000.0)
+        self.assertEqual(forecast["executed_planned_income"], 1000.0)
+        self.assertEqual(forecast["projected_balance"], 1000.0)
+
+    def test_daily_budget_forecast_adds_only_remaining_days_spend(self):
+        today = datetime.now()
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        remaining_days_including_today = days_in_month - today.day + 1
+        category = core.get_category_by_name("Продукты")
+        category_id = category["id"] if category else core.add_category("Продукты", "expense")
+        core.set_budget(category_id, 100.0, "daily")
+
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO transactions
+                (type, category, amount, comment, date, created_at, status)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+                """,
+                ("income", "Зарплата", 10000.0, "Доход месяца", today.strftime("%Y-%m-01"), "actual"),
+            )
+            conn.commit()
+
+        core.add_expense(1000.0, "Продукты", "Факт", today.strftime("%Y-%m-05"))
+        forecast = core.get_projected_balance()
+
+        self.assertEqual(forecast["budget_remaining"], float(remaining_days_including_today * 100))
+        self.assertEqual(forecast["projected_balance"], float(10000 - 1000 - (remaining_days_including_today * 100)))
+
     def test_export_path_returns_all_transactions_without_ui_limit(self):
         with core.get_connection() as conn:
             cursor = conn.cursor()
@@ -260,6 +314,7 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertTrue(any(item["date"] == today_str and item["status"] == "planned" for item in planned))
 
     def test_budget_status_uses_monthly_equivalent_for_daily_budget(self):
+        days_in_month = calendar.monthrange(datetime.now().year, datetime.now().month)[1]
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
@@ -268,12 +323,13 @@ class FinancialLogicTestCase(unittest.TestCase):
         status_items = core.get_budget_status(category_id)
         products = next(item for item in status_items if item["category_id"] == category_id)
 
-        self.assertEqual(products["budget_amount"], 3000.0)
+        self.assertEqual(products["budget_amount"], float(days_in_month * 100))
         self.assertEqual(products["spent"], 1000.0)
-        self.assertEqual(products["remaining"], 2000.0)
-        self.assertEqual(products["percent"], 33.3)
+        self.assertEqual(products["remaining"], float(days_in_month * 100 - 1000))
+        self.assertEqual(products["percent"], round(1000.0 / float(days_in_month * 100) * 100, 1))
 
     def test_check_budget_uses_monthly_equivalent_for_daily_budget(self):
+        days_in_month = calendar.monthrange(datetime.now().year, datetime.now().month)[1]
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")
         core.set_budget(category_id, 100.0, "daily")
@@ -285,7 +341,7 @@ class FinancialLogicTestCase(unittest.TestCase):
         over, spent, budget = result
         self.assertTrue(over)
         self.assertEqual(spent, 2500.0)
-        self.assertEqual(budget, 3000.0)
+        self.assertEqual(budget, float(days_in_month * 100))
 
     def test_adjust_to_workday_moves_weekend_dates(self):
         # 2026-04-11 = суббота -> перенос на понедельник
