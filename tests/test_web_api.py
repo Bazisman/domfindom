@@ -2339,10 +2339,10 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["planned_expense"], 200.0)
         self.assertEqual(payload["executed_planned_expense"], 450.0)
         self.assertEqual(payload["current_expenses"], 450.0)
-        self.assertEqual(payload["budget_remaining"], 350.0)
-        self.assertEqual(payload["combined_pending_expense"], 550.0)
+        self.assertEqual(payload["budget_remaining"], 550.0)
+        self.assertEqual(payload["combined_pending_expense"], 750.0)
         self.assertEqual(payload["combined_executed_expense"], 450.0)
-        self.assertEqual(payload["projected_balance"], 300.0)
+        self.assertEqual(payload["projected_balance"], 100.0)
 
     def test_accounts_endpoint_returns_main_account(self):
         response = self.client.get("/api/v1/accounts")

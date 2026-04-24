@@ -119,14 +119,13 @@ def _collect_family_forecast(
         total_budgets += monthly_amount
         spent = float(spent_by_category.get(category_name, 0.0))
         current_expenses += spent
-        planned_category_expense = float(planned_expense_by_category.get(category_name, 0.0))
         daily_amount = float(budget_meta["daily_amount"])
         has_non_daily = bool(budget_meta["has_non_daily"])
         if daily_amount > 0 and not has_non_daily:
             future_budget_expense = daily_amount * remaining_days_including_today
-            budget_remaining += max(future_budget_expense - planned_category_expense, 0.0)
+            budget_remaining += max(future_budget_expense, 0.0)
         else:
-            budget_remaining += max(monthly_amount - spent - planned_category_expense, 0.0)
+            budget_remaining += max(monthly_amount - spent, 0.0)
 
     combined_pending_expense = planned_expense + budget_remaining
     combined_executed_expense = actual_expense

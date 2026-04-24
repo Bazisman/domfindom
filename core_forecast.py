@@ -116,25 +116,12 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
             spent = cursor.fetchone()[0] or 0
             current_expenses += spent
 
-            cursor.execute(
-                """
-                SELECT COALESCE(SUM(amount), 0) as planned
-                FROM transactions
-                WHERE type = 'expense'
-                  AND status = 'planned'
-                  AND category = ?
-                  AND date <= ?
-                """,
-                (budget["category_name"], end_date),
-            )
-            planned_category_expense = cursor.fetchone()[0] or 0
-
             normalized_period = str(period or "monthly").lower()
             if normalized_period == "daily":
                 future_budget_expense = float(budget["amount"] or 0) * remaining_days_including_today
-                budget_remaining += max(future_budget_expense - planned_category_expense, 0.0)
+                budget_remaining += max(future_budget_expense, 0.0)
             else:
-                budget_remaining += max(monthly_amount - spent - planned_category_expense, 0.0)
+                budget_remaining += max(monthly_amount - spent, 0.0)
 
         combined_pending_expense = planned_expense + budget_remaining
         combined_executed_expense = actual_expense
