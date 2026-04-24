@@ -1,7 +1,7 @@
 import calendar
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -202,7 +202,7 @@ def _category_type_label(category_type: object) -> str:
     return labels.get(str(category_type or "").strip().lower(), str(category_type or "не указано"))
 
 
-def _category_type_list_label(category_types: set[str]) -> str:
+def _category_type_list_label(category_types: Set[str]) -> str:
     return ", ".join(_category_type_label(item) for item in sorted(category_types))
 
 
