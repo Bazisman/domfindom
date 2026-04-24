@@ -2287,14 +2287,6 @@ body {
   gap: 14px;
 }
 
-.family-category-audit-panel {
-  grid-column: 1 / -1;
-}
-
-.family-category-audit-panel .family-summary-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
 .audit-summary-card p {
   margin-top: 6px;
   font-size: 1.35rem;
@@ -2303,7 +2295,7 @@ body {
 
 .category-audit-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -2406,12 +2398,6 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .category-audit-columns {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 1120px) {
   .category-audit-columns {
     grid-template-columns: 1fr;
   }
