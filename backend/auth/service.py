@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import sqlite3
@@ -416,6 +417,31 @@ class AuthService:
                 """
                 CREATE INDEX IF NOT EXISTS idx_family_category_bindings_family
                 ON family_category_bindings(family_id, status)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS family_category_audit_resolutions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    family_id INTEGER NOT NULL,
+                    code TEXT NOT NULL,
+                    group_key TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    category_names_json TEXT NOT NULL DEFAULT '[]',
+                    note TEXT NOT NULL DEFAULT '',
+                    resolved_by_user_id INTEGER,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    FOREIGN KEY (family_id) REFERENCES families(id),
+                    FOREIGN KEY (resolved_by_user_id) REFERENCES users(id),
+                    UNIQUE(family_id, code, group_key, action)
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_family_category_audit_resolutions_family
+                ON family_category_audit_resolutions(family_id, code, group_key)
                 """
             )
             conn.commit()
@@ -872,6 +898,7 @@ class AuthService:
 
             if owned_family_ids:
                 marks = ",".join("?" for _ in owned_family_ids)
+                cursor.execute(f"DELETE FROM family_category_audit_resolutions WHERE family_id IN ({marks})", owned_family_ids)
                 cursor.execute(f"DELETE FROM family_category_bindings WHERE family_id IN ({marks})", owned_family_ids)
                 cursor.execute(f"DELETE FROM family_categories WHERE family_id IN ({marks})", owned_family_ids)
                 cursor.execute(f"DELETE FROM family_capital_contributions WHERE family_id IN ({marks})", owned_family_ids)
@@ -882,6 +909,7 @@ class AuthService:
                 cursor.execute(f"DELETE FROM families WHERE id IN ({marks})", owned_family_ids)
 
             cursor.execute("DELETE FROM family_category_bindings WHERE user_id = ? OR confirmed_by_user_id = ?", (user_id, user_id))
+            cursor.execute("DELETE FROM family_category_audit_resolutions WHERE resolved_by_user_id = ?", (user_id,))
             cursor.execute("DELETE FROM family_capital_contributions WHERE source_user_id = ? OR target_owner_user_id = ?", (user_id, user_id))
             cursor.execute("DELETE FROM family_capital_member_settings WHERE user_id = ? OR target_owner_user_id = ?", (user_id, user_id))
             cursor.execute("DELETE FROM family_capital_accounts WHERE owner_user_id = ?", (user_id,))
@@ -1501,6 +1529,110 @@ class AuthService:
         for binding in bindings:
             if int(binding["user_id"]) == user_id and int(binding["local_category_id"]) == local_category_id:
                 return binding
+        return {}
+
+    def list_family_category_audit_resolutions(self, family_id: int) -> List[Dict[str, object]]:
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id,
+                       family_id,
+                       code,
+                       group_key,
+                       action,
+                       category_names_json,
+                       note,
+                       resolved_by_user_id,
+                       created_at,
+                       updated_at
+                FROM family_category_audit_resolutions
+                WHERE family_id = ?
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (family_id,),
+            )
+            rows = cursor.fetchall()
+        resolutions: List[Dict[str, object]] = []
+        for row in rows:
+            try:
+                category_names = json.loads(str(row["category_names_json"] or "[]"))
+            except json.JSONDecodeError:
+                category_names = []
+            if not isinstance(category_names, list):
+                category_names = []
+            resolutions.append(
+                {
+                    "id": int(row["id"]),
+                    "family_id": int(row["family_id"]),
+                    "code": str(row["code"] or ""),
+                    "group_key": str(row["group_key"] or ""),
+                    "action": str(row["action"] or ""),
+                    "category_names": [str(item) for item in category_names],
+                    "note": str(row["note"] or ""),
+                    "resolved_by_user_id": int(row["resolved_by_user_id"]) if row["resolved_by_user_id"] is not None else None,
+                    "created_at": str(row["created_at"] or ""),
+                    "updated_at": str(row["updated_at"] or ""),
+                }
+            )
+        return resolutions
+
+    def upsert_family_category_audit_resolution(
+        self,
+        family_id: int,
+        code: str,
+        group_key: str,
+        action: str,
+        category_names: List[str],
+        note: str,
+        resolved_by_user_id: int,
+    ) -> Dict[str, object]:
+        clean_code = (code or "").strip()
+        clean_group_key = (group_key or "").strip()
+        clean_action = (action or "").strip()
+        clean_names = [str(name).strip() for name in category_names if str(name).strip()]
+        if not clean_code or not clean_group_key or not clean_action:
+            raise ValueError("audit_resolution_required")
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO family_category_audit_resolutions (
+                    family_id,
+                    code,
+                    group_key,
+                    action,
+                    category_names_json,
+                    note,
+                    resolved_by_user_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(family_id, code, group_key, action) DO UPDATE SET
+                    category_names_json = excluded.category_names_json,
+                    note = excluded.note,
+                    resolved_by_user_id = excluded.resolved_by_user_id,
+                    updated_at = datetime('now')
+                """,
+                (
+                    family_id,
+                    clean_code,
+                    clean_group_key,
+                    clean_action,
+                    json.dumps(clean_names, ensure_ascii=False),
+                    (note or "").strip(),
+                    resolved_by_user_id,
+                ),
+            )
+            conn.commit()
+        for resolution in self.list_family_category_audit_resolutions(family_id):
+            if (
+                str(resolution["code"]) == clean_code
+                and str(resolution["group_key"]) == clean_group_key
+                and str(resolution["action"]) == clean_action
+            ):
+                return resolution
         return {}
 
     def list_family_capital_accounts(self, family_id: int) -> List[Dict[str, object]]:

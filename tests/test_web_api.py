@@ -803,6 +803,164 @@ class WebApiTestCase(unittest.TestCase):
 
         second_client.close()
 
+    def test_family_category_binding_can_confirm_income_and_expense_category(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья категория оба типа"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        category_response = self.client.post(
+            "/api/v1/categories",
+            json={"name": "Торты", "type": "both"},
+        )
+        self.assertEqual(category_response.status_code, 201)
+
+        expense_response = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": "Торты",
+                "amount": 900.0,
+                "comment": "Покупка торта",
+                "date": "2026-04-10",
+            },
+        )
+        self.assertEqual(expense_response.status_code, 201)
+        income_response = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": "Торты",
+                "amount": 1200.0,
+                "comment": "Вернули за торт",
+                "date": "2026-04-11",
+            },
+        )
+        self.assertEqual(income_response.status_code, 201)
+
+        audit_before = self.client.get(f"/api/v1/families/{family_id}/categories/audit")
+        self.assertEqual(audit_before.status_code, 200)
+        self.assertTrue(
+            any(
+                item["code"] == "category_type_conflict" and "Торты" in item["category_names"]
+                for item in audit_before.json()["findings"]
+            )
+        )
+
+        preview_payload = {
+            "semantic_key": "custom.cakes",
+            "display_name": "Торты",
+            "category_names": ["Торты"],
+            "category_type": "both",
+        }
+        preview = self.client.post(
+            f"/api/v1/families/{family_id}/categories/bindings/preview",
+            json=preview_payload,
+        )
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.json()["type"], "both")
+        self.assertTrue(preview.json()["can_apply"])
+
+        applied = self.client.post(
+            f"/api/v1/families/{family_id}/categories/bindings",
+            json=preview_payload,
+        )
+        self.assertEqual(applied.status_code, 200)
+        self.assertEqual(applied.json()["preview"]["type"], "both")
+
+        audit_after = self.client.get(f"/api/v1/families/{family_id}/categories/audit")
+        self.assertEqual(audit_after.status_code, 200)
+        self.assertFalse(
+            any(
+                item["code"] == "category_type_conflict" and "Торты" in item["category_names"]
+                for item in audit_after.json()["findings"]
+            )
+        )
+        cakes_group = next(item for item in audit_after.json()["category_groups"] if "Торты" in item["category_names"])
+        self.assertEqual(cakes_group["status"], "confirmed")
+
+    def test_family_category_audit_resolution_can_keep_category_personal(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья личные категории"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        second_client = TestClient(app)
+        second_email = f"audit-resolution-{uuid4().hex[:8]}@example.com"
+        second_register = second_client.post(
+            "/api/v1/auth/register",
+            json={"email": second_email, "password": "AnotherPass123"},
+        )
+        self.assertEqual(second_register.status_code, 201)
+
+        invite_response = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": second_email, "role": "member"},
+        )
+        self.assertEqual(invite_response.status_code, 200)
+        accept_response = second_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": str(invite_response.json()["invite_token"])},
+        )
+        self.assertEqual(accept_response.status_code, 200)
+
+        category_response = self.client.post(
+            "/api/v1/categories",
+            json={"name": "Самокат", "type": "expense"},
+        )
+        self.assertEqual(category_response.status_code, 201)
+        transaction_response = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "expense",
+                "category_name": "Самокат",
+                "amount": 2500.0,
+                "comment": "Личная поездка",
+                "date": "2026-04-12",
+            },
+        )
+        self.assertEqual(transaction_response.status_code, 201)
+
+        audit_before = self.client.get(f"/api/v1/families/{family_id}/categories/audit")
+        self.assertEqual(audit_before.status_code, 200)
+        finding = next(
+            item
+            for item in audit_before.json()["findings"]
+            if item["code"] == "missing_member_category" and "Самокат" in item["category_names"]
+        )
+
+        member_resolution = second_client.post(
+            f"/api/v1/families/{family_id}/categories/audit/resolutions",
+            json={
+                "code": finding["code"],
+                "group_key": finding["group_key"],
+                "action": "keep_personal",
+                "category_names": finding["category_names"],
+            },
+        )
+        self.assertEqual(member_resolution.status_code, 403)
+
+        owner_resolution = self.client.post(
+            f"/api/v1/families/{family_id}/categories/audit/resolutions",
+            json={
+                "code": finding["code"],
+                "group_key": finding["group_key"],
+                "action": "keep_personal",
+                "category_names": finding["category_names"],
+            },
+        )
+        self.assertEqual(owner_resolution.status_code, 200)
+
+        audit_after = self.client.get(f"/api/v1/families/{family_id}/categories/audit")
+        self.assertEqual(audit_after.status_code, 200)
+        self.assertFalse(
+            any(
+                item["code"] == "missing_member_category" and "Самокат" in item["category_names"]
+                for item in audit_after.json()["findings"]
+            )
+        )
+        self.assertFalse(any("Самокат" in item["category_names"] for item in audit_after.json()["category_groups"]))
+
+        second_client.close()
+
     def test_family_dashboard_sums_each_member_balance_without_cache_bleed(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья баланс"})
         self.assertEqual(create_family.status_code, 201)

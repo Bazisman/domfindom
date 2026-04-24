@@ -20,6 +20,8 @@ from backend.schemas.families import (
     FamilyCategoryAuditGroupResponse,
     FamilyCategoryAuditMemberResponse,
     FamilyCategoryAuditResponse,
+    FamilyCategoryAuditResolutionPayload,
+    FamilyCategoryAuditResolutionResponse,
     FamilyCategoryAuditSummaryResponse,
     FamilyCategoryBindingApplyResponse,
     FamilyCategoryBindingCandidateResponse,
@@ -232,7 +234,7 @@ def _collect_family_forecast(
     spent_by_category: Dict[str, float] = {}
     spent_today_by_category: Dict[str, float] = {}
     planned_expense_by_category: Dict[str, float] = {}
-    budget_by_category: Dict[str, Dict[str, float | bool]] = {}
+    budget_by_category: Dict[str, Dict[str, Any]] = {}
 
     for member in members:
         user_id = int(member["user_id"])
@@ -679,6 +681,9 @@ def _category_audit_finding(
     title: str,
     description: str,
     recommended_action: str,
+    group_key: Optional[str] = None,
+    semantic_key: Optional[str] = None,
+    display_name: Optional[str] = None,
     category_names: Optional[List[str]] = None,
     owner_names: Optional[List[str]] = None,
     affected_transaction_count: int = 0,
@@ -691,6 +696,9 @@ def _category_audit_finding(
         "code": code,
         "title": title,
         "description": description,
+        "group_key": group_key,
+        "semantic_key": semantic_key,
+        "display_name": display_name,
         "category_names": sorted(set(category_names or [])),
         "owner_names": sorted(set(owner_names or [])),
         "affected_transaction_count": affected_transaction_count,
@@ -706,6 +714,13 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
     snapshots = [_collect_member_category_audit_snapshot(member) for member in members]
     member_ids = {int(snapshot["user_id"]) for snapshot in snapshots}
     existing_bindings = auth_service.list_family_category_bindings(family_id)
+    resolved_items = auth_service.list_family_category_audit_resolutions(family_id)
+    resolved_keys = {
+        (str(item.get("code") or ""), str(item.get("group_key") or ""))
+        for item in resolved_items
+        if str(item.get("action") or "") in {"ignore", "keep_personal"}
+    }
+    resolved_group_keys = {group_key for _, group_key in resolved_keys if group_key}
     bindings_by_local_category = {
         (int(item["user_id"]), int(item["local_category_id"])): item
         for item in existing_bindings
@@ -715,10 +730,10 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
         for item in existing_bindings
     }
 
-    category_names_by_user: Dict[int, set[str]] = {}
-    active_category_names_by_user: Dict[int, set[str]] = {}
-    transaction_usage_by_user: Dict[int, Dict[str, Dict[str, float | int]]] = {}
-    budget_usage_by_user: Dict[int, Dict[str, Dict[str, float | int]]] = {}
+    category_names_by_user: Dict[int, Set[str]] = {}
+    active_category_names_by_user: Dict[int, Set[str]] = {}
+    transaction_usage_by_user: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    budget_usage_by_user: Dict[int, Dict[str, Dict[str, Any]]] = {}
     recurring_usage_by_user: Dict[int, Dict[str, int]] = {}
     groups: Dict[str, Dict[str, Any]] = {}
     findings: List[Dict[str, object]] = []
@@ -740,6 +755,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                 "owner_names": set(),
                 "user_ids": set(),
                 "types": set(),
+                "family_category_types": set(),
                 "confirmed_bindings_count": 0,
                 "transaction_count": 0,
                 "planned_transaction_count": 0,
@@ -748,6 +764,8 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                 "budget_total": 0.0,
                 "recurring_count": 0,
             }
+        if binding:
+            groups[group_key]["family_category_types"].add(str(binding.get("family_category_type") or "both"))
         return groups[group_key]
 
     for snapshot in snapshots:
@@ -938,7 +956,8 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
         semantic_key = group["semantic_key"]
         types = {item for item in group["types"] if item}
         concrete_types = {item for item in types if item != "both"}
-        if len(concrete_types) > 1:
+        confirmed_as_both = "both" in {str(item) for item in group["family_category_types"]}
+        if len(concrete_types) > 1 and not confirmed_as_both:
             findings.append(
                 _category_audit_finding(
                     severity="warning",
@@ -946,12 +965,15 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                     title="Разные типы у одного смысла",
                     description=f"Категории `{', '.join(names)}` похожи на один смысл, но используются как разные типы: {_category_type_list_label(types)}.",
                     recommended_action="Перед синхронизацией нужно вручную решить, это одна категория с типом `доход и расход` или разные категории.",
+                    group_key=str(group["group_key"]),
+                    semantic_key=semantic_key,
+                    display_name=str(group["display_name"]),
                     category_names=names,
                     owner_names=owner_names,
                     affected_transaction_count=int(group["transaction_count"]),
                 )
             )
-        if semantic_key and len(group["normalized_names"]) > 1:
+        if semantic_key and len(group["normalized_names"]) > 1 and int(group["confirmed_bindings_count"]) == 0:
             severity = "warning" if int(group["transaction_count"]) or int(group["budget_count"]) else "info"
             findings.append(
                 _category_audit_finding(
@@ -960,6 +982,9 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                     title="Похожие категории можно связать по смыслу",
                     description=f"Категории `{', '.join(names)}` похожи на общий смысл `{_semantic_display_name(semantic_key, names[0])}`.",
                     recommended_action="Показать пользователю preview и подтвердить связь; автоматически не сливать, если есть бюджеты или шаблоны.",
+                    group_key=str(group["group_key"]),
+                    semantic_key=semantic_key,
+                    display_name=str(group["display_name"]),
                     category_names=names,
                     owner_names=owner_names,
                     affected_transaction_count=int(group["transaction_count"]),
@@ -976,6 +1001,9 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                     title="Несколько бюджетов попадают в один смысл",
                     description=f"В группе `{group['display_name']}` найдено несколько бюджетов. Это может быть нормально, но для слияния нужна явная политика.",
                     recommended_action="Перед merge выбрать: сложить бюджеты, оставить один, перенести или разделить на дочерние категории.",
+                    group_key=str(group["group_key"]),
+                    semantic_key=semantic_key,
+                    display_name=str(group["display_name"]),
                     category_names=names,
                     owner_names=owner_names,
                     affected_budget_count=int(group["budget_count"]),
@@ -991,6 +1019,9 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                         title="Категория есть не у всех участников",
                         description=f"Категория `{group['display_name']}` есть у части семьи, но отсутствует у {missing_count} участника(ов).",
                         recommended_action="В будущем мастер синхронизации должен предложить создать недостающую локальную категорию или оставить ее личной.",
+                        group_key=str(group["group_key"]),
+                        semantic_key=semantic_key,
+                        display_name=str(group["display_name"]),
                         category_names=names,
                         owner_names=owner_names,
                         affected_transaction_count=int(group["transaction_count"]),
@@ -1016,6 +1047,9 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                 title="Есть общая и детальная категория одного направления",
                 description=f"У семьи есть общий смысл `{group['display_name']}` и детализация: {', '.join(child_names)}.",
                 recommended_action="Перед бюджетированием решить, считать все вместе или вести отдельные дочерние бюджеты.",
+                group_key=str(group["group_key"]),
+                semantic_key=semantic_key,
+                display_name=str(group["display_name"]),
                 category_names=sorted(set(group["category_names"])),
                 owner_names=sorted(set(group["owner_names"])),
                 affected_transaction_count=int(group["transaction_count"]),
@@ -1023,13 +1057,23 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
             )
         )
 
+    findings = [
+        item for item in findings
+        if (str(item.get("code") or ""), str(item.get("group_key") or "")) not in resolved_keys
+    ]
+    unresolved_group_keys = {str(item.get("group_key") or "") for item in findings if item.get("group_key")}
+
     severity_order = {"critical": 0, "warning": 1, "info": 2}
     findings.sort(key=lambda item: (severity_order.get(str(item["severity"]), 9), str(item["code"]), str(item["title"])))
 
     category_groups = []
     for group in groups.values():
+        group_key = str(group["group_key"])
+        if group_key in resolved_group_keys and group_key not in unresolved_group_keys and int(group["confirmed_bindings_count"]) == 0:
+            continue
         concrete_types = {item for item in group["types"] if item and item != "both"}
-        has_conflict = len(concrete_types) > 1
+        confirmed_as_both = "both" in {str(item) for item in group["family_category_types"]}
+        has_conflict = len(concrete_types) > 1 and not confirmed_as_both
         if has_conflict:
             status_value = "conflict"
         elif int(group["confirmed_bindings_count"]) > 0:
@@ -1038,7 +1082,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
             status_value = "suggested" if group["semantic_key"] else "unlinked"
         category_groups.append(
             FamilyCategoryAuditGroupResponse(
-                group_key=str(group["group_key"]),
+                group_key=group_key,
                 semantic_key=group["semantic_key"],
                 display_name=str(group["display_name"]),
                 category_names=sorted(group["category_names"]),
@@ -1113,6 +1157,9 @@ def _build_family_category_binding_preview(
     category_names = [name.strip() for name in payload.category_names if name.strip()]
     normalized_targets = {_normalize_category_name(name) for name in category_names if _normalize_category_name(name)}
     display_name = (payload.display_name or "").strip() or _semantic_display_name(semantic_key, category_names[0] if category_names else semantic_key)
+    requested_type = (payload.category_type or "").strip().lower()
+    if requested_type not in {"income", "expense", "both"}:
+        requested_type = ""
     members = auth_service.list_family_members(family_id)
     snapshots = [_collect_member_category_audit_snapshot(member) for member in members]
     existing_bindings = auth_service.list_family_category_bindings(family_id)
@@ -1122,13 +1169,13 @@ def _build_family_category_binding_preview(
     }
 
     candidates: List[FamilyCategoryBindingCandidateResponse] = []
-    local_types: set[str] = set()
+    local_types: Set[str] = set()
     blocks: List[str] = []
 
     for snapshot in snapshots:
         user_id = int(snapshot["user_id"])
         owner_name = str(snapshot["owner_name"])
-        transaction_metrics: Dict[str, Dict[str, float | int]] = {}
+        transaction_metrics: Dict[str, Dict[str, Any]] = {}
         for item in snapshot["transactions"]:
             normalized = _normalize_category_name(item.get("category"))
             if not normalized:
@@ -1188,7 +1235,7 @@ def _build_family_category_binding_preview(
             )
 
     concrete_types = {item for item in local_types if item != "both"}
-    inferred_type = _semantic_type(semantic_key, next(iter(concrete_types), "both"))
+    inferred_type = requested_type or _semantic_type(semantic_key, next(iter(concrete_types), "both"))
     if inferred_type != "both" and any(item not in {inferred_type, "both"} for item in local_types):
         blocks.append("У выбранных категорий разные типы. Для такой связи нужен отдельный ручной разбор.")
 
@@ -1280,6 +1327,35 @@ def get_family_category_audit(family_id: int, current_user=Depends(require_user)
     membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
     family_name = str(membership.get("family_name") or "Семья")
     return _collect_family_category_audit(family_id=family_id, family_name=family_name)
+
+
+@router.post("/{family_id}/categories/audit/resolutions", response_model=FamilyCategoryAuditResolutionResponse)
+def resolve_family_category_audit_item(
+    family_id: int,
+    payload: FamilyCategoryAuditResolutionPayload,
+    current_user=Depends(require_user),
+) -> FamilyCategoryAuditResolutionResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    _require_family_admin_access(family_id=family_id, user_id=int(current_user["id"]))
+    auth_service.upsert_family_category_audit_resolution(
+        family_id=family_id,
+        code=payload.code,
+        group_key=payload.group_key,
+        action=payload.action,
+        category_names=payload.category_names,
+        note=payload.note or "",
+        resolved_by_user_id=int(current_user["id"]),
+    )
+    action_label = "оставлено личным" if payload.action == "keep_personal" else "скрыто из проверки"
+    return FamilyCategoryAuditResolutionResponse(
+        message=f"Решение сохранено: {action_label}.",
+        family_id=family_id,
+        code=payload.code,
+        group_key=payload.group_key,
+        action=payload.action,
+    )
 
 
 @router.post("/{family_id}/categories/bindings/preview", response_model=FamilyCategoryBindingPreviewResponse)

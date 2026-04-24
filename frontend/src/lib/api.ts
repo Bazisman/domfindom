@@ -479,6 +479,9 @@ export type FamilyCategoryAuditResponse = {
     code: string;
     title: string;
     description: string;
+    group_key: string | null;
+    semantic_key: string | null;
+    display_name: string | null;
     category_names: string[];
     owner_names: string[];
     affected_transaction_count: number;
@@ -494,6 +497,16 @@ export type FamilyCategoryBindingPreviewPayload = {
   semanticKey: string;
   displayName?: string;
   categoryNames: string[];
+  categoryType?: string;
+};
+
+export type FamilyCategoryAuditResolutionPayload = {
+  familyId: number;
+  code: string;
+  groupKey: string;
+  action: "ignore" | "keep_personal";
+  categoryNames: string[];
+  note?: string;
 };
 
 export type FamilyCategoryBindingPreviewResponse = {
@@ -871,6 +884,7 @@ function familyCategoryBindingPayload(payload: FamilyCategoryBindingPreviewPaylo
     semantic_key: payload.semanticKey,
     display_name: payload.displayName,
     category_names: payload.categoryNames,
+    category_type: payload.categoryType,
   };
 }
 
@@ -886,6 +900,22 @@ export function applyFamilyCategoryBinding(payload: FamilyCategoryBindingPreview
     method: "POST",
     body: JSON.stringify(familyCategoryBindingPayload(payload)),
   });
+}
+
+export function resolveFamilyCategoryAuditItem(payload: FamilyCategoryAuditResolutionPayload) {
+  return request<{ message: string; family_id: number; code: string; group_key: string; action: "ignore" | "keep_personal" }>(
+    `/families/${payload.familyId}/categories/audit/resolutions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        code: payload.code,
+        group_key: payload.groupKey,
+        action: payload.action,
+        category_names: payload.categoryNames,
+        note: payload.note,
+      }),
+    },
+  );
 }
 
 export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {

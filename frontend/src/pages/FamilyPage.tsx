@@ -14,8 +14,10 @@ import {
   getMyFamilies,
   previewFamilyCategoryBinding,
   removeFamilyMember,
+  resolveFamilyCategoryAuditItem,
   updateAccount,
   updateFamilyMemberRole,
+  type FamilyCategoryAuditResponse,
   type FamilyCategoryBindingPreviewPayload,
   type FamilyCategoryBindingPreviewResponse,
   type FamilyCategoryAuditSeverity,
@@ -24,6 +26,9 @@ import { categoryTypeLabel } from "../lib/labels";
 
 type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish";
 type CategoryBindingPayloadWithoutFamily = Omit<FamilyCategoryBindingPreviewPayload, "familyId">;
+type CategoryAuditFinding = FamilyCategoryAuditResponse["findings"][number];
+type CategoryAuditGroup = FamilyCategoryAuditResponse["category_groups"][number];
+type CategoryAuditResolutionAction = "ignore" | "keep_personal";
 
 function roleLabel(role: "owner" | "member" | "viewer"): string {
   if (role === "owner") {
@@ -63,6 +68,28 @@ function formatAuditDate(value: string | undefined): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function customSemanticKeyForAuditItem(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return `custom.${hash.toString(36)}`;
+}
+
+function normalizeAuditCategoryName(value: string): string {
+  return value.trim().toLocaleLowerCase("ru-RU");
+}
+
+function auditFindingIgnoreLabel(finding: CategoryAuditFinding): string {
+  if (finding.code === "semantic_duplicate_candidate") {
+    return "Не связывать";
+  }
+  if (finding.code === "category_type_conflict") {
+    return "Оставить раздельно";
+  }
+  return "Не проверять";
 }
 
 export function FamilyPage() {
@@ -297,6 +324,7 @@ export function FamilyPage() {
         semanticKey: variables.semanticKey,
         displayName: variables.displayName,
         categoryNames: variables.categoryNames,
+        categoryType: variables.categoryType,
       });
       setMessage("");
       setError("");
@@ -311,6 +339,21 @@ export function FamilyPage() {
     mutationFn: applyFamilyCategoryBinding,
     onSuccess: async (response) => {
       setCategoryBindingPreview(response.preview);
+      setMessage(response.message);
+      setError("");
+      if (familyId !== null) {
+        await queryClient.invalidateQueries({ queryKey: ["families", familyId, "categories", "audit"] });
+      }
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message);
+      setMessage("");
+    },
+  });
+
+  const categoryAuditResolutionMutation = useMutation({
+    mutationFn: resolveFamilyCategoryAuditItem,
+    onSuccess: async (response) => {
       setMessage(response.message);
       setError("");
       if (familyId !== null) {
@@ -399,6 +442,70 @@ export function FamilyPage() {
     categoryBindingApplyMutation.mutate({
       familyId,
       ...categoryBindingPayload,
+    });
+  }
+
+  function findAuditGroupForFinding(finding: CategoryAuditFinding): CategoryAuditGroup | null {
+    const groups = categoryAudit?.category_groups ?? [];
+    if (finding.group_key) {
+      const group = groups.find((item) => item.group_key === finding.group_key);
+      if (group) {
+        return group;
+      }
+    }
+    const findingNames = new Set(finding.category_names.map(normalizeAuditCategoryName).filter(Boolean));
+    if (!findingNames.size) {
+      return null;
+    }
+    return groups.find((group) => group.category_names.some((name) => findingNames.has(normalizeAuditCategoryName(name)))) ?? null;
+  }
+
+  function previewAuditFindingBinding(finding: CategoryAuditFinding, categoryType?: "income" | "expense" | "both") {
+    const group = findAuditGroupForFinding(finding);
+    const categoryNames = group?.category_names.length ? group.category_names : finding.category_names;
+    if (!categoryNames.length) {
+      setError("Для предпросмотра не нашлось категорий.");
+      setMessage("");
+      return;
+    }
+    previewCategoryBinding({
+      semanticKey:
+        finding.semantic_key ??
+        group?.semantic_key ??
+        customSemanticKeyForAuditItem(`${finding.code}|${finding.group_key ?? ""}|${categoryNames.join("|")}`),
+      displayName: finding.display_name ?? group?.display_name ?? categoryNames[0],
+      categoryNames,
+      categoryType,
+    });
+  }
+
+  function previewAuditGroupAsBoth(group: CategoryAuditGroup) {
+    previewCategoryBinding({
+      semanticKey: group.semantic_key ?? customSemanticKeyForAuditItem(`${group.group_key}|${group.category_names.join("|")}`),
+      displayName: group.display_name,
+      categoryNames: group.category_names,
+      categoryType: "both",
+    });
+  }
+
+  function resolveAuditFinding(finding: CategoryAuditFinding, action: CategoryAuditResolutionAction) {
+    if (familyId === null) {
+      return;
+    }
+    const group = findAuditGroupForFinding(finding);
+    const groupKey = finding.group_key ?? group?.group_key;
+    if (!groupKey) {
+      setError("У этого замечания пока нет безопасного ключа для решения.");
+      setMessage("");
+      return;
+    }
+    categoryAuditResolutionMutation.mutate({
+      familyId,
+      code: finding.code,
+      groupKey,
+      action,
+      categoryNames: finding.category_names,
+      note: action === "keep_personal" ? "Оставлено личной категорией в мастере аудита." : "Скрыто владельцем семьи в мастере аудита.",
     });
   }
 
@@ -604,6 +711,46 @@ export function FamilyPage() {
                         {name}
                       </span>
                     ))}
+                    {finding.code === "semantic_duplicate_candidate" ? (
+                      <button
+                        className="ghost-button"
+                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                        onClick={() => previewAuditFindingBinding(finding)}
+                        type="button"
+                      >
+                        Предпросмотр связи
+                      </button>
+                    ) : null}
+                    {finding.code === "category_type_conflict" ? (
+                      <button
+                        className="ghost-button"
+                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                        onClick={() => previewAuditFindingBinding(finding, "both")}
+                        type="button"
+                      >
+                        Проверить как "доход и расход"
+                      </button>
+                    ) : null}
+                    {finding.code === "missing_member_category" ? (
+                      <button
+                        className="ghost-button"
+                        disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
+                        onClick={() => resolveAuditFinding(finding, "keep_personal")}
+                        type="button"
+                      >
+                        Оставить личной
+                      </button>
+                    ) : null}
+                    {finding.group_key && finding.code !== "missing_member_category" && finding.severity !== "critical" ? (
+                      <button
+                        className="ghost-button"
+                        disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
+                        onClick={() => resolveAuditFinding(finding, "ignore")}
+                        type="button"
+                      >
+                        {auditFindingIgnoreLabel(finding)}
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               ))}
@@ -635,6 +782,16 @@ export function FamilyPage() {
                     {group.confirmed_bindings_count > 0 ? <span className="audit-category-chip">Связей: {group.confirmed_bindings_count}</span> : null}
                     {group.budget_count > 0 ? <span className="audit-category-chip">Бюджеты: {group.budget_count}</span> : null}
                     {group.recurring_count > 0 ? <span className="audit-category-chip">Шаблоны: {group.recurring_count}</span> : null}
+                    {group.status === "conflict" ? (
+                      <button
+                        className="ghost-button"
+                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                        onClick={() => previewAuditGroupAsBoth(group)}
+                        type="button"
+                      >
+                        Доход и расход
+                      </button>
+                    ) : null}
                     {group.semantic_key && group.status !== "conflict" && group.status !== "confirmed" ? (
                       <button
                         className="ghost-button"
@@ -671,6 +828,12 @@ export function FamilyPage() {
                   <div>
                     <strong>Новых связей</strong>
                     <p>{categoryBindingPreview.new_binding_count}</p>
+                  </div>
+                </article>
+                <article className="list-item audit-summary-card">
+                  <div>
+                    <strong>Тип связи</strong>
+                    <p>{categoryTypeLabel(categoryBindingPreview.type)}</p>
                   </div>
                 </article>
                 <article className="list-item audit-summary-card">

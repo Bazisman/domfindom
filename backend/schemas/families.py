@@ -8,6 +8,7 @@ FamilyRole = Literal["owner", "member", "viewer"]
 InviteRole = Literal["member", "viewer"]
 CategoryAuditSeverity = Literal["critical", "warning", "info"]
 CategoryAuditGroupStatus = Literal["confirmed", "suggested", "unlinked", "conflict"]
+CategoryAuditResolutionAction = Literal["ignore", "keep_personal"]
 
 
 class FamilyCreatePayload(BaseModel):
@@ -219,6 +220,9 @@ class FamilyCategoryAuditFindingResponse(BaseModel):
     code: str
     title: str
     description: str
+    group_key: Optional[str] = None
+    semantic_key: Optional[str] = None
+    display_name: Optional[str] = None
     category_names: List[str] = Field(default_factory=list)
     owner_names: List[str] = Field(default_factory=list)
     affected_transaction_count: int = 0
@@ -242,6 +246,7 @@ class FamilyCategoryBindingPreviewPayload(BaseModel):
     semantic_key: str = Field(min_length=2, max_length=120)
     display_name: Optional[str] = Field(default=None, max_length=120)
     category_names: List[str] = Field(min_length=1)
+    category_type: Optional[str] = Field(default=None, max_length=20)
 
 
 class FamilyCategoryBindingCandidateResponse(BaseModel):
@@ -278,3 +283,19 @@ class FamilyCategoryBindingApplyResponse(BaseModel):
     message: str
     preview: FamilyCategoryBindingPreviewResponse
     applied_bindings_count: int
+
+
+class FamilyCategoryAuditResolutionPayload(BaseModel):
+    code: str = Field(min_length=2, max_length=120)
+    group_key: str = Field(min_length=2, max_length=160)
+    action: CategoryAuditResolutionAction
+    category_names: List[str] = Field(default_factory=list)
+    note: Optional[str] = Field(default=None, max_length=240)
+
+
+class FamilyCategoryAuditResolutionResponse(BaseModel):
+    message: str
+    family_id: int
+    code: str
+    group_key: str
+    action: CategoryAuditResolutionAction
