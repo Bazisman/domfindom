@@ -19,6 +19,9 @@
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 180ms;
   --dur-mid: 360ms;
+  --shell-max-width: min(84%, 1520px);
+  --sidebar-column-width: 30%;
+  --sidebar-column-min: 300px;
 }
 
 [data-theme="dark"] {
@@ -127,7 +130,8 @@ body {
 }
 
 .shell {
-  max-width: 1280px;
+  width: 100%;
+  max-width: var(--shell-max-width);
   margin: 0 auto;
   padding: 24px;
   min-height: 100vh;
@@ -153,7 +157,7 @@ body {
   display: flex;
   flex-wrap: nowrap;
   gap: 10px;
-  overflow-x: auto;
+  overflow-x: visible;
   scrollbar-width: thin;
   padding-bottom: 2px;
 }
@@ -572,7 +576,7 @@ body {
 .transactions-layout {
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(var(--sidebar-column-min), var(--sidebar-column-width)) minmax(0, 1fr);
 }
 
 .transactions-layout-stack {
@@ -781,13 +785,13 @@ body {
 .categories-layout {
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(var(--sidebar-column-min), var(--sidebar-column-width)) minmax(0, 1fr);
 }
 
 .accounts-layout {
   display: grid;
   gap: 20px;
-  grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(var(--sidebar-column-min), var(--sidebar-column-width)) minmax(0, 1fr);
 }
 
 .planning-page {
@@ -1527,7 +1531,7 @@ body {
   .planning-layout {
     display: grid;
     gap: 20px;
-    grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+    grid-template-columns: minmax(var(--sidebar-column-min), var(--sidebar-column-width)) minmax(0, 1fr);
     align-items: start;
   }
 }
@@ -2728,6 +2732,7 @@ body {
 
 @media (max-width: 820px) {
   .shell {
+    max-width: 100%;
     padding: 16px 16px 20px;
   }
 
