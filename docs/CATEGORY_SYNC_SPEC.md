@@ -634,7 +634,7 @@ POST   /api/v1/families/{family_id}/categories
 PATCH  /api/v1/families/{family_id}/categories/{family_category_id}
 DELETE /api/v1/families/{family_id}/categories/{family_category_id}
 
-POST   /api/v1/families/{family_id}/categories/audit
+GET    /api/v1/families/{family_id}/categories/audit
 POST   /api/v1/families/{family_id}/categories/bindings
 PATCH  /api/v1/families/{family_id}/categories/bindings/{binding_id}
 
@@ -721,6 +721,11 @@ UI должен говорить простым языком:
 - по транзакциям.
 
 Никаких изменений в БД.
+
+Статус на 2026-04-24:
+- реализован backend endpoint `GET /api/v1/families/{family_id}/categories/audit`;
+- добавлен первый UI-блок `Аудит категорий` на странице `Семья`;
+- аудит пока не создает binding и не применяет merge, а только показывает findings и группы-кандидаты.
 
 ### 13.2. Этап 1: системные шаблоны и алиасы
 

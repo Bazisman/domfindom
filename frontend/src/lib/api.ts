@@ -429,6 +429,65 @@ export type FamilyTransactionListResponse = {
   transactions: FamilyDashboardResponse["recent_transactions"];
 };
 
+export type FamilyCategoryAuditSeverity = "critical" | "warning" | "info";
+export type FamilyCategoryAuditGroupStatus = "suggested" | "unlinked" | "conflict";
+
+export type FamilyCategoryAuditResponse = {
+  family_id: number;
+  family_name: string;
+  generated_at: string;
+  summary: {
+    members_count: number;
+    active_categories_count: number;
+    transaction_categories_count: number;
+    findings_count: number;
+    critical_count: number;
+    warning_count: number;
+    info_count: number;
+    duplicate_candidates_count: number;
+    orphan_transaction_categories_count: number;
+    missing_member_categories_count: number;
+  };
+  members: Array<{
+    user_id: number;
+    email: string;
+    display_name: string;
+    active_categories_count: number;
+    inactive_categories_count: number;
+    transaction_categories_count: number;
+    budget_count: number;
+    recurring_template_count: number;
+  }>;
+  category_groups: Array<{
+    group_key: string;
+    semantic_key: string | null;
+    display_name: string;
+    category_names: string[];
+    owner_names: string[];
+    types: string[];
+    transaction_count: number;
+    planned_transaction_count: number;
+    transaction_total: number;
+    budget_count: number;
+    budget_total: number;
+    recurring_count: number;
+    status: FamilyCategoryAuditGroupStatus;
+  }>;
+  findings: Array<{
+    severity: FamilyCategoryAuditSeverity;
+    code: string;
+    title: string;
+    description: string;
+    category_names: string[];
+    owner_names: string[];
+    affected_transaction_count: number;
+    affected_budget_count: number;
+    affected_recurring_count: number;
+    recommended_action: string;
+    can_apply_automatically: boolean;
+  }>;
+};
+
 export type CategorySummaryItem = {
   category: string;
   total: number;
@@ -759,6 +818,10 @@ export function getFamilyTransactions(params: {
   search.set("period", params.period ?? "all");
   search.set("include_planned", params.includePlanned ? "true" : "false");
   return request<FamilyTransactionListResponse>(`/families/${params.familyId}/transactions?${search.toString()}`);
+}
+
+export function getFamilyCategoryAudit(familyId: number) {
+  return request<FamilyCategoryAuditResponse>(`/families/${familyId}/categories/audit`);
 }
 
 export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {

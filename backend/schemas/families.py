@@ -6,6 +6,8 @@ from backend.schemas.forecast import ForecastResponse
 
 FamilyRole = Literal["owner", "member", "viewer"]
 InviteRole = Literal["member", "viewer"]
+CategoryAuditSeverity = Literal["critical", "warning", "info"]
+CategoryAuditGroupStatus = Literal["suggested", "unlinked", "conflict"]
 
 
 class FamilyCreatePayload(BaseModel):
@@ -169,3 +171,67 @@ class FamilyTransactionListResponse(BaseModel):
     offset: int = 0
     total: int = 0
     transactions: List[FamilyDashboardTransactionResponse]
+
+
+class FamilyCategoryAuditSummaryResponse(BaseModel):
+    members_count: int
+    active_categories_count: int
+    transaction_categories_count: int
+    findings_count: int
+    critical_count: int
+    warning_count: int
+    info_count: int
+    duplicate_candidates_count: int
+    orphan_transaction_categories_count: int
+    missing_member_categories_count: int
+
+
+class FamilyCategoryAuditMemberResponse(BaseModel):
+    user_id: int
+    email: str
+    display_name: str
+    active_categories_count: int
+    inactive_categories_count: int
+    transaction_categories_count: int
+    budget_count: int
+    recurring_template_count: int
+
+
+class FamilyCategoryAuditGroupResponse(BaseModel):
+    group_key: str
+    semantic_key: Optional[str] = None
+    display_name: str
+    category_names: List[str]
+    owner_names: List[str]
+    types: List[str]
+    transaction_count: int = 0
+    planned_transaction_count: int = 0
+    transaction_total: float = 0
+    budget_count: int = 0
+    budget_total: float = 0
+    recurring_count: int = 0
+    status: CategoryAuditGroupStatus
+
+
+class FamilyCategoryAuditFindingResponse(BaseModel):
+    severity: CategoryAuditSeverity
+    code: str
+    title: str
+    description: str
+    category_names: List[str] = Field(default_factory=list)
+    owner_names: List[str] = Field(default_factory=list)
+    affected_transaction_count: int = 0
+    affected_budget_count: int = 0
+    affected_recurring_count: int = 0
+    recommended_action: str
+    can_apply_automatically: bool = False
+
+
+class FamilyCategoryAuditResponse(BaseModel):
+    family_id: int
+    family_name: str
+    generated_at: str
+    summary: FamilyCategoryAuditSummaryResponse
+    members: List[FamilyCategoryAuditMemberResponse]
+    category_groups: List[FamilyCategoryAuditGroupResponse]
+    findings: List[FamilyCategoryAuditFindingResponse]

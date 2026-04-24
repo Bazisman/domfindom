@@ -1,6 +1,7 @@
 import calendar
+import re
 from datetime import datetime
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -15,6 +16,11 @@ from backend.schemas.families import (
     FamilyCapitalContributionListResponse,
     FamilyCapitalSelectionResponse,
     FamilyCapitalTargetUpdatePayload,
+    FamilyCategoryAuditFindingResponse,
+    FamilyCategoryAuditGroupResponse,
+    FamilyCategoryAuditMemberResponse,
+    FamilyCategoryAuditResponse,
+    FamilyCategoryAuditSummaryResponse,
     FamilyCreatePayload,
     FamilyDashboardBalanceResponse,
     FamilyDashboardResponse,
@@ -37,6 +43,149 @@ from backend.services import row_to_transaction_response, transaction_service
 
 
 router = APIRouter()
+
+
+_SEMANTIC_CATEGORY_TEMPLATES = {
+    "groceries": {
+        "display_name": "Продукты",
+        "aliases": ["продукты", "еда", "магазин", "продуктовый", "пятерочка", "пятёрочка"],
+    },
+    "household": {
+        "display_name": "Хозтовары",
+        "aliases": ["хозтовары", "хоз товары", "товары для дома", "бытовая химия"],
+    },
+    "utilities": {
+        "display_name": "Коммунальные",
+        "aliases": ["коммунальные", "жкх", "квартплата"],
+    },
+    "internet_mobile": {
+        "display_name": "Интернет/связь",
+        "aliases": ["интернет/связь", "интернет", "связь", "мобильная связь"],
+    },
+    "subscriptions": {
+        "display_name": "Подписки",
+        "aliases": ["подписки", "сервисы"],
+    },
+    "transport": {
+        "display_name": "Проезд/транспорт",
+        "aliases": ["проезд", "транспорт", "общественный транспорт"],
+    },
+    "transport.parking": {
+        "display_name": "Парковка",
+        "aliases": ["парковка", "парковка на работе"],
+    },
+    "transport.fuel": {
+        "display_name": "Топливо",
+        "aliases": ["топливо", "бензин", "заправка"],
+    },
+    "car": {
+        "display_name": "Автомобиль",
+        "aliases": ["автомобиль", "машина", "авто"],
+    },
+    "credit": {
+        "display_name": "Кредиты",
+        "aliases": ["кредит", "кредиты", "ипотека"],
+    },
+    "taxes": {
+        "display_name": "Налоги",
+        "aliases": ["налоги", "налог"],
+    },
+    "clothing": {
+        "display_name": "Одежда",
+        "aliases": ["одежда", "обувь"],
+    },
+    "health": {
+        "display_name": "Здоровье",
+        "aliases": ["здоровье", "аптека", "лекарства", "врач"],
+    },
+    "beauty": {
+        "display_name": "Красота/уход",
+        "aliases": ["красота", "уход", "парикмахерская", "стрижка"],
+    },
+    "children.school": {
+        "display_name": "Школа",
+        "aliases": ["школа", "детская школа"],
+    },
+    "children.clubs": {
+        "display_name": "Доп. занятия",
+        "aliases": ["доп. школа", "доп школа", "кружки", "секции"],
+    },
+    "entertainment": {
+        "display_name": "Развлечения",
+        "aliases": ["развлечения", "развлечение", "досуг"],
+    },
+    "gifts": {
+        "display_name": "Подарки",
+        "aliases": ["подарки", "подарок"],
+    },
+    "salary": {
+        "display_name": "Зарплата",
+        "aliases": ["зарплата", "основная зарплата"],
+    },
+    "salary.advance": {
+        "display_name": "Аванс",
+        "aliases": ["аванс"],
+    },
+    "benefits": {
+        "display_name": "Соц.выплаты",
+        "aliases": ["соц.выплаты", "соц выплаты", "детские", "пособия"],
+    },
+    "side_job": {
+        "display_name": "Подработка",
+        "aliases": ["подработка", "доп.подработка", "доп подработка"],
+    },
+    "business_project": {
+        "display_name": "Бизнес/проект",
+        "aliases": ["проектирование", "проект", "бизнес"],
+    },
+    "sale": {
+        "display_name": "Продажа вещей",
+        "aliases": ["продажа ненужного", "продажа вещей", "продажа"],
+    },
+    "interest_cashback": {
+        "display_name": "Проценты/кэшбэк",
+        "aliases": ["проценты по карте", "кэшбэк", "кешбэк", "проценты"],
+    },
+    "opening_balance": {
+        "display_name": "Остаток",
+        "aliases": ["остаток", "входящий остаток"],
+    },
+}
+
+
+_ALIAS_TO_SEMANTIC_KEY: Dict[str, str] = {}
+for semantic_key, template in _SEMANTIC_CATEGORY_TEMPLATES.items():
+    for alias in template["aliases"]:
+        normalized_alias = re.sub(r"\s+", " ", alias.strip().lower().replace("ё", "е"))
+        normalized_alias = re.sub(r"^[\s.,;:]+|[\s.,;:]+$", "", normalized_alias)
+        normalized_alias = re.sub(r"\s*/\s*", "/", normalized_alias)
+        _ALIAS_TO_SEMANTIC_KEY[normalized_alias] = semantic_key
+
+
+def _normalize_category_name(value: object) -> str:
+    normalized = str(value or "").replace("\u00a0", " ").strip().lower().replace("ё", "е")
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = re.sub(r"^[\s.,;:]+|[\s.,;:]+$", "", normalized)
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    return normalized
+
+
+def _semantic_key_for_category_name(value: object) -> Optional[str]:
+    normalized = _normalize_category_name(value)
+    return _ALIAS_TO_SEMANTIC_KEY.get(normalized)
+
+
+def _semantic_display_name(semantic_key: Optional[str], fallback: str) -> str:
+    if semantic_key and semantic_key in _SEMANTIC_CATEGORY_TEMPLATES:
+        return str(_SEMANTIC_CATEGORY_TEMPLATES[semantic_key]["display_name"])
+    return fallback
+
+
+def _display_owner_name(member: Dict[str, object]) -> str:
+    display_name = str(member.get("display_name") or "").strip()
+    if display_name:
+        return display_name
+    return str(member.get("email") or "")
 
 
 def _collect_family_forecast(
@@ -428,6 +577,487 @@ def _collect_family_transactions(
     )
 
 
+def _collect_member_category_audit_snapshot(member: Dict[str, object]) -> Dict[str, object]:
+    user_id = int(member["user_id"])
+
+    def _action():
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, name, type, color, icon, is_active
+                FROM categories
+                ORDER BY name
+                """
+            )
+            categories = [dict(row) for row in cursor.fetchall()]
+            cursor.execute(
+                """
+                SELECT type, category, COALESCE(status, 'actual') AS status,
+                       COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total
+                FROM transactions
+                GROUP BY type, category, COALESCE(status, 'actual')
+                ORDER BY type, category
+                """
+            )
+            transactions = [dict(row) for row in cursor.fetchall()]
+            cursor.execute(
+                """
+                SELECT b.id, b.category_id, b.amount, b.period,
+                       c.name AS category, c.type AS category_type, c.is_active AS category_is_active
+                FROM budgets b
+                LEFT JOIN categories c ON c.id = b.category_id
+                ORDER BY c.name
+                """
+            )
+            budgets = [dict(row) for row in cursor.fetchall()]
+            cursor.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table' AND name = 'recurring_templates'
+                LIMIT 1
+                """
+            )
+            recurring_exists = cursor.fetchone() is not None
+            recurring_templates: List[Dict[str, object]] = []
+            if recurring_exists:
+                cursor.execute(
+                    """
+                    SELECT rt.id, rt.type, rt.name, rt.amount, rt.day_of_month,
+                           rt.category_id, rt.is_active,
+                           c.name AS category, c.type AS category_type, c.is_active AS category_is_active
+                    FROM recurring_templates rt
+                    LEFT JOIN categories c ON c.id = rt.category_id
+                    ORDER BY rt.type, rt.name
+                    """
+                )
+                recurring_templates = [dict(row) for row in cursor.fetchall()]
+        return categories, transactions, budgets, recurring_templates
+
+    categories, transactions, budgets, recurring_templates = _run_in_user_db(user_id, _action)
+    return {
+        "user_id": user_id,
+        "email": str(member.get("email") or ""),
+        "display_name": str(member.get("display_name") or ""),
+        "owner_name": _display_owner_name(member),
+        "categories": categories,
+        "transactions": transactions,
+        "budgets": budgets,
+        "recurring_templates": recurring_templates,
+    }
+
+
+def _category_audit_finding(
+    severity: str,
+    code: str,
+    title: str,
+    description: str,
+    recommended_action: str,
+    category_names: Optional[List[str]] = None,
+    owner_names: Optional[List[str]] = None,
+    affected_transaction_count: int = 0,
+    affected_budget_count: int = 0,
+    affected_recurring_count: int = 0,
+    can_apply_automatically: bool = False,
+) -> Dict[str, object]:
+    return {
+        "severity": severity,
+        "code": code,
+        "title": title,
+        "description": description,
+        "category_names": sorted(set(category_names or [])),
+        "owner_names": sorted(set(owner_names or [])),
+        "affected_transaction_count": affected_transaction_count,
+        "affected_budget_count": affected_budget_count,
+        "affected_recurring_count": affected_recurring_count,
+        "recommended_action": recommended_action,
+        "can_apply_automatically": can_apply_automatically,
+    }
+
+
+def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCategoryAuditResponse:
+    members = auth_service.list_family_members(family_id)
+    snapshots = [_collect_member_category_audit_snapshot(member) for member in members]
+    member_ids = {int(snapshot["user_id"]) for snapshot in snapshots}
+
+    category_names_by_user: Dict[int, set[str]] = {}
+    active_category_names_by_user: Dict[int, set[str]] = {}
+    transaction_usage_by_user: Dict[int, Dict[str, Dict[str, float | int]]] = {}
+    budget_usage_by_user: Dict[int, Dict[str, Dict[str, float | int]]] = {}
+    recurring_usage_by_user: Dict[int, Dict[str, int]] = {}
+    groups: Dict[str, Dict[str, Any]] = {}
+    findings: List[Dict[str, object]] = []
+
+    def _group_for(name: str) -> Dict[str, Any]:
+        normalized = _normalize_category_name(name)
+        semantic_key = _semantic_key_for_category_name(normalized)
+        group_key = semantic_key or f"name:{normalized}"
+        if group_key not in groups:
+            groups[group_key] = {
+                "group_key": group_key,
+                "semantic_key": semantic_key,
+                "display_name": _semantic_display_name(semantic_key, name),
+                "category_names": set(),
+                "normalized_names": set(),
+                "owner_names": set(),
+                "user_ids": set(),
+                "types": set(),
+                "transaction_count": 0,
+                "planned_transaction_count": 0,
+                "transaction_total": 0.0,
+                "budget_count": 0,
+                "budget_total": 0.0,
+                "recurring_count": 0,
+            }
+        return groups[group_key]
+
+    for snapshot in snapshots:
+        user_id = int(snapshot["user_id"])
+        category_names_by_user[user_id] = set()
+        active_category_names_by_user[user_id] = set()
+        transaction_usage_by_user[user_id] = {}
+        budget_usage_by_user[user_id] = {}
+        recurring_usage_by_user[user_id] = {}
+        owner_name = str(snapshot["owner_name"])
+
+        for category in snapshot["categories"]:
+            category_name = str(category.get("name") or "")
+            normalized = _normalize_category_name(category_name)
+            if not normalized:
+                continue
+            category_names_by_user[user_id].add(normalized)
+            if bool(category.get("is_active")):
+                active_category_names_by_user[user_id].add(normalized)
+            group = _group_for(category_name)
+            group["category_names"].add(category_name)
+            group["normalized_names"].add(normalized)
+            group["owner_names"].add(owner_name)
+            group["user_ids"].add(user_id)
+            group["types"].add(str(category.get("type") or ""))
+
+        for item in snapshot["transactions"]:
+            category_name = str(item.get("category") or "")
+            normalized = _normalize_category_name(category_name)
+            if not normalized:
+                continue
+            usage = transaction_usage_by_user[user_id].setdefault(
+                normalized,
+                {"count": 0, "planned_count": 0, "total": 0.0},
+            )
+            count = int(item.get("count") or 0)
+            total = float(item.get("total") or 0.0)
+            usage["count"] = int(usage["count"]) + count
+            usage["total"] = float(usage["total"]) + total
+            if str(item.get("status") or "actual") == "planned":
+                usage["planned_count"] = int(usage["planned_count"]) + count
+            group = _group_for(category_name)
+            group["category_names"].add(category_name)
+            group["normalized_names"].add(normalized)
+            group["owner_names"].add(owner_name)
+            group["user_ids"].add(user_id)
+            group["types"].add(str(item.get("type") or ""))
+            group["transaction_count"] += count
+            group["transaction_total"] += total
+            if str(item.get("status") or "actual") == "planned":
+                group["planned_transaction_count"] += count
+
+        for budget in snapshot["budgets"]:
+            category_name = str(budget.get("category") or "")
+            normalized = _normalize_category_name(category_name)
+            if not normalized:
+                findings.append(
+                    _category_audit_finding(
+                        severity="critical",
+                        code="budget_without_category",
+                        title="Бюджет без категории",
+                        description=f"У участника {owner_name} найден бюджет, который ссылается на отсутствующую категорию.",
+                        recommended_action="Перед синхронизацией нужно восстановить категорию или перенести бюджет на корректную категорию.",
+                        owner_names=[owner_name],
+                        affected_budget_count=1,
+                    )
+                )
+                continue
+            budget_usage = budget_usage_by_user[user_id].setdefault(normalized, {"count": 0, "total": 0.0})
+            budget_usage["count"] = int(budget_usage["count"]) + 1
+            budget_usage["total"] = float(budget_usage["total"]) + float(budget.get("amount") or 0.0)
+            group = _group_for(category_name)
+            group["category_names"].add(category_name)
+            group["normalized_names"].add(normalized)
+            group["owner_names"].add(owner_name)
+            group["user_ids"].add(user_id)
+            group["budget_count"] += 1
+            group["budget_total"] += float(budget.get("amount") or 0.0)
+            if budget.get("category_is_active") is not None and not bool(budget.get("category_is_active")):
+                findings.append(
+                    _category_audit_finding(
+                        severity="warning",
+                        code="budget_on_inactive_category",
+                        title="Бюджет на отключенной категории",
+                        description=f"У участника {owner_name} бюджет привязан к отключенной категории `{category_name}`.",
+                        recommended_action="Перед слиянием нужно решить: включить категорию обратно или перенести бюджет.",
+                        category_names=[category_name],
+                        owner_names=[owner_name],
+                        affected_budget_count=1,
+                    )
+                )
+
+        for template in snapshot["recurring_templates"]:
+            if not bool(template.get("is_active")):
+                continue
+            category_name = str(template.get("category") or "")
+            normalized = _normalize_category_name(category_name)
+            if not normalized:
+                findings.append(
+                    _category_audit_finding(
+                        severity="critical",
+                        code="recurring_without_category",
+                        title="Регулярный шаблон без категории",
+                        description=f"У участника {owner_name} активный регулярный шаблон `{template.get('name')}` ссылается на отсутствующую категорию.",
+                        recommended_action="Нужно выбрать корректную категорию для шаблона до включения синхронизации.",
+                        owner_names=[owner_name],
+                        affected_recurring_count=1,
+                    )
+                )
+                continue
+            recurring_usage_by_user[user_id][normalized] = recurring_usage_by_user[user_id].get(normalized, 0) + 1
+            group = _group_for(category_name)
+            group["category_names"].add(category_name)
+            group["normalized_names"].add(normalized)
+            group["owner_names"].add(owner_name)
+            group["user_ids"].add(user_id)
+            group["recurring_count"] += 1
+            if template.get("category_is_active") is not None and not bool(template.get("category_is_active")):
+                findings.append(
+                    _category_audit_finding(
+                        severity="warning",
+                        code="recurring_on_inactive_category",
+                        title="Регулярный шаблон на отключенной категории",
+                        description=f"У участника {owner_name} активный шаблон `{template.get('name')}` привязан к отключенной категории `{category_name}`.",
+                        recommended_action="Перед слиянием нужно включить категорию или перенести шаблон.",
+                        category_names=[category_name],
+                        owner_names=[owner_name],
+                        affected_recurring_count=1,
+                    )
+                )
+
+    for snapshot in snapshots:
+        user_id = int(snapshot["user_id"])
+        owner_name = str(snapshot["owner_name"])
+        for normalized, usage in transaction_usage_by_user[user_id].items():
+            if normalized not in category_names_by_user[user_id]:
+                category_name = next(
+                    (
+                        str(item.get("category") or "")
+                        for item in snapshot["transactions"]
+                        if _normalize_category_name(item.get("category")) == normalized
+                    ),
+                    normalized,
+                )
+                findings.append(
+                    _category_audit_finding(
+                        severity="critical",
+                        code="orphan_transaction_category",
+                        title="Операции без категории в справочнике",
+                        description=f"У участника {owner_name} есть операции с категорией `{category_name}`, но такой категории нет в его справочнике.",
+                        recommended_action="Создать категорию, связать ее со смыслом или перенести операции через будущий merge-preview.",
+                        category_names=[category_name],
+                        owner_names=[owner_name],
+                        affected_transaction_count=int(usage["count"]),
+                    )
+                )
+
+        for category in snapshot["categories"]:
+            if bool(category.get("is_active")):
+                continue
+            category_name = str(category.get("name") or "")
+            normalized = _normalize_category_name(category_name)
+            usage = transaction_usage_by_user[user_id].get(normalized, {"count": 0})
+            budget_usage = budget_usage_by_user[user_id].get(normalized, {"count": 0})
+            recurring_count = recurring_usage_by_user[user_id].get(normalized, 0)
+            if int(usage.get("count", 0)) or int(budget_usage.get("count", 0)) or recurring_count:
+                findings.append(
+                    _category_audit_finding(
+                        severity="warning",
+                        code="inactive_category_with_usage",
+                        title="Отключенная категория все еще используется",
+                        description=f"Участник {owner_name} отключил категорию `{category_name}`, но по ней есть история, бюджет или шаблон.",
+                        recommended_action="Не удалять такую категорию физически; сначала решить, как она должна мапиться в семейном справочнике.",
+                        category_names=[category_name],
+                        owner_names=[owner_name],
+                        affected_transaction_count=int(usage.get("count", 0)),
+                        affected_budget_count=int(budget_usage.get("count", 0)),
+                        affected_recurring_count=recurring_count,
+                    )
+                )
+
+    for group in groups.values():
+        names = sorted(group["category_names"])
+        owner_names = sorted(group["owner_names"])
+        semantic_key = group["semantic_key"]
+        types = {item for item in group["types"] if item}
+        concrete_types = {item for item in types if item != "both"}
+        if len(concrete_types) > 1:
+            findings.append(
+                _category_audit_finding(
+                    severity="warning",
+                    code="category_type_conflict",
+                    title="Разные типы у одного смысла",
+                    description=f"Категории `{', '.join(names)}` похожи на один смысл, но используются как разные типы: {', '.join(sorted(types))}.",
+                    recommended_action="Перед синхронизацией нужно вручную решить, это одна категория `both` или разные категории.",
+                    category_names=names,
+                    owner_names=owner_names,
+                    affected_transaction_count=int(group["transaction_count"]),
+                )
+            )
+        if semantic_key and len(group["normalized_names"]) > 1:
+            severity = "warning" if int(group["transaction_count"]) or int(group["budget_count"]) else "info"
+            findings.append(
+                _category_audit_finding(
+                    severity=severity,
+                    code="semantic_duplicate_candidate",
+                    title="Похожие категории можно связать по смыслу",
+                    description=f"Категории `{', '.join(names)}` похожи на общий смысл `{_semantic_display_name(semantic_key, names[0])}`.",
+                    recommended_action="Показать пользователю preview и подтвердить связь; автоматически не сливать, если есть бюджеты или шаблоны.",
+                    category_names=names,
+                    owner_names=owner_names,
+                    affected_transaction_count=int(group["transaction_count"]),
+                    affected_budget_count=int(group["budget_count"]),
+                    affected_recurring_count=int(group["recurring_count"]),
+                    can_apply_automatically=not bool(group["budget_count"] or group["recurring_count"]),
+                )
+            )
+        if int(group["budget_count"]) > 1:
+            findings.append(
+                _category_audit_finding(
+                    severity="warning",
+                    code="multiple_budgets_same_semantic",
+                    title="Несколько бюджетов попадают в один смысл",
+                    description=f"В группе `{group['display_name']}` найдено несколько бюджетов. Это может быть нормально, но для слияния нужна явная политика.",
+                    recommended_action="Перед merge выбрать: сложить бюджеты, оставить один, перенести или разделить на дочерние категории.",
+                    category_names=names,
+                    owner_names=owner_names,
+                    affected_budget_count=int(group["budget_count"]),
+                )
+            )
+        if group["user_ids"] and set(group["user_ids"]) != member_ids:
+            missing_count = len(member_ids - set(group["user_ids"]))
+            if int(group["transaction_count"]) or int(group["budget_count"]) or int(group["recurring_count"]) or semantic_key:
+                findings.append(
+                    _category_audit_finding(
+                        severity="info",
+                        code="missing_member_category",
+                        title="Категория есть не у всех участников",
+                        description=f"Категория `{group['display_name']}` есть у части семьи, но отсутствует у {missing_count} участника(ов).",
+                        recommended_action="В будущем мастер синхронизации должен предложить создать недостающую локальную категорию или оставить ее личной.",
+                        category_names=names,
+                        owner_names=owner_names,
+                        affected_transaction_count=int(group["transaction_count"]),
+                        affected_budget_count=int(group["budget_count"]),
+                        affected_recurring_count=int(group["recurring_count"]),
+                    )
+                )
+
+    semantic_groups = {str(group["semantic_key"]): group for group in groups.values() if group["semantic_key"]}
+    for semantic_key, group in semantic_groups.items():
+        child_groups = [
+            item for key, item in semantic_groups.items()
+            if key.startswith(f"{semantic_key}.") and key != semantic_key
+        ]
+        if not child_groups:
+            continue
+        child_names = sorted({str(child["display_name"]) for child in child_groups})
+        severity = "warning" if int(group["budget_count"]) or any(int(child["budget_count"]) for child in child_groups) else "info"
+        findings.append(
+            _category_audit_finding(
+                severity=severity,
+                code="parent_child_category_overlap",
+                title="Есть общая и детальная категория одного направления",
+                description=f"У семьи есть общий смысл `{group['display_name']}` и детализация: {', '.join(child_names)}.",
+                recommended_action="Перед бюджетированием решить, считать все вместе или вести отдельные дочерние бюджеты.",
+                category_names=sorted(set(group["category_names"])),
+                owner_names=sorted(set(group["owner_names"])),
+                affected_transaction_count=int(group["transaction_count"]),
+                affected_budget_count=int(group["budget_count"]),
+            )
+        )
+
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    findings.sort(key=lambda item: (severity_order.get(str(item["severity"]), 9), str(item["code"]), str(item["title"])))
+
+    category_groups = []
+    for group in groups.values():
+        concrete_types = {item for item in group["types"] if item and item != "both"}
+        has_conflict = len(concrete_types) > 1
+        status_value = "conflict" if has_conflict else ("suggested" if group["semantic_key"] else "unlinked")
+        category_groups.append(
+            FamilyCategoryAuditGroupResponse(
+                group_key=str(group["group_key"]),
+                semantic_key=group["semantic_key"],
+                display_name=str(group["display_name"]),
+                category_names=sorted(group["category_names"]),
+                owner_names=sorted(group["owner_names"]),
+                types=sorted(item for item in group["types"] if item),
+                transaction_count=int(group["transaction_count"]),
+                planned_transaction_count=int(group["planned_transaction_count"]),
+                transaction_total=round(float(group["transaction_total"]), 2),
+                budget_count=int(group["budget_count"]),
+                budget_total=round(float(group["budget_total"]), 2),
+                recurring_count=int(group["recurring_count"]),
+                status=status_value,
+            )
+        )
+    category_groups.sort(
+        key=lambda item: (
+            0 if item.status == "conflict" else 1 if item.status == "suggested" else 2,
+            -(item.transaction_count + item.budget_count + item.recurring_count),
+            item.display_name,
+        )
+    )
+
+    response_findings = [FamilyCategoryAuditFindingResponse(**item) for item in findings]
+    summary = FamilyCategoryAuditSummaryResponse(
+        members_count=len(snapshots),
+        active_categories_count=sum(
+            1
+            for snapshot in snapshots
+            for category in snapshot["categories"]
+            if bool(category.get("is_active"))
+        ),
+        transaction_categories_count=sum(len(transaction_usage_by_user.get(int(snapshot["user_id"]), {})) for snapshot in snapshots),
+        findings_count=len(response_findings),
+        critical_count=sum(1 for item in response_findings if item.severity == "critical"),
+        warning_count=sum(1 for item in response_findings if item.severity == "warning"),
+        info_count=sum(1 for item in response_findings if item.severity == "info"),
+        duplicate_candidates_count=sum(1 for item in response_findings if item.code == "semantic_duplicate_candidate"),
+        orphan_transaction_categories_count=sum(1 for item in response_findings if item.code == "orphan_transaction_category"),
+        missing_member_categories_count=sum(1 for item in response_findings if item.code == "missing_member_category"),
+    )
+    member_responses = [
+        FamilyCategoryAuditMemberResponse(
+            user_id=int(snapshot["user_id"]),
+            email=str(snapshot["email"]),
+            display_name=str(snapshot["display_name"]),
+            active_categories_count=sum(1 for item in snapshot["categories"] if bool(item.get("is_active"))),
+            inactive_categories_count=sum(1 for item in snapshot["categories"] if not bool(item.get("is_active"))),
+            transaction_categories_count=len(transaction_usage_by_user.get(int(snapshot["user_id"]), {})),
+            budget_count=len(snapshot["budgets"]),
+            recurring_template_count=sum(1 for item in snapshot["recurring_templates"] if bool(item.get("is_active"))),
+        )
+        for snapshot in snapshots
+    ]
+
+    return FamilyCategoryAuditResponse(
+        family_id=family_id,
+        family_name=family_name,
+        generated_at=datetime.now().isoformat(timespec="seconds"),
+        summary=summary,
+        members=member_responses,
+        category_groups=category_groups,
+        findings=response_findings,
+    )
+
+
 def _validate_member_management_rules(
     actor_user_id: int,
     actor_role: str,
@@ -477,6 +1107,16 @@ def get_family_dashboard(family_id: int, current_user=Depends(require_user)) -> 
         family_name=family_name,
         current_user_id=int(current_user["id"]),
     )
+
+
+@router.get("/{family_id}/categories/audit", response_model=FamilyCategoryAuditResponse)
+def get_family_category_audit(family_id: int, current_user=Depends(require_user)) -> FamilyCategoryAuditResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    membership = _require_family_role(family_id=family_id, user_id=int(current_user["id"]))
+    family_name = str(membership.get("family_name") or "Семья")
+    return _collect_family_category_audit(family_id=family_id, family_name=family_name)
 
 
 @router.put("/{family_id}/capital-target", response_model=FamilyCapitalSelectionResponse)

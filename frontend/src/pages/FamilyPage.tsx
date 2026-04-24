@@ -5,6 +5,7 @@ import {
   createFamily,
   createFamilyInvite,
   getAccounts,
+  getFamilyCategoryAudit,
   getFamilyDashboard,
   getFamilyMembers,
   getFamilyTransactions,
@@ -13,6 +14,7 @@ import {
   removeFamilyMember,
   updateAccount,
   updateFamilyMemberRole,
+  type FamilyCategoryAuditSeverity,
 } from "../lib/api";
 
 type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish";
@@ -33,6 +35,28 @@ function formatMoney(value: number) {
     currency: "RUB",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function auditSeverityLabel(severity: FamilyCategoryAuditSeverity): string {
+  if (severity === "critical") {
+    return "Критично";
+  }
+  if (severity === "warning") {
+    return "Внимание";
+  }
+  return "Инфо";
+}
+
+function formatAuditDate(value: string | undefined): string {
+  if (!value) {
+    return "";
+  }
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function FamilyPage() {
@@ -87,6 +111,13 @@ export function FamilyPage() {
     retry: false,
   });
 
+  const familyCategoryAuditQuery = useQuery({
+    queryKey: ["families", familyId, "categories", "audit"],
+    queryFn: () => getFamilyCategoryAudit(familyId as number),
+    enabled: familyId !== null,
+    retry: false,
+  });
+
   const scopedOwnerUserId = useMemo(() => {
     if (transactionsScope === "mine") {
       return meQuery.data?.id ?? 0;
@@ -125,6 +156,8 @@ export function FamilyPage() {
       ),
     [familyDashboardQuery.data?.capital_accounts, meQuery.data?.id],
   );
+  const categoryAudit = familyCategoryAuditQuery.data;
+  const syncReadyGroups = (categoryAudit?.category_groups ?? []).filter((item) => item.status !== "unlinked").slice(0, 6);
 
   useEffect(() => {
     if (selectedFamilyId !== null) {
@@ -414,6 +447,132 @@ export function FamilyPage() {
                 <p className="money minus">{formatMoney(familyDashboardQuery.data?.balance.expense ?? 0)}</p>
               </div>
             </article>
+          </div>
+        </section>
+      ) : null}
+
+      {familyId !== null ? (
+        <section className="panel panel-wide family-category-audit-panel">
+          <div className="panel-header">
+            <div>
+              <h3>Аудит категорий</h3>
+              <span>
+                Проверка без изменений данных
+                {categoryAudit?.generated_at ? ` • ${formatAuditDate(categoryAudit.generated_at)}` : ""}
+              </span>
+            </div>
+            <button
+              className="ghost-button"
+              disabled={familyCategoryAuditQuery.isFetching}
+              onClick={() => void familyCategoryAuditQuery.refetch()}
+              type="button"
+            >
+              {familyCategoryAuditQuery.isFetching ? "Проверяем..." : "Обновить"}
+            </button>
+          </div>
+
+          {familyCategoryAuditQuery.isError ? (
+            <p className="form-error">Не удалось выполнить аудит категорий.</p>
+          ) : null}
+
+          <div className="family-summary-grid">
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Всего замечаний</strong>
+                <p>{categoryAudit?.summary.findings_count ?? 0}</p>
+              </div>
+            </article>
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Критичных</strong>
+                <p className={categoryAudit?.summary.critical_count ? "money minus" : ""}>
+                  {categoryAudit?.summary.critical_count ?? 0}
+                </p>
+              </div>
+            </article>
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Похожих смыслов</strong>
+                <p>{categoryAudit?.summary.duplicate_candidates_count ?? 0}</p>
+              </div>
+            </article>
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Категорий в операциях</strong>
+                <p>{categoryAudit?.summary.transaction_categories_count ?? 0}</p>
+              </div>
+            </article>
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Активных категорий</strong>
+                <p>{categoryAudit?.summary.active_categories_count ?? 0}</p>
+              </div>
+            </article>
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Не у всех участников</strong>
+                <p>{categoryAudit?.summary.missing_member_categories_count ?? 0}</p>
+              </div>
+            </article>
+          </div>
+
+          <div className="category-audit-columns">
+            <div className="list category-audit-list">
+              <div className="category-audit-subheader">
+                <strong>Что нужно проверить</strong>
+                <span>{categoryAudit?.findings.length ?? 0}</span>
+              </div>
+              {(categoryAudit?.findings ?? []).slice(0, 8).map((finding, index) => (
+                <article className="list-item category-audit-finding" key={`${finding.code}-${index}`}>
+                  <div>
+                    <div className="transaction-title-row">
+                      <strong>{finding.title}</strong>
+                      <span className={`audit-severity-chip audit-severity-${finding.severity}`}>
+                        {auditSeverityLabel(finding.severity)}
+                      </span>
+                    </div>
+                    <p>{finding.description}</p>
+                    <p className="muted">{finding.recommended_action}</p>
+                  </div>
+                  <div className="family-page-actions category-audit-tags">
+                    {finding.category_names.slice(0, 3).map((name) => (
+                      <span className="audit-category-chip" key={name}>
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              ))}
+              {!familyCategoryAuditQuery.isLoading && !(categoryAudit?.findings ?? []).length ? (
+                <p className="muted">Аудит не нашел проблем. Категории выглядят аккуратно.</p>
+              ) : null}
+            </div>
+
+            <div className="list category-audit-list">
+              <div className="category-audit-subheader">
+                <strong>Группы для будущей синхронизации</strong>
+                <span>{syncReadyGroups.length}</span>
+              </div>
+              {syncReadyGroups.map((group) => (
+                <article className="list-item category-audit-group" key={group.group_key}>
+                  <div>
+                    <strong>{group.display_name}</strong>
+                    <p>{group.category_names.join(", ")}</p>
+                    <p className="muted">{group.owner_names.join(", ")}</p>
+                  </div>
+                  <div className="family-page-actions category-audit-tags">
+                    <span className={`audit-severity-chip ${group.status === "conflict" ? "audit-severity-warning" : "audit-severity-info"}`}>
+                      {group.status === "conflict" ? "Конфликт" : "Кандидат"}
+                    </span>
+                    {group.budget_count > 0 ? <span className="audit-category-chip">Бюджеты: {group.budget_count}</span> : null}
+                    {group.recurring_count > 0 ? <span className="audit-category-chip">Шаблоны: {group.recurring_count}</span> : null}
+                  </div>
+                </article>
+              ))}
+              {!familyCategoryAuditQuery.isLoading && !syncReadyGroups.length ? (
+                <p className="muted">Пока нет групп, которые программа может уверенно подсветить для связи.</p>
+              ) : null}
+            </div>
           </div>
         </section>
       ) : null}
