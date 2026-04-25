@@ -8,7 +8,7 @@ import sqlite3
 import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import core
 from backend.config import settings
@@ -32,6 +32,7 @@ class AuthService:
         self.users_data_dir = str(Path(users_data_dir).resolve())
         self.session_secret = session_secret.encode("utf-8")
         self._shared_memory_conn: Optional[sqlite3.Connection] = None
+        self._ensured_finance_dbs: Set[str] = set()
         os.makedirs(os.path.dirname(self.auth_db_name), exist_ok=True)
 
     def _auth_connection(self):
@@ -454,6 +455,7 @@ class AuthService:
         if self._shared_memory_conn is not None:
             self._shared_memory_conn.close()
             self._shared_memory_conn = None
+        self._ensured_finance_dbs.clear()
 
     def hash_password(self, password: str) -> str:
         salt = secrets.token_bytes(16)
@@ -1150,13 +1152,14 @@ class AuthService:
         db_path = self.get_user_db_path(user_id)
         user_dir = os.path.dirname(db_path)
         os.makedirs(user_dir, exist_ok=True)
-        if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
+        if db_path in self._ensured_finance_dbs:
             return db_path
         token = core.push_db_name(db_path)
         try:
             core.init_db()
         finally:
             core.pop_db_name(token)
+        self._ensured_finance_dbs.add(db_path)
         return db_path
 
     def get_user_preferences(self, user_id: int) -> Dict[str, str]:

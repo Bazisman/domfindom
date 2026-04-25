@@ -99,6 +99,60 @@ class WebApiTestCase(unittest.TestCase):
         user_db_path = auth_service.get_user_db_path(self._current_user_id())
         return core.push_db_name(user_db_path)
 
+    def test_existing_user_finance_db_is_migrated_on_access(self):
+        user_id = 999001
+        db_path = auth_service.get_user_db_path(user_id)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        with open(db_path, "wb") as marker:
+            marker.write(b"legacy")
+
+        token = core.push_db_name(db_path)
+        try:
+            with core.get_connection() as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        type TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        comment TEXT,
+                        date TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE accounts (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        balance REAL DEFAULT 0,
+                        currency TEXT DEFAULT 'RUB',
+                        is_active INTEGER DEFAULT 1,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                    """
+                )
+                conn.execute("INSERT INTO accounts (id, name, type, balance) VALUES (1, 'Основной счет', 'main', 0)")
+        finally:
+            core.pop_db_name(token)
+
+        auth_service.ensure_user_finance_db(user_id)
+
+        token = core.push_db_name(db_path)
+        try:
+            with core.get_connection() as conn:
+                transaction_columns = {row["name"] for row in conn.execute("PRAGMA table_info(transactions)").fetchall()}
+                account_rows = conn.execute("SELECT id, name, type FROM accounts ORDER BY id").fetchall()
+        finally:
+            core.pop_db_name(token)
+
+        self.assertIn("money_source", transaction_columns)
+        self.assertTrue(any(row["id"] == 2 and row["name"] == "Наличные" and row["type"] == "cash" for row in account_rows))
+
     def test_health_endpoint_returns_ok(self):
         response = self.client.get("/api/v1/health")
 
