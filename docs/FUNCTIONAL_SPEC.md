@@ -296,9 +296,9 @@
 
 ## 10. Связанные документы
 
-- [README.md](/e:/Python/finance_app/src/docs/README.md) — карта документации;
-- [FEATURES.md](/e:/Python/finance_app/src/docs/FEATURES.md) — краткий список возможностей;
-- [API.md](/e:/Python/finance_app/src/docs/API.md) — API и прикладная семантика;
-- [PROJECT_STATE.md](/e:/Python/finance_app/src/docs/PROJECT_STATE.md) — текущее состояние продукта;
-- [WORKING_MEMORY.md](/e:/Python/finance_app/src/docs/WORKING_MEMORY.md) — устойчивые правила и антиошибки;
-- [WORK_LOG.md](/e:/Python/finance_app/src/docs/WORK_LOG.md) — журнал значимых изменений логики.
+- [README.md](README.md) — карта документации;
+- [FEATURES.md](FEATURES.md) — краткий список возможностей;
+- [API.md](API.md) — API и прикладная семантика;
+- [PROJECT_STATE.md](PROJECT_STATE.md) — текущее состояние продукта;
+- [WORKING_MEMORY.md](WORKING_MEMORY.md) — устойчивые правила и антиошибки;
+- [WORK_LOG.md](WORK_LOG.md) — журнал значимых изменений логики.
