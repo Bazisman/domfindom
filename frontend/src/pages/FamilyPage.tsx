@@ -26,6 +26,7 @@ import { categoryTypeLabel } from "../lib/labels";
 
 type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish";
 type CategoryBindingPayloadWithoutFamily = Omit<FamilyCategoryBindingPreviewPayload, "familyId">;
+type CategoryBindingPreviewRequest = FamilyCategoryBindingPreviewPayload & { previewKey?: string };
 type CategoryAuditFinding = FamilyCategoryAuditResponse["findings"][number];
 type CategoryAuditGroup = FamilyCategoryAuditResponse["category_groups"][number];
 type CategoryAuditResolutionAction = "ignore" | "keep_personal";
@@ -131,6 +132,7 @@ export function FamilyPage() {
   const [transactionsScope, setTransactionsScope] = useState<"all" | "mine" | `user:${number}`>("all");
   const [categoryBindingPreview, setCategoryBindingPreview] = useState<FamilyCategoryBindingPreviewResponse | null>(null);
   const [categoryBindingPayload, setCategoryBindingPayload] = useState<CategoryBindingPayloadWithoutFamily | null>(null);
+  const [activeCategoryPreviewKey, setActiveCategoryPreviewKey] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const familiesQuery = useQuery({
@@ -239,6 +241,7 @@ export function FamilyPage() {
     setTransactionsScope("all");
     setCategoryBindingPreview(null);
     setCategoryBindingPayload(null);
+    setActiveCategoryPreviewKey(null);
   }, [familyId]);
 
   const createFamilyMutation = useMutation({
@@ -349,7 +352,7 @@ export function FamilyPage() {
   });
 
   const categoryBindingPreviewMutation = useMutation({
-    mutationFn: previewFamilyCategoryBinding,
+    mutationFn: (payload: CategoryBindingPreviewRequest) => previewFamilyCategoryBinding(payload),
     onSuccess: (response, variables) => {
       setCategoryBindingPreview(response);
       setCategoryBindingPayload({
@@ -358,6 +361,7 @@ export function FamilyPage() {
         categoryNames: variables.categoryNames,
         categoryType: variables.categoryType,
       });
+      setActiveCategoryPreviewKey(variables.previewKey ?? null);
       setMessage("");
       setError("");
     },
@@ -457,13 +461,15 @@ export function FamilyPage() {
     publishCapitalMutation.mutate({ accountId, familyVisible: true, familyDefaultTarget: true });
   }
 
-  function previewCategoryBinding(payload: CategoryBindingPayloadWithoutFamily) {
+  function previewCategoryBinding(payload: CategoryBindingPayloadWithoutFamily, previewKey: string) {
     if (familyId === null) {
       return;
     }
+    setActiveCategoryPreviewKey(previewKey);
     categoryBindingPreviewMutation.mutate({
       familyId,
       ...payload,
+      previewKey,
     });
   }
 
@@ -492,7 +498,7 @@ export function FamilyPage() {
     return groups.find((group) => group.category_names.some((name) => findingNames.has(normalizeAuditCategoryName(name)))) ?? null;
   }
 
-  function previewAuditFindingBinding(finding: CategoryAuditFinding, categoryType?: "income" | "expense" | "both") {
+  function previewAuditFindingBinding(finding: CategoryAuditFinding, previewKey: string, categoryType?: "income" | "expense" | "both") {
     const group = findAuditGroupForFinding(finding);
     const categoryNames = group?.category_names.length ? group.category_names : finding.category_names;
     if (!categoryNames.length) {
@@ -500,24 +506,30 @@ export function FamilyPage() {
       setMessage("");
       return;
     }
-    previewCategoryBinding({
-      semanticKey:
-        finding.semantic_key ??
-        group?.semantic_key ??
-        customSemanticKeyForAuditItem(`${finding.code}|${finding.group_key ?? ""}|${categoryNames.join("|")}`),
-      displayName: finding.display_name ?? group?.display_name ?? categoryNames[0],
-      categoryNames,
-      categoryType,
-    });
+    previewCategoryBinding(
+      {
+        semanticKey:
+          finding.semantic_key ??
+          group?.semantic_key ??
+          customSemanticKeyForAuditItem(`${finding.code}|${finding.group_key ?? ""}|${categoryNames.join("|")}`),
+        displayName: finding.display_name ?? group?.display_name ?? categoryNames[0],
+        categoryNames,
+        categoryType,
+      },
+      previewKey,
+    );
   }
 
-  function previewAuditGroupAsBoth(group: CategoryAuditGroup) {
-    previewCategoryBinding({
-      semanticKey: group.semantic_key ?? customSemanticKeyForAuditItem(`${group.group_key}|${group.category_names.join("|")}`),
-      displayName: group.display_name,
-      categoryNames: group.category_names,
-      categoryType: "both",
-    });
+  function previewAuditGroupAsBoth(group: CategoryAuditGroup, previewKey: string) {
+    previewCategoryBinding(
+      {
+        semanticKey: group.semantic_key ?? customSemanticKeyForAuditItem(`${group.group_key}|${group.category_names.join("|")}`),
+        displayName: group.display_name,
+        categoryNames: group.category_names,
+        categoryType: "both",
+      },
+      previewKey,
+    );
   }
 
   function resolveAuditFinding(finding: CategoryAuditFinding, action: CategoryAuditResolutionAction) {
@@ -738,66 +750,139 @@ export function FamilyPage() {
                 <strong>Очередь решений</strong>
                 <span>{auditFindings.length}</span>
               </div>
-              {auditFindings.slice(0, 8).map((finding, index) => (
-                <article className="list-item category-audit-finding" key={`${finding.code}-${index}`}>
-                  <div>
-                    <div className="transaction-title-row">
-                      <strong>{auditFindingDisplayTitle(finding)}</strong>
-                      <span className={`audit-severity-chip audit-severity-${finding.severity}`}>
-                        {auditSeverityLabel(finding.severity)}
-                      </span>
+              {auditFindings.slice(0, 8).map((finding, index) => {
+                const previewKey = `finding:${finding.code}:${finding.group_key ?? index}`;
+                const showPreview = activeCategoryPreviewKey === previewKey && categoryBindingPreview !== null;
+                return (
+                  <article className="list-item category-audit-finding" key={`${finding.code}-${index}`}>
+                    <div>
+                      <div className="transaction-title-row">
+                        <strong>{auditFindingDisplayTitle(finding)}</strong>
+                        <span className={`audit-severity-chip audit-severity-${finding.severity}`}>
+                          {auditSeverityLabel(finding.severity)}
+                        </span>
+                      </div>
+                      <p>{auditFindingDisplayText(finding)}</p>
                     </div>
-                    <p>{auditFindingDisplayText(finding)}</p>
-                  </div>
-                  <div className="family-page-actions category-audit-tags">
-                    {finding.category_names.slice(0, 3).map((name) => (
-                      <span className="audit-category-chip" key={name}>
-                        {name}
-                      </span>
-                    ))}
-                    {finding.code === "semantic_duplicate_candidate" ? (
-                      <button
-                        className="ghost-button"
-                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
-                        onClick={() => previewAuditFindingBinding(finding)}
-                        type="button"
-                      >
-                        Предпросмотр связи
-                      </button>
+                    <div className="family-page-actions category-audit-tags">
+                      {finding.category_names.slice(0, 3).map((name) => (
+                        <span className="audit-category-chip" key={name}>
+                          {name}
+                        </span>
+                      ))}
+                      {finding.code === "semantic_duplicate_candidate" ? (
+                        <button
+                          className="ghost-button"
+                          disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                          onClick={() => previewAuditFindingBinding(finding, previewKey)}
+                          type="button"
+                        >
+                          Проверить связь
+                        </button>
+                      ) : null}
+                      {finding.code === "category_type_conflict" ? (
+                        <button
+                          className="ghost-button"
+                          disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                          onClick={() => previewAuditFindingBinding(finding, previewKey, "both")}
+                          type="button"
+                        >
+                          Это одна категория
+                        </button>
+                      ) : null}
+                      {finding.code === "missing_member_category" ? (
+                        <button
+                          className="ghost-button"
+                          disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
+                          onClick={() => resolveAuditFinding(finding, "keep_personal")}
+                          type="button"
+                        >
+                          Оставить личной
+                        </button>
+                      ) : null}
+                      {finding.group_key && finding.code !== "missing_member_category" && finding.severity !== "critical" ? (
+                        <button
+                          className="ghost-button"
+                          disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
+                          onClick={() => resolveAuditFinding(finding, "ignore")}
+                          type="button"
+                        >
+                          {auditFindingIgnoreLabel(finding)}
+                        </button>
+                      ) : null}
+                    </div>
+                    {showPreview ? (
+                      <div className="category-binding-preview category-binding-preview-inline">
+                        <div className="category-audit-subheader">
+                          <div>
+                            <strong>Шаг 2. Подтвердить семейную связь</strong>
+                            <p>Вы выбрали: {categoryBindingPreview.display_name} будет одной семейной категорией.</p>
+                          </div>
+                          <span>{categoryBindingPreview.message}</span>
+                        </div>
+                        <div className="family-summary-grid">
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>Новых связей</strong>
+                              <p>{categoryBindingPreview.new_binding_count}</p>
+                            </div>
+                          </article>
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>Тип связи</strong>
+                              <p>{categoryTypeLabel(categoryBindingPreview.type)}</p>
+                            </div>
+                          </article>
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>История</strong>
+                              <p>{categoryBindingPreview.affected_transaction_count}</p>
+                            </div>
+                          </article>
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>Бюджетов</strong>
+                              <p>{categoryBindingPreview.affected_budget_count}</p>
+                            </div>
+                          </article>
+                        </div>
+                        <div className="list category-audit-list">
+                          {categoryBindingPreview.candidates.map((candidate) => (
+                            <article className="list-item category-audit-group" key={`${candidate.user_id}-${candidate.local_category_id}`}>
+                              <div>
+                                <strong>{candidate.local_category_name}</strong>
+                                <p>{candidate.owner_name}</p>
+                                <p className="muted">
+                                  История: {candidate.transaction_count}
+                                  {candidate.planned_transaction_count > 0 ? `, плановых: ${candidate.planned_transaction_count}` : ""}, бюджетов: {candidate.budget_count},
+                                  шаблонов: {candidate.recurring_count}
+                                </p>
+                              </div>
+                              <div className="family-page-actions category-audit-tags">
+                                <span className="audit-category-chip">{categoryTypeLabel(candidate.local_category_type)}</span>
+                                {candidate.already_bound ? <span className="audit-severity-chip audit-severity-info">Уже связано</span> : null}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                        <div className="family-page-actions category-binding-actions">
+                          <button className="ghost-button" onClick={() => setCategoryBindingPreview(null)} type="button">
+                            Вернуться к решению
+                          </button>
+                          <button
+                            className="primary-button"
+                            disabled={!categoryBindingPreview.can_apply || categoryBindingApplyMutation.isPending || !canManageFamilyMembers}
+                            onClick={applyCategoryBinding}
+                            type="button"
+                          >
+                            {categoryBindingApplyMutation.isPending ? "Подтверждаем..." : "Да, связать категории"}
+                          </button>
+                        </div>
+                      </div>
                     ) : null}
-                    {finding.code === "category_type_conflict" ? (
-                      <button
-                        className="ghost-button"
-                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
-                        onClick={() => previewAuditFindingBinding(finding, "both")}
-                        type="button"
-                      >
-                        Это одна категория
-                      </button>
-                    ) : null}
-                    {finding.code === "missing_member_category" ? (
-                      <button
-                        className="ghost-button"
-                        disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
-                        onClick={() => resolveAuditFinding(finding, "keep_personal")}
-                        type="button"
-                      >
-                        Оставить личной
-                      </button>
-                    ) : null}
-                    {finding.group_key && finding.code !== "missing_member_category" && finding.severity !== "critical" ? (
-                      <button
-                        className="ghost-button"
-                        disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
-                        onClick={() => resolveAuditFinding(finding, "ignore")}
-                        type="button"
-                      >
-                        {auditFindingIgnoreLabel(finding)}
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
               {!familyCategoryAuditQuery.isLoading && !(categoryAudit?.findings ?? []).length ? (
                 <p className="muted">Аудит не нашел проблем. Категории выглядят аккуратно.</p>
               ) : null}
@@ -808,125 +893,109 @@ export function FamilyPage() {
                 <strong>Что уже распознано по смыслу</strong>
                 <span>{syncReadyGroups.length}</span>
               </div>
-              {syncReadyGroups.map((group) => (
-                <article className="list-item category-audit-group" key={group.group_key}>
-                  <div>
-                    <strong>{group.display_name}</strong>
-                    <p>{group.category_names.join(", ")}</p>
-                    <p className="muted">{group.owner_names.join(", ")}</p>
-                  </div>
-                  <div className="family-page-actions category-audit-tags">
-                    <span
-                      className={`audit-severity-chip ${
-                        group.status === "conflict" ? "audit-severity-warning" : group.status === "confirmed" ? "audit-severity-info" : "audit-severity-info"
-                      }`}
-                    >
-                      {group.status === "conflict" ? "Конфликт" : group.status === "confirmed" ? "Связано" : "Кандидат"}
-                    </span>
-                    {group.confirmed_bindings_count > 0 ? <span className="audit-category-chip">Связей: {group.confirmed_bindings_count}</span> : null}
-                    {group.budget_count > 0 ? <span className="audit-category-chip">Бюджеты: {group.budget_count}</span> : null}
-                    {group.recurring_count > 0 ? <span className="audit-category-chip">Шаблоны: {group.recurring_count}</span> : null}
-                    {group.status === "conflict" ? (
-                      <button
-                        className="ghost-button"
-                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
-                        onClick={() => previewAuditGroupAsBoth(group)}
-                        type="button"
+              {syncReadyGroups.map((group) => {
+                const previewKey = `group:${group.group_key}`;
+                const showPreview = activeCategoryPreviewKey === previewKey && categoryBindingPreview !== null;
+                return (
+                  <article className="list-item category-audit-group" key={group.group_key}>
+                    <div>
+                      <strong>{group.display_name}</strong>
+                      <p>{group.category_names.join(", ")}</p>
+                      <p className="muted">{group.owner_names.join(", ")}</p>
+                    </div>
+                    <div className="family-page-actions category-audit-tags">
+                      <span
+                        className={`audit-severity-chip ${
+                          group.status === "conflict" ? "audit-severity-warning" : group.status === "confirmed" ? "audit-severity-info" : "audit-severity-info"
+                        }`}
                       >
-                        Доход и расход
-                      </button>
+                        {group.status === "conflict" ? "Конфликт" : group.status === "confirmed" ? "Связано" : "Кандидат"}
+                      </span>
+                      {group.confirmed_bindings_count > 0 ? <span className="audit-category-chip">Связей: {group.confirmed_bindings_count}</span> : null}
+                      {group.budget_count > 0 ? <span className="audit-category-chip">Бюджеты: {group.budget_count}</span> : null}
+                      {group.recurring_count > 0 ? <span className="audit-category-chip">Шаблоны: {group.recurring_count}</span> : null}
+                      {group.status === "conflict" ? (
+                        <button
+                          className="ghost-button"
+                          disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                          onClick={() => previewAuditGroupAsBoth(group, previewKey)}
+                          type="button"
+                        >
+                          Доход и расход
+                        </button>
+                      ) : null}
+                      {group.semantic_key && group.status !== "conflict" && group.status !== "confirmed" ? (
+                        <button
+                          className="ghost-button"
+                          disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                          onClick={() =>
+                            previewCategoryBinding(
+                              {
+                                semanticKey: group.semantic_key as string,
+                                displayName: group.display_name,
+                                categoryNames: group.category_names,
+                              },
+                              previewKey,
+                            )
+                          }
+                          type="button"
+                        >
+                          Проверить связь
+                        </button>
+                      ) : null}
+                    </div>
+                    {showPreview ? (
+                      <div className="category-binding-preview category-binding-preview-inline">
+                        <div className="category-audit-subheader">
+                          <div>
+                            <strong>Подтвердить семейную связь</strong>
+                            <p>{categoryBindingPreview.display_name} станет общей смысловой категорией для семьи.</p>
+                          </div>
+                          <span>{categoryBindingPreview.message}</span>
+                        </div>
+                        <div className="family-summary-grid">
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>Новых связей</strong>
+                              <p>{categoryBindingPreview.new_binding_count}</p>
+                            </div>
+                          </article>
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>Тип связи</strong>
+                              <p>{categoryTypeLabel(categoryBindingPreview.type)}</p>
+                            </div>
+                          </article>
+                          <article className="list-item audit-summary-card">
+                            <div>
+                              <strong>История</strong>
+                              <p>{categoryBindingPreview.affected_transaction_count}</p>
+                            </div>
+                          </article>
+                        </div>
+                        <div className="family-page-actions category-binding-actions">
+                          <button className="ghost-button" onClick={() => setCategoryBindingPreview(null)} type="button">
+                            Закрыть
+                          </button>
+                          <button
+                            className="primary-button"
+                            disabled={!categoryBindingPreview.can_apply || categoryBindingApplyMutation.isPending || !canManageFamilyMembers}
+                            onClick={applyCategoryBinding}
+                            type="button"
+                          >
+                            {categoryBindingApplyMutation.isPending ? "Подтверждаем..." : "Да, связать категории"}
+                          </button>
+                        </div>
+                      </div>
                     ) : null}
-                    {group.semantic_key && group.status !== "conflict" && group.status !== "confirmed" ? (
-                      <button
-                        className="ghost-button"
-                        disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
-                        onClick={() =>
-                          previewCategoryBinding({
-                            semanticKey: group.semantic_key as string,
-                            displayName: group.display_name,
-                            categoryNames: group.category_names,
-                          })
-                        }
-                        type="button"
-                      >
-                        Предпросмотр
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
               {!familyCategoryAuditQuery.isLoading && !syncReadyGroups.length ? (
                 <p className="muted">Пока нет групп, которые программа может уверенно подсветить для связи.</p>
               ) : null}
             </div>
           </div>
-
-          {categoryBindingPreview ? (
-            <div className="category-binding-preview">
-              <div className="category-audit-subheader">
-                <strong>Предпросмотр связи: {categoryBindingPreview.display_name}</strong>
-                <span>{categoryBindingPreview.message}</span>
-              </div>
-              <div className="family-summary-grid">
-                <article className="list-item audit-summary-card">
-                  <div>
-                    <strong>Новых связей</strong>
-                    <p>{categoryBindingPreview.new_binding_count}</p>
-                  </div>
-                </article>
-                <article className="list-item audit-summary-card">
-                  <div>
-                    <strong>Тип связи</strong>
-                    <p>{categoryTypeLabel(categoryBindingPreview.type)}</p>
-                  </div>
-                </article>
-                <article className="list-item audit-summary-card">
-                  <div>
-                    <strong>В истории за всё время</strong>
-                    <p>{categoryBindingPreview.affected_transaction_count}</p>
-                  </div>
-                </article>
-                <article className="list-item audit-summary-card">
-                  <div>
-                    <strong>Бюджетов</strong>
-                    <p>{categoryBindingPreview.affected_budget_count}</p>
-                  </div>
-                </article>
-              </div>
-              <div className="list category-audit-list">
-                {categoryBindingPreview.candidates.map((candidate) => (
-                  <article className="list-item category-audit-group" key={`${candidate.user_id}-${candidate.local_category_id}`}>
-                    <div>
-                      <strong>{candidate.local_category_name}</strong>
-                      <p>{candidate.owner_name}</p>
-                      <p className="muted">
-                        История за всё время: {candidate.transaction_count}
-                        {candidate.planned_transaction_count > 0 ? `, плановых: ${candidate.planned_transaction_count}` : ""}, бюджетов: {candidate.budget_count},
-                        шаблонов: {candidate.recurring_count}
-                      </p>
-                    </div>
-                    <div className="family-page-actions category-audit-tags">
-                      <span className="audit-category-chip">{categoryTypeLabel(candidate.local_category_type)}</span>
-                      {candidate.already_bound ? <span className="audit-severity-chip audit-severity-info">Уже связано</span> : null}
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <div className="family-page-actions category-binding-actions">
-                <button className="ghost-button" onClick={() => setCategoryBindingPreview(null)} type="button">
-                  Закрыть
-                </button>
-                <button
-                  className="primary-button"
-                  disabled={!categoryBindingPreview.can_apply || categoryBindingApplyMutation.isPending || !canManageFamilyMembers}
-                  onClick={applyCategoryBinding}
-                  type="button"
-                >
-                  {categoryBindingApplyMutation.isPending ? "Подтверждаем..." : "Подтвердить связь"}
-                </button>
-              </div>
-            </div>
-          ) : null}
         </section>
       ) : null}
 

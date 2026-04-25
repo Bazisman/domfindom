@@ -126,6 +126,19 @@ body {
   }
 }
 
+@keyframes audit-preview-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+    clip-path: inset(0 0 100% 0 round 22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    clip-path: inset(0 0 0 0 round 22px);
+  }
+}
+
 .shell {
   max-width: 1280px;
   margin: 0 auto;
@@ -2338,6 +2351,10 @@ body {
   overflow-wrap: anywhere;
 }
 
+.category-audit-subheader p {
+  margin: 4px 0 0;
+}
+
 .category-audit-finding,
 .category-audit-group {
   display: grid;
@@ -2405,6 +2422,12 @@ body {
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--green) 12%, transparent), transparent 34%),
     color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.category-binding-preview-inline {
+  margin-top: 4px;
+  animation: audit-preview-slide 360ms var(--ease-smooth) both;
+  transform-origin: top center;
 }
 
 .category-binding-actions {
