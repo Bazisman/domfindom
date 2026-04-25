@@ -162,6 +162,10 @@ export function TransactionsPageNext() {
     retry: false,
   });
 
+  const otherFamilyMembers = useMemo(() => {
+    return (familyMembers.data?.members ?? []).filter((member) => member.user_id !== me.data?.id);
+  }, [familyMembers.data?.members, me.data?.id]);
+
   const scopedOwnerUserId = useMemo(() => {
     if (transactionsScope === "mine") {
       return me.data?.id ?? 0;
@@ -248,6 +252,16 @@ export function TransactionsPageNext() {
   useEffect(() => {
     setTransactionsScope("all");
   }, [selectedFamilyId]);
+
+  useEffect(() => {
+    if (!me.data?.id || !transactionsScope.startsWith("user:")) {
+      return;
+    }
+    const parsedUserId = Number(transactionsScope.slice(5));
+    if (parsedUserId === me.data.id) {
+      setTransactionsScope("mine");
+    }
+  }, [me.data?.id, transactionsScope]);
 
   const transactionPage = useMemo<TransactionPage | null>(() => {
     if (useFamilyFeed) {
@@ -963,9 +977,9 @@ export function TransactionsPageNext() {
                   }}
                   value={transactionsScope}
                 >
-                  <option value="all">Все участники</option>
-                  <option value="mine">Только мои</option>
-                  {(familyMembers.data?.members ?? []).map((member) => (
+                  <option value="all">Вся семья</option>
+                  <option value="mine">Мои операции</option>
+                  {otherFamilyMembers.map((member) => (
                     <option key={member.user_id} value={`user:${member.user_id}`}>
                       {member.display_name || member.email}
                     </option>
