@@ -510,7 +510,7 @@ export function FamilyPage() {
   }
 
   return (
-    <main className="grid">
+    <main className="grid family-page">
       <section className="panel panel-form panel-wide">
         <div className="panel-header">
           <h2>Семья</h2>

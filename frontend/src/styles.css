@@ -2275,6 +2275,10 @@ body {
   min-width: 160px;
 }
 
+.family-page > .panel {
+  grid-column: 1 / -1;
+}
+
 .family-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
