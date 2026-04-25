@@ -149,19 +149,6 @@ function auditResolutionText(finding: CategoryAuditFinding, action: CategoryAudi
   return "Категории останутся раздельными. Подсказка исчезнет из списка вопросов, но решение можно будет отменить ниже.";
 }
 
-function auditPlanningHint(finding: CategoryAuditFinding): string {
-  if (finding.code === "missing_member_category") {
-    return "Личная категория: деньги видны в общих суммах, но лимит по ней планируется лично. Семейная категория: траты участвуют в семейных лимитах и отчетах.";
-  }
-  if (finding.code === "semantic_duplicate_candidate") {
-    return "Считать вместе: траты попадут в один семейный смысл и один семейный лимит. Оставить отдельно: каждая категория планируется сама.";
-  }
-  if (finding.code === "category_type_conflict") {
-    return "Одна категория: доходы и расходы будут связаны одним семейным смыслом. Отдельно: планирование останется раздельным.";
-  }
-  return "Деньги остаются в личных и семейных суммах, а это решение влияет только на то, как категория участвует в планировании.";
-}
-
 function auditResolutionDisplayTitle(resolution: CategoryAuditResolution): string {
   if (resolution.action === "keep_personal") {
     return "Оставлено личной";
@@ -753,10 +740,27 @@ export function FamilyPage() {
             </strong>
             <p>
               {auditFindings.length > 0
-                ? "Деньги считаются и в личных, и в семейных суммах. Решение ниже влияет на планирование: личная категория остается для личных лимитов, семейная участвует в семейных лимитах."
+                ? "Выберите, как категории участвуют в планировании. История не переименуется."
                 : "Семейные отчеты можно вести без дополнительных решений по категориям."}
             </p>
           </div>
+
+          {auditFindings.length > 0 ? (
+            <div className="category-audit-guide" aria-label="Как читать решения">
+              <div>
+                <strong>Личная</strong>
+                <p>Деньги видны в общих суммах, лимит ведется лично.</p>
+              </div>
+              <div>
+                <strong>Семейная</strong>
+                <p>Категория участвует в семейных отчетах и лимитах.</p>
+              </div>
+              <div>
+                <strong>Отдельно</strong>
+                <p>Похожие названия остаются разными категориями.</p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="family-summary-grid">
             <article className="list-item audit-summary-card">
@@ -810,7 +814,7 @@ export function FamilyPage() {
                 const showResolutionConfirm = pendingResolutionKey === previewKey && pendingResolutionFinding !== null;
                 return (
                   <article className="list-item category-audit-finding" key={`${finding.code}-${index}`}>
-                    <div>
+                    <div className="category-audit-finding-main">
                       <div className="transaction-title-row">
                         <strong>{auditFindingDisplayTitle(finding)}</strong>
                         <span className={`audit-severity-chip audit-severity-${finding.severity}`}>
@@ -818,77 +822,85 @@ export function FamilyPage() {
                         </span>
                       </div>
                       <p>{auditFindingDisplayText(finding)}</p>
-                      <p className="category-audit-question">{auditFindingQuestion(finding)}</p>
-                      <p className="category-audit-planning-hint">{auditPlanningHint(finding)}</p>
                     </div>
-                    <div className="family-page-actions category-audit-tags">
-                      <span className="category-audit-chip-label">Категории</span>
-                      {finding.category_names.slice(0, 3).map((name) => (
-                        <span className="audit-category-chip audit-category-name-chip" key={name}>
-                          {name}
-                        </span>
-                      ))}
-                      {finding.category_names.length > 3 ? (
-                        <span className="audit-category-chip audit-category-name-chip">+{finding.category_names.length - 3}</span>
-                      ) : null}
-                      {finding.code === "semantic_duplicate_candidate" ? (
-                        <button
-                          className="ghost-button"
-                          disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
-                          onClick={() => previewAuditFindingBinding(finding, previewKey)}
-                          type="button"
-                        >
-                          Считать вместе
-                        </button>
-                      ) : null}
-                      {finding.code === "category_type_conflict" ? (
-                        <button
-                          className="ghost-button"
-                          disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
-                          onClick={() => previewAuditFindingBinding(finding, previewKey, "both")}
-                          type="button"
-                        >
-                          Одна категория
-                        </button>
-                      ) : null}
-                      {finding.code === "missing_member_category" ? (
-                        <>
+                    <div className="category-audit-decision-panel">
+                      <div className="category-audit-decision-copy">
+                        <span>Решение</span>
+                        <strong>{auditFindingQuestion(finding)}</strong>
+                      </div>
+                      <div className="category-audit-category-row">
+                        <span className="category-audit-chip-label">Категории</span>
+                        <div className="family-page-actions category-audit-tags">
+                          {finding.category_names.slice(0, 3).map((name) => (
+                            <span className="audit-category-chip audit-category-name-chip" key={name}>
+                              {name}
+                            </span>
+                          ))}
+                          {finding.category_names.length > 3 ? (
+                            <span className="audit-category-chip audit-category-name-chip">+{finding.category_names.length - 3}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="family-page-actions category-audit-actions">
+                        {finding.code === "semantic_duplicate_candidate" ? (
                           <button
                             className="ghost-button"
                             disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
                             onClick={() => previewAuditFindingBinding(finding, previewKey)}
                             type="button"
                           >
-                            Добавить в семью
+                            Считать вместе
                           </button>
+                        ) : null}
+                        {finding.code === "category_type_conflict" ? (
                           <button
                             className="ghost-button"
-                            disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
-                            onClick={() => openResolutionConfirm(finding, previewKey, "keep_personal")}
+                            disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                            onClick={() => previewAuditFindingBinding(finding, previewKey, "both")}
                             type="button"
                           >
-                            Да, личная
+                            Одна категория
                           </button>
+                        ) : null}
+                        {finding.code === "missing_member_category" ? (
+                          <>
+                            <button
+                              className="ghost-button"
+                              disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                              onClick={() => previewAuditFindingBinding(finding, previewKey)}
+                              type="button"
+                            >
+                              Добавить в семью
+                            </button>
+                            <button
+                              className="ghost-button"
+                              disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
+                              onClick={() => openResolutionConfirm(finding, previewKey, "keep_personal")}
+                              type="button"
+                            >
+                              Да, личная
+                            </button>
+                            <button
+                              className="ghost-button"
+                              disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
+                              onClick={() => openResolutionConfirm(finding, previewKey, "ignore")}
+                              type="button"
+                            >
+                              Решить позже
+                            </button>
+                          </>
+                        ) : null}
+                        {finding.group_key && finding.code !== "missing_member_category" && finding.severity !== "critical" ? (
                           <button
                             className="ghost-button"
                             disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
                             onClick={() => openResolutionConfirm(finding, previewKey, "ignore")}
                             type="button"
                           >
-                            Решить позже
+                            Оставить отдельно
                           </button>
-                        </>
-                      ) : null}
-                      {finding.group_key && finding.code !== "missing_member_category" && finding.severity !== "critical" ? (
-                        <button
-                          className="ghost-button"
-                          disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
-                          onClick={() => openResolutionConfirm(finding, previewKey, "ignore")}
-                          type="button"
-                        >
-                          Оставить отдельно
-                        </button>
-                      ) : null}
+                        ) : null}
+                      </div>
                     </div>
                     {showResolutionConfirm ? (
                       <div className="category-binding-preview category-binding-preview-inline category-resolution-confirm">
