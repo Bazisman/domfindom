@@ -1027,7 +1027,7 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
                     affected_budget_count=int(group["budget_count"]),
                 )
             )
-        if group["user_ids"] and set(group["user_ids"]) != member_ids:
+        if group["user_ids"] and set(group["user_ids"]) != member_ids and int(group["confirmed_bindings_count"]) == 0:
             missing_count = len(member_ids - set(group["user_ids"]))
             if int(group["transaction_count"]) or int(group["budget_count"]) or int(group["recurring_count"]) or semantic_key:
                 findings.append(
@@ -1445,6 +1445,8 @@ def apply_family_category_binding(
     )
     applied_count = 0
     for candidate in preview.candidates:
+        if candidate.already_bound:
+            continue
         auth_service.upsert_family_category_binding(
             family_id=family_id,
             family_category_id=int(family_category["id"]),
@@ -1457,8 +1459,12 @@ def apply_family_category_binding(
         applied_count += 1
 
     refreshed_preview = _build_family_category_binding_preview(family_id=family_id, payload=payload)
+    if applied_count == 0 and refreshed_preview.already_bound_count == refreshed_preview.candidate_count:
+        message = "Категория уже добавлена в семейный учет."
+    else:
+        message = f"Связи категорий подтверждены: {applied_count}. История операций не изменялась."
     return FamilyCategoryBindingApplyResponse(
-        message=f"Связи категорий подтверждены: {applied_count}. История операций не изменялась.",
+        message=message,
         preview=refreshed_preview,
         applied_bindings_count=applied_count,
     )

@@ -129,6 +129,10 @@ function auditBindingPreviewLead(preview: FamilyCategoryBindingPreviewResponse):
   return `Если подтвердить, "${preview.display_name}" будет одной семейной категорией для семейных отчетов и лимитов. Старые операции, бюджеты и шаблоны не переименуются.`;
 }
 
+function categoryBindingPreviewAlreadyComplete(preview: FamilyCategoryBindingPreviewResponse): boolean {
+  return preview.candidate_count > 0 && preview.already_bound_count === preview.candidate_count;
+}
+
 function auditResolutionTitle(finding: CategoryAuditFinding, action: CategoryAuditResolutionAction): string {
   if (action === "keep_personal") {
     return "Оставить личной";
@@ -368,7 +372,20 @@ export function FamilyPage() {
 
   const categoryBindingPreviewMutation = useMutation({
     mutationFn: (payload: CategoryBindingPreviewRequest) => previewFamilyCategoryBinding(payload),
-    onSuccess: (response, variables) => {
+    onSuccess: async (response, variables) => {
+      if (categoryBindingPreviewAlreadyComplete(response)) {
+        setCategoryBindingPreview(null);
+        setCategoryBindingPayload(null);
+        setActiveCategoryPreviewKey(null);
+        setPendingResolutionKey(null);
+        setPendingResolutionFinding(null);
+        setMessage(`"${response.display_name}" уже добавлена в семейный учет.`);
+        setError("");
+        if (familyId !== null) {
+          await queryClient.invalidateQueries({ queryKey: ["families", familyId, "categories", "audit"] });
+        }
+        return;
+      }
       setCategoryBindingPreview(response);
       setCategoryBindingPayload({
         semanticKey: variables.semanticKey,
@@ -389,7 +406,11 @@ export function FamilyPage() {
   const categoryBindingApplyMutation = useMutation({
     mutationFn: applyFamilyCategoryBinding,
     onSuccess: async (response) => {
-      setCategoryBindingPreview(response.preview);
+      setCategoryBindingPreview(null);
+      setCategoryBindingPayload(null);
+      setActiveCategoryPreviewKey(null);
+      setPendingResolutionKey(null);
+      setPendingResolutionFinding(null);
       setMessage(response.message);
       setError("");
       if (familyId !== null) {
