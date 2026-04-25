@@ -808,11 +808,15 @@ export function FamilyPage() {
                       <p className="category-audit-question">{auditFindingQuestion(finding)}</p>
                     </div>
                     <div className="family-page-actions category-audit-tags">
+                      <span className="category-audit-chip-label">Категории</span>
                       {finding.category_names.slice(0, 3).map((name) => (
-                        <span className="audit-category-chip" key={name}>
+                        <span className="audit-category-chip audit-category-name-chip" key={name}>
                           {name}
                         </span>
                       ))}
+                      {finding.category_names.length > 3 ? (
+                        <span className="audit-category-chip audit-category-name-chip">+{finding.category_names.length - 3}</span>
+                      ) : null}
                       {finding.code === "semantic_duplicate_candidate" ? (
                         <button
                           className="ghost-button"
