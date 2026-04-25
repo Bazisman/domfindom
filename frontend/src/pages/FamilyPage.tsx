@@ -10,7 +10,6 @@ import {
   getFamilyCategoryAudit,
   getFamilyDashboard,
   getFamilyMembers,
-  getFamilyTransactions,
   getMe,
   getMyFamilies,
   previewFamilyCategoryBinding,
@@ -131,7 +130,6 @@ export function FamilyPage() {
   const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "viewer">("member");
-  const [transactionsScope, setTransactionsScope] = useState<"all" | "mine" | `user:${number}`>("all");
   const [categoryBindingPreview, setCategoryBindingPreview] = useState<FamilyCategoryBindingPreviewResponse | null>(null);
   const [categoryBindingPayload, setCategoryBindingPayload] = useState<CategoryBindingPayloadWithoutFamily | null>(null);
   const [activeCategoryPreviewKey, setActiveCategoryPreviewKey] = useState<string | null>(null);
@@ -188,30 +186,6 @@ export function FamilyPage() {
     retry: false,
   });
 
-  const scopedOwnerUserId = useMemo(() => {
-    if (transactionsScope === "mine") {
-      return meQuery.data?.id ?? 0;
-    }
-    if (transactionsScope.startsWith("user:")) {
-      const parsed = Number(transactionsScope.slice(5));
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-    return 0;
-  }, [transactionsScope, meQuery.data?.id]);
-
-  const familyTransactionsQuery = useQuery({
-    queryKey: ["families", familyId, "transactions", scopedOwnerUserId],
-    queryFn: () =>
-      getFamilyTransactions({
-        familyId: familyId as number,
-        ownerUserId: scopedOwnerUserId > 0 ? scopedOwnerUserId : undefined,
-        limit: 80,
-        includePlanned: false,
-      }),
-    enabled: familyId !== null,
-    retry: false,
-  });
-
   const capitalAccounts = useMemo(
     () => (accountsQuery.data ?? []).filter((item) => item.type === "capital" && item.is_active),
     [accountsQuery.data],
@@ -243,7 +217,6 @@ export function FamilyPage() {
   }, [familiesQuery.data?.families, selectedFamilyId, fallbackFamilyId]);
 
   useEffect(() => {
-    setTransactionsScope("all");
     setCategoryBindingPreview(null);
     setCategoryBindingPayload(null);
     setActiveCategoryPreviewKey(null);
@@ -1181,50 +1154,6 @@ export function FamilyPage() {
             ))}
             {!familyDashboardQuery.isLoading && !(familyDashboardQuery.data?.capital_accounts ?? []).length ? (
               <p className="muted">Семейные счета капитала пока не настроены.</p>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {familyId !== null ? (
-        <section className="panel panel-wide">
-          <div className="panel-header">
-            <h3>Семейная лента операций</h3>
-            <select
-              className="period-select"
-              onChange={(event) => {
-                const value = event.target.value;
-                if (value === "all" || value === "mine" || value.startsWith("user:")) {
-                  setTransactionsScope(value as "all" | "mine" | `user:${number}`);
-                }
-              }}
-              value={transactionsScope}
-            >
-              <option value="all">Все участники</option>
-              <option value="mine">Только мои</option>
-              {(familyMembersQuery.data?.members ?? []).map((member) => (
-                <option key={member.user_id} value={`user:${member.user_id}`}>
-                  {member.display_name || member.email}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="list">
-            {(familyTransactionsQuery.data?.transactions ?? []).map((item) => (
-              <article className="list-item" key={`${item.owner_user_id}-${item.id}`}>
-                <div>
-                  <strong>{item.category}</strong>
-                  <p>{item.comment || "Без комментария"}</p>
-                </div>
-                <div className="family-page-actions">
-                  <span className="status-chip">{item.owner_display_name || item.owner_email}</span>
-                  <strong className={item.type === "income" ? "money plus" : "money minus"}>{formatMoney(item.amount)}</strong>
-                </div>
-              </article>
-            ))}
-            {!familyTransactionsQuery.isLoading && (familyTransactionsQuery.data?.transactions ?? []).length === 0 ? (
-              <p className="muted">По выбранному фильтру операций нет.</p>
             ) : null}
           </div>
         </section>
