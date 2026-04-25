@@ -2291,6 +2291,21 @@ body {
   gap: 14px;
 }
 
+.category-audit-focus {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.category-audit-focus strong,
+.category-audit-focus p {
+  margin: 0;
+}
+
 .audit-summary-card p {
   margin-top: 6px;
   font-size: 1.35rem;

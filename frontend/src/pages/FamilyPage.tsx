@@ -92,6 +92,34 @@ function auditFindingIgnoreLabel(finding: CategoryAuditFinding): string {
   return "Не проверять";
 }
 
+function auditFindingDisplayTitle(finding: CategoryAuditFinding): string {
+  if (finding.code === "category_type_conflict") {
+    return "Один смысл, разные типы";
+  }
+  if (finding.code === "semantic_duplicate_candidate") {
+    return "Можно связать категории";
+  }
+  if (finding.code === "missing_member_category") {
+    return "Категория есть не у всех";
+  }
+  return finding.title;
+}
+
+function auditFindingDisplayText(finding: CategoryAuditFinding): string {
+  const names = finding.category_names.join(", ");
+  const displayName = finding.display_name || finding.category_names[0] || "категория";
+  if (finding.code === "category_type_conflict") {
+    return `Проверьте "${names}": это может быть одна семейная категория с типом "доход и расход" или две разные категории.`;
+  }
+  if (finding.code === "semantic_duplicate_candidate") {
+    return `"${names}" похожи на один смысл: "${displayName}". Перед связью можно посмотреть, какие операции, бюджеты и шаблоны будут затронуты.`;
+  }
+  if (finding.code === "missing_member_category") {
+    return `"${displayName}" есть только у части семьи. Если это личная категория, ее можно оставить без семейной связи.`;
+  }
+  return finding.description;
+}
+
 export function FamilyPage() {
   const queryClient = useQueryClient();
   const [busyAction, setBusyAction] = useState<FamilyBusyAction>("");
@@ -192,6 +220,10 @@ export function FamilyPage() {
     [familyDashboardQuery.data?.capital_accounts, meQuery.data?.id],
   );
   const categoryAudit = familyCategoryAuditQuery.data;
+  const auditFindings = categoryAudit?.findings ?? [];
+  const duplicateCandidateCount = auditFindings.filter((finding) => finding.code === "semantic_duplicate_candidate").length;
+  const typeConflictCount = auditFindings.filter((finding) => finding.code === "category_type_conflict").length;
+  const actionableFindingCount = auditFindings.filter((finding) => finding.severity !== "info").length;
   const syncReadyGroups = (categoryAudit?.category_groups ?? []).filter((item) => item.status !== "unlinked").slice(0, 6);
 
   useEffect(() => {
@@ -646,11 +678,24 @@ export function FamilyPage() {
             <p className="form-error">Не удалось выполнить аудит категорий.</p>
           ) : null}
 
+          <div className="category-audit-focus">
+            <strong>
+              {actionableFindingCount > 0
+                ? `Нужно разобрать ${actionableFindingCount} ${actionableFindingCount === 1 ? "решение" : "решений"}`
+                : "Критичных решений сейчас нет"}
+            </strong>
+            <p>
+              {actionableFindingCount > 0
+                ? "Начните с одинаковых смыслов и разных типов. Справочные категории, которые есть не у всех, можно оставить личными."
+                : "Остальные пункты ниже помогают подготовить семейные категории без переименования личной истории."}
+            </p>
+          </div>
+
           <div className="family-summary-grid">
             <article className="list-item audit-summary-card">
               <div>
-                <strong>Всего замечаний</strong>
-                <p>{categoryAudit?.summary.findings_count ?? 0}</p>
+                <strong>Нужно решить</strong>
+                <p>{actionableFindingCount}</p>
               </div>
             </article>
             <article className="list-item audit-summary-card">
@@ -663,26 +708,26 @@ export function FamilyPage() {
             </article>
             <article className="list-item audit-summary-card">
               <div>
-                <strong>Похожих смыслов</strong>
-                <p>{categoryAudit?.summary.duplicate_candidates_count ?? 0}</p>
+                <strong>Можно связать</strong>
+                <p>{duplicateCandidateCount}</p>
               </div>
             </article>
             <article className="list-item audit-summary-card">
               <div>
-                <strong>Категорий в операциях</strong>
-                <p>{categoryAudit?.summary.transaction_categories_count ?? 0}</p>
+                <strong>Разные типы</strong>
+                <p>{typeConflictCount}</p>
               </div>
             </article>
             <article className="list-item audit-summary-card">
               <div>
-                <strong>Активных категорий</strong>
-                <p>{categoryAudit?.summary.active_categories_count ?? 0}</p>
-              </div>
-            </article>
-            <article className="list-item audit-summary-card">
-              <div>
-                <strong>Не у всех участников</strong>
+                <strong>Только у части семьи</strong>
                 <p>{categoryAudit?.summary.missing_member_categories_count ?? 0}</p>
+              </div>
+            </article>
+            <article className="list-item audit-summary-card">
+              <div>
+                <strong>Категорий в истории</strong>
+                <p>{categoryAudit?.summary.transaction_categories_count ?? 0}</p>
               </div>
             </article>
           </div>
@@ -690,20 +735,19 @@ export function FamilyPage() {
           <div className="category-audit-columns">
             <div className="list category-audit-list">
               <div className="category-audit-subheader">
-                <strong>Что нужно проверить</strong>
-                <span>{categoryAudit?.findings.length ?? 0}</span>
+                <strong>Очередь решений</strong>
+                <span>{auditFindings.length}</span>
               </div>
-              {(categoryAudit?.findings ?? []).slice(0, 8).map((finding, index) => (
+              {auditFindings.slice(0, 8).map((finding, index) => (
                 <article className="list-item category-audit-finding" key={`${finding.code}-${index}`}>
                   <div>
                     <div className="transaction-title-row">
-                      <strong>{finding.title}</strong>
+                      <strong>{auditFindingDisplayTitle(finding)}</strong>
                       <span className={`audit-severity-chip audit-severity-${finding.severity}`}>
                         {auditSeverityLabel(finding.severity)}
                       </span>
                     </div>
-                    <p>{finding.description}</p>
-                    <p className="muted">{finding.recommended_action}</p>
+                    <p>{auditFindingDisplayText(finding)}</p>
                   </div>
                   <div className="family-page-actions category-audit-tags">
                     {finding.category_names.slice(0, 3).map((name) => (
@@ -728,7 +772,7 @@ export function FamilyPage() {
                         onClick={() => previewAuditFindingBinding(finding, "both")}
                         type="button"
                       >
-                        Проверить как "доход и расход"
+                        Это одна категория
                       </button>
                     ) : null}
                     {finding.code === "missing_member_category" ? (
@@ -761,7 +805,7 @@ export function FamilyPage() {
 
             <div className="list category-audit-list">
               <div className="category-audit-subheader">
-                <strong>Группы для будущей синхронизации</strong>
+                <strong>Что уже распознано по смыслу</strong>
                 <span>{syncReadyGroups.length}</span>
               </div>
               {syncReadyGroups.map((group) => (
