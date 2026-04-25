@@ -16,4 +16,5 @@ def row_to_transaction_response(transaction: Transaction) -> dict:
         "comment": transaction.comment,
         "date": transaction.date,
         "status": transaction.status or "actual",
+        "money_source": getattr(transaction, "money_source", "cashless") or "cashless",
     }

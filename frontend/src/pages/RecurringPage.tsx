@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -8,9 +8,16 @@ import {
   getCategories,
   getDuePlannedTransactions,
   getRecurringTemplates,
+  getSettings,
   updateRecurringTemplate,
+  type MoneySource,
   type TransactionType,
 } from "../lib/api";
+
+const MONEY_SOURCE_OPTIONS: Array<{ value: MoneySource; label: string }> = [
+  { value: "cashless", label: "Безнал" },
+  { value: "cash", label: "Наличные" },
+];
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -28,6 +35,7 @@ function getInitialForm() {
     dayOfMonth: "1",
     categoryId: "",
     commentTemplate: "",
+    moneySource: "cashless" as MoneySource,
     monthsAhead: "12",
     workingDaysOnly: true,
   };
@@ -56,9 +64,20 @@ export function RecurringPage() {
     queryFn: getDuePlannedTransactions,
   });
 
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+  });
+
   const filteredCategories = useMemo(() => {
     return (categories.data ?? []).filter((item) => item.type === form.type || item.type === "both");
   }, [categories.data, form.type]);
+
+  useEffect(() => {
+    if (editingTemplateId === null && settings.data?.default_money_source) {
+      setForm((current) => ({ ...current, moneySource: settings.data.default_money_source }));
+    }
+  }, [editingTemplateId, settings.data?.default_money_source]);
 
   const createMutation = useMutation({
     mutationFn: createRecurringTemplate,
@@ -142,6 +161,7 @@ export function RecurringPage() {
       dayOfMonth: String(template.day_of_month),
       categoryId: template.category_id ? String(template.category_id) : "",
       commentTemplate: template.comment_template,
+      moneySource: template.money_source,
       monthsAhead: String(template.months_ahead),
       workingDaysOnly: template.working_days_only,
     });
@@ -182,6 +202,7 @@ export function RecurringPage() {
       day_of_month: dayOfMonth,
       category_id: categoryId,
       comment_template: form.commentTemplate,
+      money_source: form.moneySource,
       months_ahead: monthsAhead,
       working_days_only: form.workingDaysOnly,
     };
@@ -226,6 +247,19 @@ export function RecurringPage() {
             >
               Доход
             </button>
+          </div>
+
+          <div className="toggle-row">
+            {MONEY_SOURCE_OPTIONS.map((option) => (
+              <button
+                className={form.moneySource === option.value ? "toggle active" : "toggle"}
+                key={option.value}
+                onClick={() => setForm((current) => ({ ...current, moneySource: option.value }))}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
 
           <label className="field">
@@ -358,7 +392,7 @@ export function RecurringPage() {
               <article className="list-item" key={item.id}>
                 <div>
                   <strong>{item.template_name || item.category}</strong>
-                  <p>{item.comment || "Без комментария"}</p>
+                  <p>{item.comment || "Без комментария"} · {item.money_source === "cash" ? "Наличные" : "Безнал"}</p>
                 </div>
                 <div className={item.type === "income" ? "money plus" : "money minus"}>
                   {formatMoney(item.amount)}
@@ -375,7 +409,7 @@ export function RecurringPage() {
                 <div>
                   <strong>{item.name}</strong>
                   <p>
-                    {item.type === "income" ? "Доход" : "Расход"} {formatMoney(item.amount)} {item.category_name ? `• ${item.category_name}` : ""}
+                    {item.type === "income" ? "Доход" : "Расход"} {formatMoney(item.amount)} · {item.money_source === "cash" ? "Наличные" : "Безнал"} {item.category_name ? `• ${item.category_name}` : ""}
                   </p>
                 </div>
               </div>

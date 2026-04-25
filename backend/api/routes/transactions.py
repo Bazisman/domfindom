@@ -13,6 +13,7 @@ from backend.schemas.transactions import (
     TransactionCreateResponse,
     TransactionPageResponse,
     TransactionResponse,
+    TransactionUpdateRequest,
 )
 from backend.services import category_service, row_to_transaction_response, transaction_service
 from models import Transaction
@@ -123,15 +124,10 @@ def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
     return _run_in_user_db(owner_user_id, _action)
 
 
-def _adjust_main_account(user_id: int, amount_delta: float) -> None:
+def _adjust_daily_account(user_id: int, money_source: str, amount_delta: float) -> None:
     def _action():
-        with core.get_connection() as conn:
-            conn.execute(
-                'UPDATE accounts SET balance = balance + ?, updated_at = datetime("now") WHERE id = 1',
-                (amount_delta,),
-            )
-            conn.commit()
-        core._invalidate_cache()
+        account_id = 2 if money_source == "cash" else 1
+        core.update_account_balance(account_id, amount_delta)
 
     _run_in_user_db(user_id, _action)
 
@@ -194,11 +190,12 @@ def _create_income_with_family_capital(
         payload.date,
         0,
         None,
+        money_source=payload.money_source,
     )
 
     capital_applied = False
     try:
-        _adjust_main_account(current_user_id, -contribution_amount)
+        _adjust_daily_account(current_user_id, payload.money_source, -contribution_amount)
         capital_applied = _adjust_capital_account(target_owner_user_id, target_capital_account_id, contribution_amount)
         if not capital_applied:
             raise RuntimeError("family_capital_target_update_failed")
@@ -220,7 +217,7 @@ def _create_income_with_family_capital(
         raise
 
 
-def _rollback_family_capital_contribution(source_user_id: int, transaction_id: int) -> None:
+def _rollback_family_capital_contribution(source_user_id: int, transaction_id: int, money_source: str = "cashless") -> None:
     contribution = auth_service.get_family_capital_contribution(source_user_id, transaction_id)
     if not contribution:
         return
@@ -229,7 +226,7 @@ def _rollback_family_capital_contribution(source_user_id: int, transaction_id: i
     target_owner_user_id = int(contribution["target_owner_user_id"])
     target_capital_account_id = int(contribution["target_capital_account_id"])
 
-    _adjust_main_account(source_user_id, amount)
+    _adjust_daily_account(source_user_id, money_source, amount)
     _adjust_capital_account(target_owner_user_id, target_capital_account_id, -amount)
     auth_service.reverse_family_capital_contribution(int(contribution["id"]))
 
@@ -288,6 +285,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
             payload.comment,
             planned_date,
             template_id=None,
+            money_source=payload.money_source,
         )
     else:
         if payload.type == "income":
@@ -317,6 +315,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
                     payload.date,
                     auto_capital_percent,
                     capital_account_id,
+                    money_source=payload.money_source,
                 )
         else:
             created_id = core.add_expense(
@@ -324,6 +323,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
                 category_name,
                 payload.comment,
                 payload.date,
+                money_source=payload.money_source,
             )
 
     if recurring_payload:
@@ -337,6 +337,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
             comment_template=payload.comment,
             months_ahead=recurring_payload.months_ahead,
             working_days_only=recurring_payload.working_days_only,
+            money_source=payload.money_source,
         )
         month_start, month_end = _month_range(planned_date if is_future else payload.date)
         core.delete_planned_transactions_in_period(template_id, month_start, month_end)
@@ -355,6 +356,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         comment=row["comment"],
         date=row["date"],
         status=row["status"] if "status" in row.keys() else "actual",
+        money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
     )
     return TransactionCreateResponse(
         id=created_id,
@@ -365,8 +367,76 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
 
 @router.delete("/{transaction_id}", response_model=MessageResponse)
 def delete_transaction(transaction_id: int, current_user=Depends(require_user)) -> MessageResponse:
+    existing = transaction_service.get_transaction_by_id(transaction_id)
     deleted = transaction_service.delete_transaction(transaction_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
-    _rollback_family_capital_contribution(int(current_user["id"]), transaction_id)
+    _rollback_family_capital_contribution(
+        int(current_user["id"]),
+        transaction_id,
+        existing.money_source if existing else "cashless",
+    )
     return MessageResponse(message="Транзакция удалена")
+
+
+@router.patch("/{transaction_id}", response_model=TransactionResponse)
+def update_transaction(
+    transaction_id: int,
+    payload: TransactionUpdateRequest,
+    current_user=Depends(require_user),
+) -> TransactionResponse:
+    existing = transaction_service.get_transaction_by_id(transaction_id)
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    family_contribution = auth_service.get_family_capital_contribution(int(current_user["id"]), transaction_id)
+    if family_contribution and any(field in update_data for field in ("amount", "type")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Операцию с семейным отчислением можно перенести между наличными и безналом, но сумму и тип сейчас нужно менять отдельной новой операцией.",
+        )
+
+    if "category_id" in update_data or "category_name" in update_data:
+        update_data["category"] = _resolve_category_name(
+            TransactionCreateRequest(
+                type=payload.type or existing.type,
+                category_id=payload.category_id,
+                category_name=payload.category_name,
+                amount=payload.amount or 1,
+                comment=payload.comment or "",
+                date=payload.date or date_cls.today().isoformat(),
+                money_source=payload.money_source or existing.money_source,
+            )
+        )
+        update_data.pop("category_id", None)
+        update_data.pop("category_name", None)
+
+    updated = core.update_transaction_fields(transaction_id, **update_data)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+
+    if (
+        family_contribution
+        and payload.money_source is not None
+        and payload.money_source != existing.money_source
+    ):
+        contribution_amount = float(family_contribution["amount"] or 0)
+        _adjust_daily_account(int(current_user["id"]), existing.money_source, contribution_amount)
+        _adjust_daily_account(int(current_user["id"]), payload.money_source, -contribution_amount)
+
+    row = core.get_transaction_by_id(transaction_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+    transaction = Transaction(
+        id=row["id"],
+        type=row["type"],
+        category=row["category"],
+        amount=row["amount"],
+        comment=row["comment"],
+        date=row["date"],
+        status=row["status"] if "status" in row.keys() else "actual",
+        money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
+    )
+    transaction_service.notify_listeners()
+    return TransactionResponse(**row_to_transaction_response(transaction))

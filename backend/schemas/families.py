@@ -148,6 +148,7 @@ class FamilyDashboardTransactionResponse(BaseModel):
     comment: str
     date: str
     status: Literal["actual", "planned"]
+    money_source: Literal["cashless", "cash"] = "cashless"
     owner_user_id: int
     owner_email: str
     owner_display_name: str

@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 import calendar
 
+from core_money import MONEY_SOURCE_CASHLESS, normalize_money_source
+
 
 def migrate_recurring_transactions(get_connection, app_logger, sqlite3_module):
     app_logger.info("Миграция: добавление полей для регулярных платежей...")
@@ -24,6 +26,14 @@ def migrate_recurring_transactions(get_connection, app_logger, sqlite3_module):
             cursor.execute("ALTER TABLE transactions ADD COLUMN template_id INTEGER")
             app_logger.info("Добавлено поле 'template_id' в таблицу transactions")
 
+        try:
+            cursor.execute("SELECT money_source FROM transactions LIMIT 1")
+        except sqlite3_module.OperationalError:
+            cursor.execute(
+                "ALTER TABLE transactions ADD COLUMN money_source TEXT NOT NULL DEFAULT 'cashless'"
+            )
+            app_logger.info("Добавлено поле 'money_source' в таблицу transactions")
+
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS recurring_templates (
@@ -34,6 +44,7 @@ def migrate_recurring_transactions(get_connection, app_logger, sqlite3_module):
                 day_of_month INTEGER NOT NULL,
                 category_id INTEGER,
                 comment_template TEXT,
+                money_source TEXT NOT NULL DEFAULT 'cashless',
                 months_ahead INTEGER DEFAULT 12,
                 working_days_only INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
@@ -42,9 +53,18 @@ def migrate_recurring_transactions(get_connection, app_logger, sqlite3_module):
             )
             """
         )
+        try:
+            cursor.execute("SELECT money_source FROM recurring_templates LIMIT 1")
+        except sqlite3_module.OperationalError:
+            cursor.execute(
+                "ALTER TABLE recurring_templates ADD COLUMN money_source TEXT NOT NULL DEFAULT 'cashless'"
+            )
+            app_logger.info("Добавлено поле 'money_source' в таблицу recurring_templates")
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_template ON transactions(template_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_executed ON transactions(executed_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_money_source ON transactions(money_source)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_templates_active ON recurring_templates(is_active)")
         conn.commit()
         app_logger.info("Миграция завершена")
@@ -69,6 +89,7 @@ def create_recurring_template(
     comment_template="",
     months_ahead=12,
     working_days_only=0,
+    money_source=MONEY_SOURCE_CASHLESS,
 ):
     app_logger.info(
         f"Создание шаблона: {name}, тип={template_type}, сумма={amount}, день={day_of_month}"
@@ -78,10 +99,20 @@ def create_recurring_template(
         cursor.execute(
             """
             INSERT INTO recurring_templates
-            (type, name, amount, day_of_month, category_id, comment_template, months_ahead, working_days_only)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (type, name, amount, day_of_month, category_id, comment_template, money_source, months_ahead, working_days_only)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (template_type, name, amount, day_of_month, category_id, comment_template, months_ahead, working_days_only),
+            (
+                template_type,
+                name,
+                amount,
+                day_of_month,
+                category_id,
+                comment_template,
+                normalize_money_source(money_source),
+                months_ahead,
+                working_days_only,
+            ),
         )
         conn.commit()
         template_id = cursor.lastrowid
@@ -96,7 +127,7 @@ def get_recurring_templates(get_connection, template_type=None):
             cursor.execute(
                 """
                 SELECT rt.id, rt.type, rt.name, rt.amount, rt.day_of_month, rt.category_id,
-                       c.name as category_name, rt.comment_template, rt.months_ahead,
+                       c.name as category_name, rt.comment_template, rt.money_source, rt.months_ahead,
                        rt.working_days_only, rt.is_active, rt.created_at
                 FROM recurring_templates rt
                 LEFT JOIN categories c ON c.id = rt.category_id
@@ -109,7 +140,7 @@ def get_recurring_templates(get_connection, template_type=None):
             cursor.execute(
                 """
                 SELECT rt.id, rt.type, rt.name, rt.amount, rt.day_of_month, rt.category_id,
-                       c.name as category_name, rt.comment_template, rt.months_ahead,
+                       c.name as category_name, rt.comment_template, rt.money_source, rt.months_ahead,
                        rt.working_days_only, rt.is_active, rt.created_at
                 FROM recurring_templates rt
                 LEFT JOIN categories c ON c.id = rt.category_id
@@ -126,7 +157,7 @@ def get_recurring_template_by_id(get_connection, template_id):
         cursor.execute(
             """
             SELECT id, type, name, amount, day_of_month, category_id,
-                   comment_template, months_ahead, working_days_only, is_active, created_at
+                   comment_template, money_source, months_ahead, working_days_only, is_active, created_at
             FROM recurring_templates
             WHERE id = ?
             """,
@@ -150,6 +181,7 @@ def update_recurring_template(
         "day_of_month",
         "category_id",
         "comment_template",
+        "money_source",
         "months_ahead",
         "working_days_only",
         "is_active",
@@ -159,6 +191,8 @@ def update_recurring_template(
         normalized_kwargs = dict(kwargs)
         if "template_type" in normalized_kwargs and "type" not in normalized_kwargs:
             normalized_kwargs["type"] = normalized_kwargs.pop("template_type")
+        if "money_source" in normalized_kwargs:
+            normalized_kwargs["money_source"] = normalize_money_source(normalized_kwargs["money_source"])
 
         for field, value in normalized_kwargs.items():
             if field in allowed_fields:
@@ -174,7 +208,7 @@ def update_recurring_template(
         schedule_changed = any(f in normalized_kwargs for f in ["day_of_month", "working_days_only"])
         if any(
             f in normalized_kwargs
-            for f in ["type", "amount", "day_of_month", "category_id", "comment_template", "months_ahead", "working_days_only"]
+            for f in ["type", "amount", "day_of_month", "category_id", "comment_template", "money_source", "months_ahead", "working_days_only"]
         ):
             delete_planned_transactions_fn(template_id)
             generate_planned_transactions_fn(template_id, include_current_due=schedule_changed)
@@ -242,10 +276,18 @@ def generate_planned_transactions(
                 )
             cursor.execute(
                 """
-                INSERT INTO transactions (type, category, amount, comment, date, status, template_id)
-                VALUES (?, ?, ?, ?, ?, 'planned', ?)
+                INSERT INTO transactions (type, category, amount, comment, date, status, template_id, money_source)
+                VALUES (?, ?, ?, ?, ?, 'planned', ?, ?)
                 """,
-                (template["type"], category_name, template["amount"], comment, date_str, template_id),
+                (
+                    template["type"],
+                    category_name,
+                    template["amount"],
+                    comment,
+                    date_str,
+                    template_id,
+                    normalize_money_source(template["money_source"]),
+                ),
             )
             count += 1
             current_date = (current_date + timedelta(days=32)).replace(day=1)
@@ -301,7 +343,7 @@ def get_planned_transactions_due(get_connection):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT t.id, t.type, t.category, t.amount, t.comment, t.date, t.template_id,
+            SELECT t.id, t.type, t.category, t.amount, t.comment, t.date, t.money_source, t.template_id,
                    rt.name as template_name
             FROM transactions t
             LEFT JOIN recurring_templates rt ON t.template_id = rt.id
@@ -318,7 +360,7 @@ def get_planned_transactions_by_template(get_connection, template_id):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, type, category, amount, comment, date, status, template_id, executed_at
+            SELECT id, type, category, amount, comment, date, money_source, status, template_id, executed_at
             FROM transactions
             WHERE template_id = ? AND status = 'planned'
             ORDER BY date

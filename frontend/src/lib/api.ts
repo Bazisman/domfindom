@@ -28,6 +28,7 @@ export type DashboardResponse = {
     comment: string;
     date: string;
     status: "actual" | "planned";
+    money_source: MoneySource;
   }>;
   budget_highlights: Array<{
     category_id: number;
@@ -61,6 +62,7 @@ export type Transaction = {
   comment: string;
   date: string;
   status: "actual" | "planned";
+  money_source: MoneySource;
 };
 
 export type TransactionPage = {
@@ -71,6 +73,7 @@ export type TransactionPage = {
 };
 
 export type TransactionType = "income" | "expense";
+export type MoneySource = "cashless" | "cash";
 export type TransactionPeriod = "all" | "month" | "last_month" | "year";
 export type SummaryPeriod = TransactionPeriod | "custom";
 
@@ -113,6 +116,7 @@ export type TransactionCreatePayload = {
   amount: number;
   comment: string;
   date: string;
+  money_source?: MoneySource;
   auto_capital_percent?: number;
   capital_account_id?: number;
   recurring?: {
@@ -122,6 +126,16 @@ export type TransactionCreatePayload = {
     months_ahead: number;
     working_days_only: boolean;
   };
+};
+
+export type TransactionUpdatePayload = {
+  type?: TransactionType;
+  category_id?: number;
+  category_name?: string;
+  amount?: number;
+  comment?: string;
+  date?: string;
+  money_source?: MoneySource;
 };
 
 export type CategoryCreatePayload = {
@@ -170,7 +184,7 @@ export type BudgetUpdatePayload = {
   period?: string;
 };
 
-export type AccountType = "main" | "capital";
+export type AccountType = "main" | "cash" | "cashless" | "capital";
 
 export type Account = {
   id: number;
@@ -184,6 +198,7 @@ export type Account = {
   color: string | null;
   family_visible: boolean;
   family_default_target: boolean;
+  money_source: MoneySource | null;
 };
 
 export type AccountCreatePayload = {
@@ -228,11 +243,13 @@ export type Settings = {
   auto_capital_enabled: boolean;
   auto_capital_percent: number;
   default_capital_account_id: number | null;
+  default_money_source: MoneySource;
 };
 
 export type SettingsUpdatePayload = {
   auto_capital_enabled?: boolean;
   auto_capital_percent?: number;
+  default_money_source?: MoneySource;
 };
 
 export type RecurringTemplate = {
@@ -244,6 +261,7 @@ export type RecurringTemplate = {
   category_id: number | null;
   category_name: string | null;
   comment_template: string;
+  money_source: MoneySource;
   months_ahead: number;
   working_days_only: boolean;
   is_active: boolean;
@@ -256,6 +274,7 @@ export type RecurringTemplateCreatePayload = {
   day_of_month: number;
   category_id?: number;
   comment_template?: string;
+  money_source?: MoneySource;
   months_ahead?: number;
   working_days_only?: boolean;
 };
@@ -267,6 +286,7 @@ export type RecurringTemplateUpdatePayload = {
   day_of_month?: number;
   category_id?: number | null;
   comment_template?: string;
+  money_source?: MoneySource;
   months_ahead?: number;
   working_days_only?: boolean;
   is_active?: boolean;
@@ -391,6 +411,7 @@ export type FamilyDashboardResponse = {
     comment: string;
     date: string;
     status: "actual" | "planned";
+    money_source: MoneySource;
     owner_user_id: number;
     owner_email: string;
     owner_display_name: string;
@@ -590,6 +611,7 @@ export type DuePlannedTransaction = {
   date: string;
   template_id: number | null;
   template_name: string | null;
+  money_source: MoneySource;
 };
 
 type ValidationErrorItem = {
@@ -1201,6 +1223,13 @@ export function createTransaction(payload: TransactionCreatePayload) {
 export function deleteTransaction(transactionId: number) {
   return request<{ message: string }>(`/transactions/${transactionId}`, {
     method: "DELETE",
+  });
+}
+
+export function updateTransaction(transactionId: number, payload: TransactionUpdatePayload) {
+  return request<Transaction>(`/transactions/${transactionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }
 

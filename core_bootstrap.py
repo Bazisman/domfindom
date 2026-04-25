@@ -4,6 +4,8 @@ def init_db(
     migrate_recurring_transactions_fn,
     create_indexes_fn,
 ):
+    from core_money import CASH_ACCOUNT_ID, CASHLESS_ACCOUNT_ID, MONEY_SOURCE_CASHLESS
+
     app_logger.info("Инициализация базы данных")
 
     with get_connection() as conn:
@@ -18,6 +20,7 @@ def init_db(
                 amount REAL NOT NULL,
                 comment TEXT,
                 date TEXT NOT NULL,
+                money_source TEXT NOT NULL DEFAULT 'cashless',
                 created_at TEXT DEFAULT (datetime('now'))
             )
             """
@@ -137,15 +140,36 @@ def init_db(
             """
         )
 
-        cursor.execute("SELECT COUNT(*) FROM accounts WHERE id = 1")
+        cursor.execute("SELECT COUNT(*) FROM accounts WHERE id = ?", (CASHLESS_ACCOUNT_ID,))
         if cursor.fetchone()[0] == 0:
             cursor.execute(
                 """
                 INSERT INTO accounts (id, name, type, balance, created_at, updated_at)
-                VALUES (1, 'Основной счёт', 'main', 0, datetime('now'), datetime('now'))
-                """
+                VALUES (?, 'Безнал', 'main', 0, datetime('now'), datetime('now'))
+                """,
+                (CASHLESS_ACCOUNT_ID,),
             )
-            app_logger.info("Создан основной счёт с ID=1")
+            app_logger.info("Создан счёт безнала с ID=1")
+        else:
+            cursor.execute(
+                """
+                UPDATE accounts
+                SET name = 'Безнал', type = 'main', updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (CASHLESS_ACCOUNT_ID,),
+            )
+
+        cursor.execute("SELECT COUNT(*) FROM accounts WHERE id = ?", (CASH_ACCOUNT_ID,))
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(
+                """
+                INSERT INTO accounts (id, name, type, balance, created_at, updated_at)
+                VALUES (?, 'Наличные', 'cash', 0, datetime('now'), datetime('now'))
+                """,
+                (CASH_ACCOUNT_ID,),
+            )
+            app_logger.info("Создан счёт наличных с ID=2")
 
         cursor.execute("SELECT COUNT(*) FROM categories")
         if cursor.fetchone()[0] == 0:
@@ -178,6 +202,7 @@ def init_db(
         default_settings = {
             "auto_capital_enabled": "1",
             "auto_capital_percent": "10",
+            "default_money_source": MONEY_SOURCE_CASHLESS,
         }
         for key, value in default_settings.items():
             cursor.execute(
@@ -190,4 +215,3 @@ def init_db(
     migrate_recurring_transactions_fn()
     create_indexes_fn()
     app_logger.info("Database initialization completed")
-

@@ -1,3 +1,6 @@
+from core_money import MONEY_SOURCE_CASHLESS, normalize_money_source
+
+
 def add_planned_transaction(
     get_connection,
     invalidate_cache_fn,
@@ -8,6 +11,7 @@ def add_planned_transaction(
     comment,
     date,
     template_id=None,
+    money_source=MONEY_SOURCE_CASHLESS,
 ):
     app_logger.info(
         f"Добавление planned-транзакции: type={transaction_type}, amount={amount}, date={date}, template_id={template_id}"
@@ -16,10 +20,18 @@ def add_planned_transaction(
         cursor = conn.cursor()
         cursor.execute(
             """
-                INSERT INTO transactions (type, category, amount, comment, date, status, template_id, created_at)
-                VALUES (?, ?, ?, ?, ?, 'planned', ?, datetime('now'))
+                INSERT INTO transactions (type, category, amount, comment, date, status, template_id, money_source, created_at)
+                VALUES (?, ?, ?, ?, ?, 'planned', ?, ?, datetime('now'))
             """,
-            (transaction_type, category, amount, comment, date, template_id),
+            (
+                transaction_type,
+                category,
+                amount,
+                comment,
+                date,
+                template_id,
+                normalize_money_source(money_source),
+            ),
         )
         conn.commit()
         transaction_id = cursor.lastrowid
@@ -54,7 +66,9 @@ def get_balance(get_connection, get_cached_fn, force_update=False):
     def fetch_balance():
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT balance FROM accounts WHERE id = 1")
+            cursor.execute(
+                "SELECT COALESCE(SUM(balance), 0) FROM accounts WHERE id IN (1, 2) AND is_active = 1"
+            )
             main_balance = cursor.fetchone()[0] or 0
             cursor.execute(
                 "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'income' AND (status = 'actual' OR status IS NULL)"
@@ -74,7 +88,7 @@ def get_last_transactions(get_connection, limit=10, offset=0):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, date, type, category, amount, comment, status, template_id
+            SELECT id, date, type, category, amount, comment, money_source, status, template_id
             FROM transactions
             ORDER BY date DESC, id DESC
             LIMIT ? OFFSET ?
@@ -89,7 +103,7 @@ def get_all_transactions(get_connection):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, date, type, category, amount, comment, status, template_id
+            SELECT id, date, type, category, amount, comment, money_source, status, template_id
             FROM transactions
             ORDER BY date DESC, id DESC
             """
@@ -109,7 +123,7 @@ def get_transactions_by_period(get_connection, start_date, end_date, limit=500, 
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, date, type, category, amount, comment, status, template_id
+            SELECT id, date, type, category, amount, comment, money_source, status, template_id
             FROM transactions
             WHERE date BETWEEN ? AND ?
             ORDER BY date DESC, id DESC
@@ -125,7 +139,7 @@ def get_transaction_by_id(get_connection, transaction_id):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, date, type, category, amount, comment, status, template_id
+            SELECT id, date, type, category, amount, comment, money_source, status, template_id
             FROM transactions
             WHERE id = ?
             """,

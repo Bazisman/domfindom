@@ -16,7 +16,7 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
     start_of_month = today[:8] + "01"
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT balance FROM accounts WHERE id = 1")
+        cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM accounts WHERE id IN (1, 2) AND is_active = 1")
         current_balance = cursor.fetchone()[0] or 0
 
         cursor.execute(

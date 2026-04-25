@@ -49,11 +49,14 @@ def _family_meta_map(family_id: int, owner_user_id: int):
     }
 
 
-def _main_account_response(row) -> AccountResponse:
+def _daily_account_response(row) -> AccountResponse:
+    account_id = int(_row_value(row, "id", 0))
+    account_type = str(_row_value(row, "type", "main") or "main")
+    money_source = "cash" if account_id == 2 or account_type == "cash" else "cashless"
     return AccountResponse(
-        id=_row_value(row, "id", 0),
+        id=account_id,
         name=_row_value(row, "name", ""),
-        type="main",
+        type=account_type if account_type in {"main", "cash", "cashless"} else "main",
         balance=float(_row_value(row, "balance", 0) or 0),
         currency=_row_value(row, "currency", "RUB"),
         is_active=bool(_row_value(row, "is_active", 1)),
@@ -62,6 +65,7 @@ def _main_account_response(row) -> AccountResponse:
         color=None,
         family_visible=False,
         family_default_target=False,
+        money_source=money_source,
     )
 
 
@@ -79,6 +83,7 @@ def _capital_account_response(row, family_meta=None) -> AccountResponse:
         color=_row_value(row, "color"),
         family_visible=bool(family_meta.get("is_visible", False)),
         family_default_target=bool(family_meta.get("is_default_target", False)),
+        money_source=None,
     )
 
 
@@ -86,7 +91,7 @@ def _find_account_row(account_id: int, include_inactive: bool = False):
     if account_id < 100:
         for account in transaction_service.get_all_accounts(include_inactive=include_inactive):
             if _row_value(account, "id") == account_id:
-                return ("main", account)
+                return ("daily", account)
         return None
 
     for account in core.get_capital_accounts(include_inactive=include_inactive):
@@ -102,15 +107,15 @@ def list_accounts(
 ) -> List[AccountResponse]:
     family_id = _current_family_id(int(current_user["id"]))
     family_meta = _family_meta_map(family_id, int(current_user["id"]))
-    main_accounts = [
-        _main_account_response(account)
+    daily_accounts = [
+        _daily_account_response(account)
         for account in transaction_service.get_all_accounts(include_inactive=include_inactive)
     ]
     capital_accounts = [
         _capital_account_response(account, family_meta.get(int(_row_value(account, "id", 0))))
         for account in core.get_capital_accounts(include_inactive=include_inactive)
     ]
-    return [*main_accounts, *capital_accounts]
+    return [*daily_accounts, *capital_accounts]
 
 
 @router.get("/{account_id}", response_model=AccountResponse)
@@ -120,8 +125,8 @@ def get_account(account_id: int, current_user=Depends(require_user)) -> AccountR
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
 
     account_type, row = found
-    if account_type == "main":
-        return _main_account_response(row)
+    if account_type == "daily":
+        return _daily_account_response(row)
 
     family_id = _current_family_id(int(current_user["id"]))
     family_meta = _family_meta_map(family_id, int(current_user["id"]))
@@ -221,7 +226,7 @@ def delete_account(account_id: int, current_user=Depends(require_user)) -> Messa
     if account_type != "capital":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Основной счет нельзя удалить через этот раздел",
+            detail="Повседневные счета нельзя удалить через этот раздел",
         )
 
     deleted = transaction_service.delete_capital_account(account_id)

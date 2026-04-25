@@ -15,6 +15,7 @@ def _build_settings_response() -> SettingsResponse:
         auto_capital_enabled=enabled,
         auto_capital_percent=percent,
         default_capital_account_id=default_account["id"] if default_account else None,
+        default_money_source=core.get_default_money_source(),
     )
 
 
@@ -30,4 +31,6 @@ def update_settings(payload: SettingsUpdateRequest) -> SettingsResponse:
         enabled=payload.auto_capital_enabled if payload.auto_capital_enabled is not None else current_enabled,
         percent=payload.auto_capital_percent if payload.auto_capital_percent is not None else current_percent,
     )
+    if payload.default_money_source is not None:
+        core.set_default_money_source(payload.default_money_source)
     return _build_settings_response()

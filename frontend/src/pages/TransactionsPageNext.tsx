@@ -27,6 +27,8 @@ import {
   updateAccount,
   updateReconciliationSource,
   updateSettings,
+  updateTransaction,
+  type MoneySource,
   type ReconciliationHistoryItem,
   type Transaction,
   type TransactionPage,
@@ -45,6 +47,11 @@ const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
+const MONEY_SOURCE_OPTIONS: Array<{ value: MoneySource; label: string }> = [
+  { value: "cashless", label: "Безнал" },
+  { value: "cash", label: "Наличные" },
+];
+
 type FeedTransaction = Transaction & {
   owner_user_id?: number;
   owner_email?: string;
@@ -61,6 +68,10 @@ function formatMoney(value: number) {
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function moneySourceLabel(source: MoneySource | undefined) {
+  return source === "cash" ? "Наличные" : "Безнал";
 }
 
 function formatReconciliationDate(value: string) {
@@ -95,6 +106,8 @@ export function TransactionsPageNext() {
   const [amount, setAmount] = useState("");
   const [comment, setComment] = useState("");
   const [date, setDate] = useState(getToday);
+  const [moneySource, setMoneySource] = useState<MoneySource>("cashless");
+  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringName, setRecurringName] = useState("");
   const [recurringNameTouched, setRecurringNameTouched] = useState(false);
@@ -225,6 +238,12 @@ export function TransactionsPageNext() {
   }, [isRecurring, recurringNameTouched, recurringSuggestedName]);
 
   useEffect(() => {
+    if (editingTransactionId === null && settings.data?.default_money_source) {
+      setMoneySource(settings.data.default_money_source);
+    }
+  }, [editingTransactionId, settings.data?.default_money_source]);
+
+  useEffect(() => {
     const sources = reconciliationSummary.data?.sources ?? [];
     setSourceDrafts((current) => {
       const next: Record<number, { name: string; balance: string }> = {};
@@ -333,6 +352,33 @@ export function TransactionsPageNext() {
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
         queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions"] }),
       ]);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ transactionId, payload }: { transactionId: number; payload: Parameters<typeof updateTransaction>[1] }) =>
+      updateTransaction(transactionId, payload),
+    onSuccess: async () => {
+      setEditingTransactionId(null);
+      setAmount("");
+      setComment("");
+      setIsRecurring(false);
+      setRecurringName("");
+      setRecurringNameTouched(false);
+      setRecurringMonthsAhead("12");
+      setRecurringWorkingDaysOnly(true);
+      setFormError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["recurring-templates"] }),
+        queryClient.invalidateQueries({ queryKey: ["reconciliation"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "transactions"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
     },
   });
 
@@ -626,6 +672,36 @@ export function TransactionsPageNext() {
     );
   }
 
+  function cancelEdit() {
+    setEditingTransactionId(null);
+    setAmount("");
+    setComment("");
+    setIsRecurring(false);
+    setRecurringName("");
+    setRecurringNameTouched(false);
+    setRecurringMonthsAhead("12");
+    setRecurringWorkingDaysOnly(true);
+    setFormError(null);
+    setMoneySource(settings.data?.default_money_source ?? "cashless");
+  }
+
+  function startEditTransaction(item: FeedTransaction) {
+    const matchedCategory = (categories.data ?? []).find(
+      (category) => category.name === item.category && (category.type === item.type || category.type === "both"),
+    );
+    setEditingTransactionId(item.id);
+    setType(item.type);
+    setCategoryId(matchedCategory ? String(matchedCategory.id) : "");
+    setAmount(String(item.amount));
+    setComment(item.comment ?? "");
+    setDate(item.date);
+    setMoneySource(item.money_source ?? "cashless");
+    setIsRecurring(false);
+    setRecurringName("");
+    setRecurringNameTouched(false);
+    setFormError(matchedCategory ? null : "Категория этой операции не найдена в активном списке. Выбери новую категорию перед сохранением.");
+  }
+
   async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
@@ -650,12 +726,28 @@ export function TransactionsPageNext() {
     const dayOfMonth = Number(date.split("-")[2] || "1");
     const templateName = recurringName.trim() || recurringSuggestedName;
 
+    if (editingTransactionId !== null) {
+      updateMutation.mutate({
+        transactionId: editingTransactionId,
+        payload: {
+          type,
+          category_id: Number(categoryId),
+          amount: normalizedAmount,
+          comment,
+          date,
+          money_source: moneySource,
+        },
+      });
+      return;
+    }
+
     const payload: Parameters<typeof createTransaction>[0] = {
       type,
       category_id: Number(categoryId),
       amount: normalizedAmount,
       comment,
       date,
+      money_source: moneySource,
       auto_capital_percent: type === "income" && autoCapitalEnabled ? settings.data?.auto_capital_percent : undefined,
       capital_account_id: type === "income" ? defaultCapitalAccount?.id : undefined,
       recurring: isRecurring
@@ -694,8 +786,8 @@ export function TransactionsPageNext() {
       <div className="transactions-layout transactions-layout-stack">
         <section className="panel panel-form">
         <div className="panel-header">
-          <h2>Новая транзакция</h2>
-          <span>{type === "income" ? "Доход" : "Расход"}</span>
+          <h2>{editingTransactionId === null ? "Новая транзакция" : "Редактирование"}</h2>
+          <span>{type === "income" ? "Доход" : "Расход"} · {moneySourceLabel(moneySource)}</span>
         </div>
 
         <form className="transaction-form" onSubmit={submitForm}>
@@ -714,6 +806,19 @@ export function TransactionsPageNext() {
             >
               Доход
             </button>
+          </div>
+
+          <div className="toggle-row">
+            {MONEY_SOURCE_OPTIONS.map((option) => (
+              <button
+                className={moneySource === option.value ? "toggle active" : "toggle"}
+                key={option.value}
+                onClick={() => setMoneySource(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
 
           <label className="field">
@@ -767,6 +872,7 @@ export function TransactionsPageNext() {
           <label className="filter-check">
             <input
               checked={isRecurring}
+              disabled={editingTransactionId !== null}
               onChange={(event) => {
                 const checked = event.target.checked;
                 setIsRecurring(checked);
@@ -833,9 +939,18 @@ export function TransactionsPageNext() {
 
           {formError && <p className="form-error">{formError}</p>}
 
-          <button className="primary-button" disabled={createMutation.isPending} type="submit">
-            {createMutation.isPending ? "Сохраняем..." : "Добавить транзакцию"}
+          <button className="primary-button" disabled={createMutation.isPending || updateMutation.isPending} type="submit">
+            {createMutation.isPending || updateMutation.isPending
+              ? "Сохраняем..."
+              : editingTransactionId === null
+                ? "Добавить транзакцию"
+                : "Сохранить изменения"}
           </button>
+          {editingTransactionId !== null ? (
+            <button className="ghost-button" onClick={cancelEdit} type="button">
+              Отменить редактирование
+            </button>
+          ) : null}
         </form>
         </section>
 
@@ -1018,6 +1133,7 @@ export function TransactionsPageNext() {
                 <div className="transaction-title-row">
                   <strong>{item.category}</strong>
                   {item.status === "planned" && <span className="status-chip">Не исполнено</span>}
+                  <span className="status-chip money-source-chip">{moneySourceLabel(item.money_source)}</span>
                 </div>
                 <p>{item.comment || "Без комментария"}</p>
                 {useFamilyFeed && (item.owner_display_name || item.owner_email) ? (
@@ -1031,14 +1147,24 @@ export function TransactionsPageNext() {
                 </strong>
               </div>
               {!useFamilyFeed || item.owner_user_id === me.data?.id ? (
-                <button
-                  className="ghost-button"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => deleteMutation.mutate(item.id)}
-                  type="button"
-                >
-                  Удалить
-                </button>
+                <div className="transaction-actions">
+                  <button
+                    className="ghost-button"
+                    disabled={updateMutation.isPending}
+                    onClick={() => startEditTransaction(item)}
+                    type="button"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    className="ghost-button"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(item.id)}
+                    type="button"
+                  >
+                    Удалить
+                  </button>
+                </div>
               ) : (
                 <span className="muted">Только просмотр</span>
               )}

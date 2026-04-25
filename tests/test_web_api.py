@@ -2157,12 +2157,18 @@ class WebApiTestCase(unittest.TestCase):
 
         owner_db_token = core.push_db_name(auth_service.get_user_db_path(self._current_user_id()))
         try:
+            now = datetime.now()
+            last_day = calendar.monthrange(now.year, now.month)[1]
+            planned_day = min(now.day + 2, last_day)
+            planned_date = f"{now.year:04d}-{now.month:02d}-{planned_day:02d}"
+            if planned_day <= now.day:
+                planned_date = (now + timedelta(days=7)).strftime("%Y-%m-%d")
             core.add_planned_transaction(
                 "expense",
                 expense_category,
                 700.0,
                 "Owner future planned summary",
-                "2026-04-20",
+                planned_date,
             )
         finally:
             core.pop_db_name(owner_db_token)
@@ -2691,6 +2697,8 @@ class WebApiTestCase(unittest.TestCase):
 
     def test_create_transaction_with_recurring_creates_template(self):
         expense_category = self.client.get("/api/v1/categories?type=expense").json()[0]
+        target_date = (datetime.now() + timedelta(days=10)).strftime("%Y-%m-%d")
+        target_day = int(target_date.split("-")[2])
 
         response = self.client.post(
             "/api/v1/transactions",
@@ -2699,11 +2707,11 @@ class WebApiTestCase(unittest.TestCase):
                 "category_id": expense_category["id"],
                 "amount": 2100.0,
                 "comment": "Интернет дома",
-                "date": "2026-04-12",
+                "date": target_date,
                 "recurring": {
                     "enabled": True,
                     "template_name": "Домашний интернет",
-                    "day_of_month": 12,
+                    "day_of_month": target_day,
                     "months_ahead": 6,
                     "working_days_only": True,
                 },
@@ -2889,7 +2897,8 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertEqual(actual_expense.status_code, 201)
 
-        current_month_pending_date = today.strftime("%Y-%m-25")
+        pending_day = min(today.day + 3, calendar.monthrange(today.year, today.month)[1])
+        current_month_pending_date = today.replace(day=pending_day).strftime("%Y-%m-%d")
         db_token = self._push_current_user_db()
         try:
             with core.get_connection() as conn:
@@ -2947,6 +2956,49 @@ class WebApiTestCase(unittest.TestCase):
         self.assertTrue(any(item["type"] == "main" for item in payload))
         main_account = next(item for item in payload if item["type"] == "main")
         self.assertEqual(main_account["id"], 1)
+        cash_account = next(item for item in payload if item["money_source"] == "cash")
+        self.assertEqual(cash_account["id"], 2)
+
+    def test_cash_transaction_and_edit_source_via_api(self):
+        created = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": "Зарплата",
+                "amount": 1000,
+                "comment": "Cash by mistake",
+                "date": "2026-04-05",
+                "money_source": "cash",
+                "auto_capital_percent": 0,
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        transaction_id = created.json()["id"]
+        self.assertEqual(created.json()["transaction"]["money_source"], "cash")
+
+        accounts = self.client.get("/api/v1/accounts").json()
+        self.assertEqual(next(item for item in accounts if item["money_source"] == "cash")["balance"], 1000.0)
+        self.assertEqual(next(item for item in accounts if item["money_source"] == "cashless")["balance"], 0.0)
+
+        updated = self.client.patch(
+            f"/api/v1/transactions/{transaction_id}",
+            json={"money_source": "cashless"},
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()["money_source"], "cashless")
+
+        accounts_after = self.client.get("/api/v1/accounts").json()
+        self.assertEqual(next(item for item in accounts_after if item["money_source"] == "cash")["balance"], 0.0)
+        self.assertEqual(next(item for item in accounts_after if item["money_source"] == "cashless")["balance"], 1000.0)
+
+    def test_default_money_source_setting_via_api(self):
+        response = self.client.patch("/api/v1/settings", json={"default_money_source": "cash"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["default_money_source"], "cash")
+
+        fetched = self.client.get("/api/v1/settings")
+        self.assertEqual(fetched.status_code, 200)
+        self.assertEqual(fetched.json()["default_money_source"], "cash")
 
     def test_capital_account_crud_and_default_switch_via_api(self):
         first = self.client.post(

@@ -3,7 +3,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 
-AccountType = Literal["main", "capital"]
+MoneySource = Literal["cashless", "cash"]
+AccountType = Literal["main", "cash", "cashless", "capital"]
 
 
 class AccountResponse(BaseModel):
@@ -18,6 +19,7 @@ class AccountResponse(BaseModel):
     color: Optional[str] = None
     family_visible: bool = False
     family_default_target: bool = False
+    money_source: Optional[MoneySource] = None
 
 
 class AccountCreateRequest(BaseModel):

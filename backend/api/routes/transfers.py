@@ -49,7 +49,7 @@ def _family_transfer_rows(user_id: int, account_id: Optional[int], limit: int) -
         finally:
             core.pop_db_name(token)
 
-        source_name = "Основной счет"
+        source_name = "Безнал"
         if user_id == target_owner_user_id and user_id != source_user_id:
             source_name = f"Семейное отчисление: {item['source_display_name'] or item['source_email']}"
         to_name = target_account_name or "Семейный счет"

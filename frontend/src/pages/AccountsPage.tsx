@@ -138,10 +138,17 @@ export function AccountsPage() {
     [accounts.data],
   );
 
-  const mainAccount = useMemo(
-    () => (accounts.data ?? []).find((item) => item.type === "main") ?? null,
+  const cashlessAccount = useMemo(
+    () => (accounts.data ?? []).find((item) => item.money_source === "cashless" || item.id === 1) ?? null,
     [accounts.data],
   );
+
+  const cashAccount = useMemo(
+    () => (accounts.data ?? []).find((item) => item.money_source === "cash" || item.id === 2) ?? null,
+    [accounts.data],
+  );
+
+  const dailyBalance = (cashlessAccount?.balance ?? 0) + (cashAccount?.balance ?? 0);
 
   const ownCapital = useMemo(
     () => capitalAccounts.filter((item) => item.is_active).reduce((sum, account) => sum + account.balance, 0),
@@ -620,6 +627,20 @@ export function AccountsPage() {
     return "Счёт капитала";
   }
 
+  function getTransferAccountLabel(account: Account) {
+    if (account.type === "capital") {
+      return `Капитал · ${account.name}`;
+    }
+    return account.money_source === "cash" ? "Наличные" : "Безнал";
+  }
+
+  function saveDefaultMoneySource(source: "cashless" | "cash") {
+    setSettingsSavedNotice(false);
+    updateSettingsMutation.mutate({
+      default_money_source: source,
+    });
+  }
+
   const defaultCapitalAccountName = activeAutoCapitalTarget?.name ?? "счёт ещё не выбран";
 
   return (
@@ -702,6 +723,28 @@ export function AccountsPage() {
             </label>
 
             <p className="auto-capital-note">Личные и семейные счета для автоотчислений настраиваются здесь.</p>
+
+            <div className="field">
+              <span>Основной способ оплаты</span>
+              <div className="toggle-row">
+                <button
+                  className={(settings.data?.default_money_source ?? "cashless") === "cashless" ? "toggle active" : "toggle"}
+                  disabled={updateSettingsMutation.isPending}
+                  onClick={() => saveDefaultMoneySource("cashless")}
+                  type="button"
+                >
+                  Безнал
+                </button>
+                <button
+                  className={settings.data?.default_money_source === "cash" ? "toggle active" : "toggle"}
+                  disabled={updateSettingsMutation.isPending}
+                  onClick={() => saveDefaultMoneySource("cash")}
+                  type="button"
+                >
+                  Наличные
+                </button>
+              </div>
+            </div>
 
             <button
               className="primary-button"
@@ -822,7 +865,7 @@ export function AccountsPage() {
                   <option value="">Выбери счёт</option>
                   {transferAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.name}
+                      {getTransferAccountLabel(account)}
                     </option>
                   ))}
                 </select>
@@ -839,7 +882,7 @@ export function AccountsPage() {
                   <option value="">Выбери счёт</option>
                   {transferAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.name}
+                      {getTransferAccountLabel(account)}
                     </option>
                   ))}
                 </select>
@@ -936,9 +979,21 @@ export function AccountsPage() {
 
           <div className="summary-grid summary-grid-3 accounts-summary-grid">
             <article className="summary-card summary-card-main account-summary-card account-summary-card-main">
-              <p className="panel-label">Деньги на руках</p>
-              <h3>{mainAccount ? formatMoney(mainAccount.balance) : "—"}</h3>
-              <p className="muted">Деньги на руках и доступный повседневный баланс.</p>
+              <p className="panel-label">Повседневные деньги</p>
+              <h3>{formatMoney(dailyBalance)}</h3>
+              <p className="muted">Безнал и наличные для обычных доходов и расходов.</p>
+            </article>
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">Безнал</p>
+              <h3>{formatMoney(cashlessAccount?.balance ?? 0)}</h3>
+              <p className="muted">Деньги на карте и в безналичных расчетах.</p>
+            </article>
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">Наличные</p>
+              <h3>{formatMoney(cashAccount?.balance ?? 0)}</h3>
+              <p className="muted">Деньги в кошельке и наличных источниках.</p>
             </article>
 
             <article className="summary-card account-summary-card">

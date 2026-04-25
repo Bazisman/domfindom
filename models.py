@@ -16,6 +16,7 @@ class Transaction:
     updated_at: Optional[str] = None
     sync_status: str = "synced"
     status: str = "actual"  # actual (выполненная) / planned (запланированная)
+    money_source: str = "cashless"  # cashless / cash
     
     @property
     def type_emoji(self) -> str:
@@ -45,7 +46,8 @@ class Transaction:
             amount=row['amount'] if isinstance(row, dict) or hasattr(row, '__getitem__') else getattr(row, 'amount', 0.0),
             comment=row.get('comment', '') if isinstance(row, dict) else getattr(row, 'comment', ''),
             date=row['date'] if isinstance(row, dict) or hasattr(row, '__getitem__') else getattr(row, 'date', ''),
-            status=row.get('status', 'actual') if isinstance(row, dict) else getattr(row, 'status', 'actual')
+            status=row.get('status', 'actual') if isinstance(row, dict) else getattr(row, 'status', 'actual'),
+            money_source=row.get('money_source', 'cashless') if isinstance(row, dict) else getattr(row, 'money_source', 'cashless')
         )
 
 

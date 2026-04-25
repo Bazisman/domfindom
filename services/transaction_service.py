@@ -147,7 +147,8 @@ class TransactionService:
                     amount=row['amount'],
                     comment=row['comment'],
                     date=row['date'],
-                    status=row['status'] if 'status' in row.keys() else 'actual'
+                    status=row['status'] if 'status' in row.keys() else 'actual',
+                    money_source=row['money_source'] if 'money_source' in row.keys() else 'cashless',
                 ))
             
             app_logger.debug(f"Получено {len(result)} транзакций")
@@ -169,7 +170,8 @@ class TransactionService:
                     amount=row['amount'],
                     comment=row['comment'],
                     date=row['date'],
-                    status=row['status'] if 'status' in row.keys() else 'actual'
+                    status=row['status'] if 'status' in row.keys() else 'actual',
+                    money_source=row['money_source'] if 'money_source' in row.keys() else 'cashless',
                 ))
             app_logger.debug(f"Получено {len(result)} транзакций для экспорта")
             return result
@@ -188,7 +190,9 @@ class TransactionService:
                     category=row['category'],
                     amount=row['amount'],
                     comment=row['comment'],
-                    date=row['date']
+                    date=row['date'],
+                    status=row['status'] if 'status' in row.keys() else 'actual',
+                    money_source=row['money_source'] if 'money_source' in row.keys() else 'cashless',
                 )
             return None
         except Exception as e:
@@ -206,7 +210,7 @@ class TransactionService:
                     app_logger.info(f"Категория '{transaction.category}' - отчисление не делается")
                     core.add_income_with_capital(
                         transaction.amount, transaction.category, transaction.comment,
-                        transaction.date, 0, None
+                        transaction.date, 0, None, money_source=transaction.money_source
                     )
                 else:
                     # Получаем основной счёт капитала
@@ -217,18 +221,24 @@ class TransactionService:
                         # Добавляем доход без отчисления
                         core.add_income_with_capital(
                             transaction.amount, transaction.category, transaction.comment,
-                            transaction.date, 0, None
+                            transaction.date, 0, None, money_source=transaction.money_source
                         )
                     else:
                         # Добавляем доход с отчислением
                         core.add_income_with_capital(
                             transaction.amount, transaction.category, transaction.comment,
                             transaction.date, self._auto_percent if self._auto_enabled else 0,
-                            capital_account['id']
+                            capital_account['id'], money_source=transaction.money_source
                         )
             else:
                 # Расход
-                core.add_expense(transaction.amount, transaction.category, transaction.comment, transaction.date)
+                core.add_expense(
+                    transaction.amount,
+                    transaction.category,
+                    transaction.comment,
+                    transaction.date,
+                    money_source=transaction.money_source,
+                )
             
             self.notify_listeners()
             app_logger.info(f"Транзакция добавлена успешно")
@@ -243,7 +253,7 @@ class TransactionService:
         try:
             accounts = core.get_all_accounts()
             for acc in accounts:
-                if acc['type'] == 'main':
+                if acc['id'] == 1:
                     return acc
             return None
         except Exception as e:
@@ -253,10 +263,11 @@ class TransactionService:
     def update_transaction(self, tid: int, field: str, value) -> bool:
         """Обновляет поле транзакции"""
         try:
-            core.update_transaction(tid, field, value)
-            self.notify_listeners()
-            app_logger.debug(f"Транзакция {tid} обновлена: {field}={value}")
-            return True
+            result = core.update_transaction(tid, field, value)
+            if result:
+                self.notify_listeners()
+                app_logger.debug(f"Транзакция {tid} обновлена: {field}={value}")
+            return result
         except Exception as e:
             app_logger.error(f"Ошибка обновления транзакции {tid}: {e}", exc_info=True)
             return False
@@ -339,7 +350,8 @@ class TransactionService:
                     amount=row['amount'],
                     comment=row['comment'],
                     date=row['date'],
-                    status=row['status'] if 'status' in row.keys() else 'actual'
+                    status=row['status'] if 'status' in row.keys() else 'actual',
+                    money_source=row['money_source'] if 'money_source' in row.keys() else 'cashless',
                 ))
             return result
         except Exception as e:
@@ -539,7 +551,8 @@ class TransactionService:
                 category_id=category_id,
                 comment_template=transaction.comment,
                 months_ahead=months_ahead,
-                working_days_only=True
+                working_days_only=True,
+                money_source=transaction.money_source,
             )
 
             # 5. Уведомляем всех слушателей (включая планирование)
@@ -563,12 +576,13 @@ class TransactionService:
     def create_recurring_template(self, template_type: str, name: str, amount: float, 
                                    day_of_month: int, category_id: int = None,
                                    comment_template: str = None, months_ahead: int = 12,
-                                   working_days_only: bool = True) -> int:
+                                   working_days_only: bool = True,
+                                   money_source: str = "cashless") -> int:
         """Создаёт шаблон регулярного платежа"""
         try:
             template_id = core.create_recurring_template(
                 template_type, name, amount, day_of_month, category_id,
-                comment_template, months_ahead, working_days_only
+                comment_template, months_ahead, working_days_only, money_source
             )
             self.notify_listeners()
             return template_id

@@ -1,3 +1,6 @@
+from core_money import MONEY_SOURCE_CASHLESS, normalize_money_source
+
+
 def get_app_setting(get_connection, key, default=None):
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -44,3 +47,15 @@ def set_auto_capital_settings(get_connection, enabled: bool, percent: int):
         "enabled": bool(enabled),
         "percent": normalized_percent,
     }
+
+
+def get_default_money_source(get_connection):
+    return normalize_money_source(
+        get_app_setting(get_connection, "default_money_source", MONEY_SOURCE_CASHLESS)
+    )
+
+
+def set_default_money_source(get_connection, money_source: str):
+    normalized = normalize_money_source(money_source)
+    set_app_setting(get_connection, "default_money_source", normalized)
+    return normalized

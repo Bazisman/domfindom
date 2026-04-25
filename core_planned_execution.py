@@ -1,3 +1,6 @@
+from core_money import account_id_for_money_source, normalize_money_source
+
+
 def execute_planned_transaction(
     get_connection,
     app_logger,
@@ -16,7 +19,7 @@ def execute_planned_transaction(
         try:
             cursor.execute(
                 """
-                SELECT id, type, category, amount, comment, date, template_id
+                SELECT id, type, category, amount, comment, date, money_source, template_id
                 FROM transactions
                 WHERE id = ? AND status = 'planned'
                 """,
@@ -26,6 +29,9 @@ def execute_planned_transaction(
             if not planned:
                 app_logger.warning(f"Плановая транзакция {transaction_id} не найдена")
                 return False
+
+            money_source = normalize_money_source(planned["money_source"])
+            source_account_id = account_id_for_money_source(money_source)
 
             cursor.execute(
                 """
@@ -48,8 +54,12 @@ def execute_planned_transaction(
                     capital_account = cursor.fetchone()
                     if capital_account:
                         cursor.execute(
-                            "UPDATE accounts SET balance = balance + ? WHERE id = 1",
-                            (main_amount,),
+                            """
+                            UPDATE accounts
+                            SET balance = balance + ?, updated_at = datetime("now")
+                            WHERE id = ?
+                            """,
+                            (main_amount, source_account_id),
                         )
                         cursor.execute(
                             """
@@ -60,7 +70,7 @@ def execute_planned_transaction(
                             VALUES (?, ?, ?, ?, ?, ?, 1)
                             """,
                             (
-                                1,
+                                source_account_id,
                                 capital_account_id,
                                 capital_amount,
                                 transaction_id,
@@ -82,18 +92,30 @@ def execute_planned_transaction(
                             "плановый доход будет зачислен полностью на основной счёт"
                         )
                         cursor.execute(
-                            "UPDATE accounts SET balance = balance + ? WHERE id = 1",
-                            (planned["amount"],),
+                            """
+                            UPDATE accounts
+                            SET balance = balance + ?, updated_at = datetime("now")
+                            WHERE id = ?
+                            """,
+                            (planned["amount"], source_account_id),
                         )
                 else:
                     cursor.execute(
-                        "UPDATE accounts SET balance = balance + ? WHERE id = 1",
-                        (planned["amount"],),
+                        """
+                        UPDATE accounts
+                        SET balance = balance + ?, updated_at = datetime("now")
+                        WHERE id = ?
+                        """,
+                        (planned["amount"], source_account_id),
                     )
             else:
                 cursor.execute(
-                    "UPDATE accounts SET balance = balance - ? WHERE id = 1",
-                    (planned["amount"],),
+                    """
+                    UPDATE accounts
+                    SET balance = balance - ?, updated_at = datetime("now")
+                    WHERE id = ?
+                    """,
+                    (planned["amount"], source_account_id),
                 )
 
             invalidate_cache_fn()

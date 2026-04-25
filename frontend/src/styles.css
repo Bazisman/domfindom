@@ -1290,6 +1290,19 @@ body {
   font-weight: 600;
 }
 
+.money-source-chip {
+  border-color: rgba(47, 163, 110, 0.28);
+  background: rgba(47, 163, 110, 0.1);
+  color: var(--green);
+}
+
+.transaction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .transaction-main p,
 .transaction-date {
   margin: 4px 0 0;
@@ -1694,6 +1707,10 @@ body {
 
   .transaction-meta {
     text-align: left;
+  }
+
+  .transaction-actions {
+    justify-content: flex-start;
   }
 
   .category-card,

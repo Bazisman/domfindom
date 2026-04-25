@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 
 TransactionType = Literal["income", "expense"]
 TransactionStatus = Literal["actual", "planned"]
+MoneySource = Literal["cashless", "cash"]
 
 
 class TransactionResponse(BaseModel):
@@ -15,6 +16,7 @@ class TransactionResponse(BaseModel):
     comment: str
     date: str
     status: TransactionStatus
+    money_source: MoneySource = "cashless"
 
 
 class TransactionPageResponse(BaseModel):
@@ -41,6 +43,7 @@ class TransactionCreateRequest(BaseModel):
     date: str
     auto_capital_percent: Optional[int] = Field(default=None, ge=0, le=100)
     capital_account_id: Optional[int] = None
+    money_source: MoneySource = "cashless"
     recurring: Optional[RecurringOptionsRequest] = None
 
     @model_validator(mode="after")
@@ -54,3 +57,30 @@ class TransactionCreateResponse(BaseModel):
     id: int
     message: str
     transaction: TransactionResponse
+
+
+class TransactionUpdateRequest(BaseModel):
+    type: Optional[TransactionType] = None
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    amount: Optional[float] = Field(default=None, gt=0)
+    comment: Optional[str] = None
+    date: Optional[str] = None
+    money_source: Optional[MoneySource] = None
+
+    @model_validator(mode="after")
+    def validate_has_changes(self) -> "TransactionUpdateRequest":
+        if all(
+            value is None
+            for value in (
+                self.type,
+                self.category_id,
+                self.category_name,
+                self.amount,
+                self.comment,
+                self.date,
+                self.money_source,
+            )
+        ):
+            raise ValueError("Нужно передать хотя бы одно поле для изменения")
+        return self

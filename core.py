@@ -20,6 +20,8 @@ from core_settings import (
     set_app_setting as _settings_set_app_setting,
     get_auto_capital_settings as _settings_get_auto_capital_settings,
     set_auto_capital_settings as _settings_set_auto_capital_settings,
+    get_default_money_source as _settings_get_default_money_source,
+    set_default_money_source as _settings_set_default_money_source,
 )
 from core_budgets import (
     normalize_budget_period as _budgets_normalize_budget_period,
@@ -122,6 +124,7 @@ from core_transactions_mutations import (
     add_expense as _txm_add_expense,
     delete_transaction as _txm_delete_transaction,
     update_transaction as _txm_update_transaction,
+    update_transaction_fields as _txm_update_transaction_fields,
 )
 from core_bootstrap import init_db as _bootstrap_init_db
 
@@ -157,6 +160,14 @@ def set_auto_capital_settings(enabled: bool, percent: int):
     return _settings_set_auto_capital_settings(get_connection, enabled, percent)
 
 
+def get_default_money_source():
+    return _settings_get_default_money_source(get_connection)
+
+
+def set_default_money_source(money_source: str):
+    return _settings_set_default_money_source(get_connection, money_source)
+
+
 
 def _get_capital_balance_from_transfers(account_id):
     return _capital_get_capital_balance_from_transfers(get_connection, account_id)
@@ -167,7 +178,7 @@ def get_capital_balance(account_id):
 
 # ========== РАБОТА С ТРАНЗАКЦИЯМИ И ОТЧИСЛЕНИЯМИ ==========
 
-def add_income_with_capital(amount, category, comment, date, auto_percent, capital_account_id):
+def add_income_with_capital(amount, category, comment, date, auto_percent, capital_account_id, money_source="cashless"):
     return _txm_add_income_with_capital(
         get_connection,
         app_logger,
@@ -178,10 +189,11 @@ def add_income_with_capital(amount, category, comment, date, auto_percent, capit
         date,
         auto_percent,
         capital_account_id,
+        money_source=money_source,
     )
 
 
-def add_expense(amount, category, comment, date):
+def add_expense(amount, category, comment, date, money_source="cashless"):
     return _txm_add_expense(
         get_connection,
         app_logger,
@@ -190,10 +202,11 @@ def add_expense(amount, category, comment, date):
         category,
         comment,
         date,
+        money_source=money_source,
     )
 
 
-def add_planned_transaction(transaction_type, category, amount, comment, date, template_id=None):
+def add_planned_transaction(transaction_type, category, amount, comment, date, template_id=None, money_source="cashless"):
     return _tx_add_planned_transaction(
         get_connection,
         _invalidate_cache,
@@ -204,6 +217,7 @@ def add_planned_transaction(transaction_type, category, amount, comment, date, t
         comment,
         date,
         template_id=template_id,
+        money_source=money_source,
     )
 
 
@@ -263,6 +277,16 @@ def update_transaction(transaction_id, field, value):
         transaction_id,
         field,
         value,
+    )
+
+
+def update_transaction_fields(transaction_id, **kwargs):
+    return _txm_update_transaction_fields(
+        get_connection,
+        app_logger,
+        _invalidate_cache,
+        transaction_id,
+        **kwargs,
     )
 
 
@@ -440,13 +464,16 @@ def get_account_balance(account_id):
 
 
 def update_account_balance(account_id, amount):
-    return _accounts_update_account_balance(
+    result = _accounts_update_account_balance(
         get_connection,
         app_logger,
         _invalidate_capital_cache,
         account_id,
         amount,
     )
+    if result:
+        _invalidate_cache()
+    return result
 
 
 def sync_accounts_with_transactions():
@@ -615,7 +642,8 @@ def _adjust_to_workday(date_str):
 
 
 def create_recurring_template(template_type, name, amount, day_of_month, category_id=None,
-                              comment_template="", months_ahead=12, working_days_only=0):
+                              comment_template="", months_ahead=12, working_days_only=0,
+                              money_source="cashless"):
     return _recurring_create_recurring_template(
         get_connection,
         app_logger,
@@ -628,6 +656,7 @@ def create_recurring_template(template_type, name, amount, day_of_month, categor
         comment_template=comment_template,
         months_ahead=months_ahead,
         working_days_only=working_days_only,
+        money_source=money_source,
     )
 
 
@@ -734,5 +763,4 @@ def get_budget_status(category_id: int = None):
 if __name__ == "__main__":
     init_db()
     app_logger.info("База данных инициализирована")
-
 

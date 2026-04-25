@@ -27,6 +27,7 @@ def _template_response(row) -> RecurringTemplateResponse:
         category_id=row["category_id"],
         category_name=row["category_name"] if "category_name" in row.keys() else None,
         comment_template=row["comment_template"] or "",
+        money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
         months_ahead=int(row["months_ahead"]),
         working_days_only=bool(row["working_days_only"]),
         is_active=bool(row["is_active"]),
@@ -52,6 +53,7 @@ def create_recurring_template(payload: RecurringTemplateCreateRequest) -> Recurr
         comment_template=payload.comment_template,
         months_ahead=payload.months_ahead,
         working_days_only=payload.working_days_only,
+        money_source=payload.money_source,
     )
     if not template_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать шаблон")
@@ -109,6 +111,7 @@ def list_due_planned_transactions() -> List[PlannedTransactionDueResponse]:
             amount=float(row["amount"]),
             comment=row["comment"] or "",
             date=row["date"],
+            money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
             template_id=row["template_id"],
             template_name=row["template_name"],
         )

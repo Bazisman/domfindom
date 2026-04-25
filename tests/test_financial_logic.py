@@ -82,6 +82,71 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(transfer["to_account_id"], account_id)
         self.assertEqual(transfer["is_active"], 1)
 
+    def test_daily_money_accounts_track_cash_and_cashless(self):
+        accounts = {row["id"]: row for row in core.get_all_accounts()}
+        self.assertEqual(accounts[1]["name"], "Безнал")
+        self.assertEqual(accounts[2]["name"], "Наличные")
+
+        core.add_income_with_capital(1000.0, "Зарплата", "Cash salary", "2026-04-05", 0, None, money_source="cash")
+        core.add_expense(250.0, "Продукты", "Card groceries", "2026-04-06", money_source="cashless")
+
+        self.assertEqual(core.get_account_balance(1), -250.0)
+        self.assertEqual(core.get_account_balance(2), 1000.0)
+        main_balance, _, _ = core.get_balance(force_update=True)
+        self.assertEqual(main_balance, 750.0)
+
+    def test_transfer_between_cashless_and_cash_keeps_total_balance(self):
+        service = TransactionService()
+        core.add_income_with_capital(1000.0, "Зарплата", "Seed card", "2026-04-05", 0, None, money_source="cashless")
+
+        moved = service.transfer_money(1, 2, 300.0, date="2026-04-06", comment="Снял наличные")
+
+        self.assertTrue(moved)
+        self.assertEqual(core.get_account_balance(1), 700.0)
+        self.assertEqual(core.get_account_balance(2), 300.0)
+        main_balance, _, _ = core.get_balance(force_update=True)
+        self.assertEqual(main_balance, 1000.0)
+
+    def test_update_transaction_money_source_moves_balance(self):
+        transaction_id = core.add_income_with_capital(
+            1000.0,
+            "Зарплата",
+            "Wrong source",
+            "2026-04-05",
+            0,
+            None,
+            money_source="cash",
+        )
+
+        updated = core.update_transaction_fields(transaction_id, money_source="cashless")
+
+        self.assertTrue(updated)
+        self.assertEqual(core.get_account_balance(1), 1000.0)
+        self.assertEqual(core.get_account_balance(2), 0.0)
+
+    def test_recurring_template_preserves_money_source_when_executed(self):
+        template_id = core.create_recurring_template(
+            template_type="expense",
+            name="Аренда",
+            amount=500.0,
+            day_of_month=1,
+            category_id=core.get_category_by_name("Продукты")["id"],
+            comment_template="Cash rent",
+            months_ahead=1,
+            working_days_only=False,
+            money_source="cash",
+        )
+        planned = core.get_planned_transactions_by_template(template_id)
+        self.assertTrue(planned)
+        self.assertTrue(all(item["money_source"] == "cash" for item in planned))
+
+        planned_id = planned[0]["id"]
+        core.update_transaction_fields(planned_id, date="2026-04-01")
+        self.assertTrue(core.execute_planned_transaction(planned_id))
+
+        self.assertEqual(core.get_account_balance(1), 0.0)
+        self.assertEqual(core.get_account_balance(2), -500.0)
+
     def test_projected_balance_uses_budget_remaining_not_full_budget(self):
         category = core.get_category_by_name("Продукты")
         category_id = category["id"] if category else core.add_category("Продукты", "expense")
