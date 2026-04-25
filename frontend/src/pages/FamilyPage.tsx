@@ -107,7 +107,7 @@ function auditFindingDisplayText(finding: CategoryAuditFinding): string {
     return `"${names}" похожи на одну семейную категорию "${displayName}". Можно связать их для семейных отчетов или оставить как разные категории.`;
   }
   if (finding.code === "missing_member_category") {
-    return `"${displayName}" есть только у части семьи. Если это личная категория, ее можно оставить без семейной связи.`;
+    return `"${displayName}" есть только у части семьи. Если это общий семейный расход, добавьте ее в семейный учет. Если это личное, оставьте личной.`;
   }
   return finding.description;
 }
@@ -120,7 +120,7 @@ function auditFindingQuestion(finding: CategoryAuditFinding): string {
     return "Считать вместе или оставить отдельно?";
   }
   if (finding.code === "missing_member_category") {
-    return "Оставить эту категорию личной?";
+    return "Это личная категория или семейная?";
   }
   return "Что сделать с этим пунктом?";
 }
@@ -835,6 +835,14 @@ export function FamilyPage() {
                       ) : null}
                       {finding.code === "missing_member_category" ? (
                         <>
+                          <button
+                            className="ghost-button"
+                            disabled={!canManageFamilyMembers || categoryBindingPreviewMutation.isPending}
+                            onClick={() => previewAuditFindingBinding(finding, previewKey)}
+                            type="button"
+                          >
+                            Добавить в семью
+                          </button>
                           <button
                             className="ghost-button"
                             disabled={!canManageFamilyMembers || categoryAuditResolutionMutation.isPending}
