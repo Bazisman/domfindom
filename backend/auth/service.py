@@ -1635,6 +1635,33 @@ class AuthService:
                 return resolution
         return {}
 
+    def delete_family_category_audit_resolution(
+        self,
+        family_id: int,
+        code: str,
+        group_key: str,
+        action: str,
+    ) -> bool:
+        clean_code = (code or "").strip()
+        clean_group_key = (group_key or "").strip()
+        clean_action = (action or "").strip()
+        if not clean_code or not clean_group_key or not clean_action:
+            return False
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                DELETE FROM family_category_audit_resolutions
+                WHERE family_id = ?
+                  AND code = ?
+                  AND group_key = ?
+                  AND action = ?
+                """,
+                (family_id, clean_code, clean_group_key, clean_action),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     def list_family_capital_accounts(self, family_id: int) -> List[Dict[str, object]]:
         with self._auth_connection() as conn:
             cursor = conn.cursor()

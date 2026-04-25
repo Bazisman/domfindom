@@ -1146,6 +1146,18 @@ def _collect_family_category_audit(family_id: int, family_name: str) -> FamilyCa
         members=member_responses,
         category_groups=category_groups,
         findings=response_findings,
+        resolutions=[
+            {
+                "family_id": family_id,
+                "code": str(item.get("code") or ""),
+                "group_key": str(item.get("group_key") or ""),
+                "action": str(item.get("action") or ""),
+                "category_names": [str(name) for name in item.get("category_names", [])],
+                "note": str(item.get("note") or ""),
+            }
+            for item in resolved_items
+            if str(item.get("action") or "") in {"ignore", "keep_personal"}
+        ],
     )
 
 
@@ -1356,6 +1368,27 @@ def resolve_family_category_audit_item(
         group_key=payload.group_key,
         action=payload.action,
     )
+
+
+@router.delete("/{family_id}/categories/audit/resolutions", response_model=FamilyActionResponse)
+def delete_family_category_audit_resolution(
+    family_id: int,
+    payload: FamilyCategoryAuditResolutionPayload,
+    current_user=Depends(require_user),
+) -> FamilyActionResponse:
+    if family_id <= 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор семьи")
+
+    _require_family_admin_access(family_id=family_id, user_id=int(current_user["id"]))
+    deleted = auth_service.delete_family_category_audit_resolution(
+        family_id=family_id,
+        code=payload.code,
+        group_key=payload.group_key,
+        action=payload.action,
+    )
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Решение аудита не найдено")
+    return FamilyActionResponse(message="Решение отменено. Пункт снова появится в аудите.", family_id=family_id)
 
 
 @router.post("/{family_id}/categories/bindings/preview", response_model=FamilyCategoryBindingPreviewResponse)

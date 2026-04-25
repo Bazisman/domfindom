@@ -957,7 +957,29 @@ class WebApiTestCase(unittest.TestCase):
                 for item in audit_after.json()["findings"]
             )
         )
+        self.assertTrue(any("Самокат" in item["category_names"] for item in audit_after.json()["resolutions"]))
         self.assertFalse(any("Самокат" in item["category_names"] for item in audit_after.json()["category_groups"]))
+
+        restore_response = self.client.request(
+            "DELETE",
+            f"/api/v1/families/{family_id}/categories/audit/resolutions",
+            json={
+                "code": finding["code"],
+                "group_key": finding["group_key"],
+                "action": "keep_personal",
+                "category_names": finding["category_names"],
+            },
+        )
+        self.assertEqual(restore_response.status_code, 200)
+
+        audit_restored = self.client.get(f"/api/v1/families/{family_id}/categories/audit")
+        self.assertEqual(audit_restored.status_code, 200)
+        self.assertTrue(
+            any(
+                item["code"] == "missing_member_category" and "Самокат" in item["category_names"]
+                for item in audit_restored.json()["findings"]
+            )
+        )
 
         second_client.close()
 

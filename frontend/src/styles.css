@@ -2337,6 +2337,10 @@ body {
   min-width: 0;
 }
 
+.category-audit-resolutions {
+  margin-top: 16px;
+}
+
 .category-audit-subheader {
   display: flex;
   flex-wrap: wrap;
@@ -2428,6 +2432,13 @@ body {
   margin-top: 4px;
   animation: audit-preview-slide 360ms var(--ease-smooth) both;
   transform-origin: top center;
+}
+
+.category-resolution-confirm {
+  border-color: color-mix(in srgb, #d68d22 34%, var(--line));
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, #d68d22 12%, transparent), transparent 34%),
+    color-mix(in srgb, var(--panel) 94%, transparent);
 }
 
 .category-binding-actions {

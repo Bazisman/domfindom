@@ -490,6 +490,14 @@ export type FamilyCategoryAuditResponse = {
     recommended_action: string;
     can_apply_automatically: boolean;
   }>;
+  resolutions: Array<{
+    family_id: number;
+    code: string;
+    group_key: string;
+    action: "ignore" | "keep_personal";
+    category_names: string[];
+    note: string;
+  }>;
 };
 
 export type FamilyCategoryBindingPreviewPayload = {
@@ -916,6 +924,19 @@ export function resolveFamilyCategoryAuditItem(payload: FamilyCategoryAuditResol
       }),
     },
   );
+}
+
+export function deleteFamilyCategoryAuditResolution(payload: FamilyCategoryAuditResolutionPayload) {
+  return request<FamilyActionResponse>(`/families/${payload.familyId}/categories/audit/resolutions`, {
+    method: "DELETE",
+    body: JSON.stringify({
+      code: payload.code,
+      group_key: payload.groupKey,
+      action: payload.action,
+      category_names: payload.categoryNames,
+      note: payload.note,
+    }),
+  });
 }
 
 export function createFamilyInvite(payload: { family_id: number; email: string; role: FamilyInviteRole }) {

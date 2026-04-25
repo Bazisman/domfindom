@@ -232,6 +232,15 @@ class FamilyCategoryAuditFindingResponse(BaseModel):
     can_apply_automatically: bool = False
 
 
+class FamilyCategoryAuditResolutionItem(BaseModel):
+    family_id: int
+    code: str
+    group_key: str
+    action: CategoryAuditResolutionAction
+    category_names: List[str] = Field(default_factory=list)
+    note: str = ""
+
+
 class FamilyCategoryAuditResponse(BaseModel):
     family_id: int
     family_name: str
@@ -240,6 +249,7 @@ class FamilyCategoryAuditResponse(BaseModel):
     members: List[FamilyCategoryAuditMemberResponse]
     category_groups: List[FamilyCategoryAuditGroupResponse]
     findings: List[FamilyCategoryAuditFindingResponse]
+    resolutions: List[FamilyCategoryAuditResolutionItem] = Field(default_factory=list)
 
 
 class FamilyCategoryBindingPreviewPayload(BaseModel):
