@@ -205,6 +205,7 @@ export function FamilyPage() {
     [familiesQuery.data?.families, familyId],
   );
   const canManageFamilyMembers = selectedFamily?.role === "owner";
+  const canManageCategoryAudit = canManageFamilyMembers;
 
   const familyMembersQuery = useQuery({
     queryKey: ["families", familyId, "members"],
@@ -223,7 +224,7 @@ export function FamilyPage() {
   const familyCategoryAuditQuery = useQuery({
     queryKey: ["families", familyId, "categories", "audit"],
     queryFn: () => getFamilyCategoryAudit(familyId as number),
-    enabled: familyId !== null,
+    enabled: familyId !== null && canManageCategoryAudit,
     retry: false,
   });
 
@@ -621,7 +622,7 @@ export function FamilyPage() {
       <section className="panel panel-form panel-wide">
         <div className="panel-header">
           <h2>Семья</h2>
-          <span>Управление семейным бюджетом и участниками</span>
+          <span>{canManageFamilyMembers ? "Управление семейным бюджетом и участниками" : "Семейный бюджет"}</span>
         </div>
 
         {(familiesQuery.data?.families ?? []).length === 0 ? (
@@ -662,30 +663,36 @@ export function FamilyPage() {
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span>Email участника</span>
-              <input
-                autoComplete="off"
-                disabled={busyAction !== "" || !canManageFamilyMembers}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                placeholder="user@example.com"
-                value={inviteEmail}
-              />
-            </label>
-            <label className="field">
-              <span>Роль</span>
-              <select
-                disabled={busyAction !== "" || !canManageFamilyMembers}
-                onChange={(event) => setInviteRole(event.target.value as "member" | "viewer")}
-                value={inviteRole}
-              >
-                <option value="member">Помощник</option>
-                <option value="viewer">Только просмотр</option>
-              </select>
-            </label>
-            <button className="primary-button" disabled={busyAction !== "" || !canManageFamilyMembers} onClick={onInviteToFamily} type="button">
-              {busyAction === "invite" ? "Отправляем..." : "Пригласить в семью"}
-            </button>
+            {canManageFamilyMembers ? (
+              <>
+                <label className="field">
+                  <span>Email участника</span>
+                  <input
+                    autoComplete="off"
+                    disabled={busyAction !== ""}
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                    placeholder="user@example.com"
+                    value={inviteEmail}
+                  />
+                </label>
+                <label className="field">
+                  <span>Роль</span>
+                  <select
+                    disabled={busyAction !== ""}
+                    onChange={(event) => setInviteRole(event.target.value as "member" | "viewer")}
+                    value={inviteRole}
+                  >
+                    <option value="member">Помощник</option>
+                    <option value="viewer">Только просмотр</option>
+                  </select>
+                </label>
+                <button className="primary-button" disabled={busyAction !== ""} onClick={onInviteToFamily} type="button">
+                  {busyAction === "invite" ? "Отправляем..." : "Пригласить в семью"}
+                </button>
+              </>
+            ) : (
+              <p className="muted">Вы подключены к семье как участник. Управление участниками и категориями доступно владельцу.</p>
+            )}
           </div>
         )}
 
@@ -729,7 +736,7 @@ export function FamilyPage() {
         </section>
       ) : null}
 
-      {familyId !== null ? (
+      {familyId !== null && canManageCategoryAudit ? (
         <section className="panel panel-wide family-category-audit-panel">
           <div className="panel-header">
             <div>

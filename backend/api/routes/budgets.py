@@ -61,20 +61,15 @@ def _personal_category_names_for_family(family_id: int) -> Set[str]:
 
 
 def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
-    personal_status = core.get_budget_status()
-    budgets = {
-        int(item["category_id"]): item
-        for item in transaction_service.get_budgets()
-    }
     members = auth_service.list_family_members(family_id)
     personal_category_names = _personal_category_names_for_family(family_id)
     spent_by_category_name: Dict[str, float] = defaultdict(float)
+    budgets_by_category_name: Dict[str, Dict[str, object]] = {}
 
     today = datetime.now()
     start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
     end_of_month = today.strftime("%Y-%m-%d")
-    days_in_month = calendar.monthrange(today.year, today.month)[1]
-    remaining_days_including_today = max(days_in_month - today.day + 1, 0)
+    remaining_days_including_today = max(calendar.monthrange(today.year, today.month)[1] - today.day + 1, 0)
 
     for member in members:
         user_id = int(member["user_id"])
@@ -96,33 +91,73 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
                     (start_of_month, end_of_month),
                 )
                 for row in cursor.fetchall():
-                    spent_by_category_name[str(row["category"])] += float(row["spent"] or 0.0)
+                    normalized = _normalize_budget_category_name(row["category"])
+                    if normalized:
+                        spent_by_category_name[normalized] += float(row["spent"] or 0.0)
+
+                cursor.execute(
+                    """
+                    SELECT b.id,
+                           b.category_id,
+                           c.name AS category_name,
+                           c.icon,
+                           c.color,
+                           b.amount,
+                           b.period
+                    FROM budgets b
+                    JOIN categories c ON b.category_id = c.id
+                    ORDER BY c.name
+                    """
+                )
+                for row in cursor.fetchall():
+                    category_name = str(row["category_name"] or "")
+                    normalized = _normalize_budget_category_name(category_name)
+                    if not normalized or normalized in personal_category_names:
+                        continue
+                    period = str(row["period"] or "monthly").strip().lower()
+                    amount = float(row["amount"] or 0.0)
+                    bucket = budgets_by_category_name.setdefault(
+                        normalized,
+                        {
+                            "category_id": int(row["category_id"] or 0),
+                            "category_name": category_name,
+                            "icon": str(row["icon"] or ""),
+                            "color": str(row["color"] or ""),
+                            "monthly_amount": 0.0,
+                            "daily_amount": 0.0,
+                            "has_non_daily": False,
+                        },
+                    )
+                    bucket["monthly_amount"] = float(bucket["monthly_amount"]) + float(
+                        core._get_budget_monthly_limit(amount, period, today)
+                    )
+                    if period == "daily":
+                        bucket["daily_amount"] = float(bucket["daily_amount"]) + amount
+                    else:
+                        bucket["has_non_daily"] = True
         finally:
             core.pop_db_name(db_token)
 
     result: List[BudgetStatusItem] = []
-    for item in personal_status:
-        category_id = int(item["category_id"])
-        category_name = str(item["category_name"])
-        if _normalize_budget_category_name(category_name) in personal_category_names:
-            continue
-        spent = round(spent_by_category_name.get(category_name, 0.0), 2)
-        budget_config = budgets.get(category_id)
-        period = budget_config["period"] if budget_config and "period" in budget_config.keys() else "monthly"
-        normalized_period = (period or "monthly").lower()
-        if normalized_period == "daily":
-            daily_amount = float(budget_config["amount"] or 0.0) if budget_config else 0.0
+    for normalized_name, budget_meta in sorted(
+        budgets_by_category_name.items(),
+        key=lambda item: str(item[1]["category_name"]).lower(),
+    ):
+        spent = round(spent_by_category_name.get(normalized_name, 0.0), 2)
+        daily_amount = float(budget_meta["daily_amount"])
+        has_non_daily = bool(budget_meta["has_non_daily"])
+        if daily_amount > 0 and not has_non_daily:
             budget_amount = spent + (daily_amount * remaining_days_including_today)
         else:
-            budget_amount = float(item["budget_amount"])
+            budget_amount = float(budget_meta["monthly_amount"])
         remaining = round(budget_amount - spent, 2)
         percent = round((spent / budget_amount * 100) if budget_amount > 0 else 0.0, 1)
         result.append(
             BudgetStatusItem(
-                category_id=category_id,
-                category_name=category_name,
-                icon=str(item["icon"]),
-                color=str(item["color"]),
+                category_id=int(budget_meta["category_id"]),
+                category_name=str(budget_meta["category_name"]),
+                icon=str(budget_meta["icon"]),
+                color=str(budget_meta["color"]),
                 budget_amount=round(budget_amount, 2),
                 spent=spent,
                 remaining=remaining,

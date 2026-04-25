@@ -2261,6 +2261,14 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(family_item["spent"], 1700.0)
         self.assertEqual(family_item["remaining"], 1300.0)
 
+        member_family_status = second_client.get(f"/api/v1/budgets/status?family_id={family_id}")
+        self.assertEqual(member_family_status.status_code, 200)
+        member_family_item = next(
+            item for item in member_family_status.json() if item["category_name"] == expense_category["name"]
+        )
+        self.assertEqual(member_family_item["spent"], 1700.0)
+        self.assertEqual(member_family_item["remaining"], 1300.0)
+
         second_client.close()
 
     def test_family_daily_budget_status_projects_from_family_spent(self):
