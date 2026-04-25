@@ -176,6 +176,18 @@ def _normalize_category_name(value: object) -> str:
     return normalized
 
 
+def _personal_category_names_for_family(family_id: int) -> Set[str]:
+    names: Set[str] = set()
+    for item in auth_service.list_family_category_audit_resolutions(family_id):
+        if str(item.get("action") or "") != "keep_personal":
+            continue
+        for category_name in item.get("category_names", []):
+            normalized = _normalize_category_name(category_name)
+            if normalized:
+                names.add(normalized)
+    return names
+
+
 def _semantic_key_for_category_name(value: object) -> Optional[str]:
     normalized = _normalize_category_name(value)
     return _ALIAS_TO_SEMANTIC_KEY.get(normalized)
@@ -225,7 +237,9 @@ def _collect_family_forecast(
     planned_expense: float,
     executed_planned_income: float,
     executed_planned_expense: float,
+    personal_category_names: Optional[Set[str]] = None,
 ) -> ForecastResponse:
+    personal_category_names = personal_category_names or set()
     start_of_month = now.replace(day=1).strftime("%Y-%m-%d")
     today = now.strftime("%Y-%m-%d")
     end_date = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime("%Y-%m-%d")
@@ -290,6 +304,8 @@ def _collect_family_forecast(
                 )
             )
             category_name = str(budget["category"] or "")
+            if _normalize_category_name(category_name) in personal_category_names:
+                continue
             category_bucket = budget_by_category.setdefault(
                 category_name,
                 {
@@ -435,6 +451,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     recent_transactions: List[Dict[str, object]] = []
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
+    personal_category_names = _personal_category_names_for_family(family_id)
     family_capital_outflow_by_source_user: Dict[int, float] = {}
     for item in auth_service.list_family_capital_contributions_for_family(family_id=family_id, limit=300):
         item_date = str(item["date"] or "")
@@ -501,6 +518,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         planned_expense=forecast_planned_expense,
         executed_planned_income=forecast_executed_planned_income,
         executed_planned_expense=forecast_executed_planned_expense,
+        personal_category_names=personal_category_names,
     )
 
     return FamilyDashboardResponse(

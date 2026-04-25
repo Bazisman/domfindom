@@ -860,7 +860,10 @@ export function PlanningPage() {
             ) : null}
 
             {useFamilyBudgetScope ? (
-              <p className="muted">В статусе бюджетов учитываются траты всех участников семьи.</p>
+              <p className="muted">
+                Семейные лимиты сравниваются с тратами семьи по общим категориям. Категории, оставленные личными в
+                аудите семьи, остаются для личных лимитов.
+              </p>
             ) : null}
 
             <div className="category-card-grid">

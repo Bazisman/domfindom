@@ -1,7 +1,8 @@
 import calendar
+import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -39,6 +40,26 @@ def _get_budget_or_404(budget_id: int):
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Бюджет не найден")
 
 
+def _normalize_budget_category_name(value: object) -> str:
+    normalized = str(value or "").replace("\u00a0", " ").strip().lower().replace("ё", "е")
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = re.sub(r"^[\s.,;:]+|[\s.,;:]+$", "", normalized)
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    return normalized
+
+
+def _personal_category_names_for_family(family_id: int) -> Set[str]:
+    names: Set[str] = set()
+    for item in auth_service.list_family_category_audit_resolutions(family_id):
+        if str(item.get("action") or "") != "keep_personal":
+            continue
+        for category_name in item.get("category_names", []):
+            normalized = _normalize_budget_category_name(category_name)
+            if normalized:
+                names.add(normalized)
+    return names
+
+
 def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
     personal_status = core.get_budget_status()
     budgets = {
@@ -46,6 +67,7 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
         for item in transaction_service.get_budgets()
     }
     members = auth_service.list_family_members(family_id)
+    personal_category_names = _personal_category_names_for_family(family_id)
     spent_by_category_name: Dict[str, float] = defaultdict(float)
 
     today = datetime.now()
@@ -82,6 +104,8 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
     for item in personal_status:
         category_id = int(item["category_id"])
         category_name = str(item["category_name"])
+        if _normalize_budget_category_name(category_name) in personal_category_names:
+            continue
         spent = round(spent_by_category_name.get(category_name, 0.0), 2)
         budget_config = budgets.get(category_id)
         period = budget_config["period"] if budget_config and "period" in budget_config.keys() else "monthly"

@@ -2358,6 +2358,16 @@ body {
   font-weight: 700;
 }
 
+.category-audit-planning-hint {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--green) 24%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .category-audit-finding,
 .category-audit-group {
   display: grid;

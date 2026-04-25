@@ -107,7 +107,7 @@ function auditFindingDisplayText(finding: CategoryAuditFinding): string {
     return `"${names}" похожи на одну семейную категорию "${displayName}". Можно связать их для семейных отчетов или оставить как разные категории.`;
   }
   if (finding.code === "missing_member_category") {
-    return `"${displayName}" есть только у части семьи. Если это общий семейный расход, добавьте ее в семейный учет. Если это личное, оставьте личной.`;
+    return `"${displayName}" есть только у части семьи. Если это общий семейный расход, добавьте ее в семейный учет. Если это личное, оставьте личной для личных лимитов.`;
   }
   return finding.description;
 }
@@ -126,7 +126,7 @@ function auditFindingQuestion(finding: CategoryAuditFinding): string {
 }
 
 function auditBindingPreviewLead(preview: FamilyCategoryBindingPreviewResponse): string {
-  return `Если подтвердить, "${preview.display_name}" будет одной семейной категорией. Старые операции, бюджеты и шаблоны не переименуются.`;
+  return `Если подтвердить, "${preview.display_name}" будет одной семейной категорией для семейных отчетов и лимитов. Старые операции, бюджеты и шаблоны не переименуются.`;
 }
 
 function auditResolutionTitle(finding: CategoryAuditFinding, action: CategoryAuditResolutionAction): string {
@@ -141,12 +141,25 @@ function auditResolutionTitle(finding: CategoryAuditFinding, action: CategoryAud
 
 function auditResolutionText(finding: CategoryAuditFinding, action: CategoryAuditResolutionAction): string {
   if (action === "keep_personal") {
-    return "Категория останется личной и не будет участвовать в семейной синхронизации. Это решение можно отменить ниже.";
+    return "Категория останется в личном планировании: по ней можно вести личный лимит, а в семейных лимитах она не будет считаться общей категорией. Сама трата все равно останется в личных и семейных суммах денег.";
   }
   if (finding.code === "missing_member_category") {
     return "Пункт исчезнет из списка вопросов, но его можно будет вернуть ниже, если понадобится разобрать категорию позже.";
   }
   return "Категории останутся раздельными. Подсказка исчезнет из списка вопросов, но решение можно будет отменить ниже.";
+}
+
+function auditPlanningHint(finding: CategoryAuditFinding): string {
+  if (finding.code === "missing_member_category") {
+    return "Личная категория: деньги видны в общих суммах, но лимит по ней планируется лично. Семейная категория: траты участвуют в семейных лимитах и отчетах.";
+  }
+  if (finding.code === "semantic_duplicate_candidate") {
+    return "Считать вместе: траты попадут в один семейный смысл и один семейный лимит. Оставить отдельно: каждая категория планируется сама.";
+  }
+  if (finding.code === "category_type_conflict") {
+    return "Одна категория: доходы и расходы будут связаны одним семейным смыслом. Отдельно: планирование останется раздельным.";
+  }
+  return "Деньги остаются в личных и семейных суммах, а это решение влияет только на то, как категория участвует в планировании.";
 }
 
 function auditResolutionDisplayTitle(resolution: CategoryAuditResolution): string {
@@ -740,7 +753,7 @@ export function FamilyPage() {
             </strong>
             <p>
               {auditFindings.length > 0
-                ? "Выберите простой смысл: считать категории вместе, оставить отдельно или оставить личной. История не переименуется."
+                ? "Деньги считаются и в личных, и в семейных суммах. Решение ниже влияет на планирование: личная категория остается для личных лимитов, семейная участвует в семейных лимитах."
                 : "Семейные отчеты можно вести без дополнительных решений по категориям."}
             </p>
           </div>
@@ -806,6 +819,7 @@ export function FamilyPage() {
                       </div>
                       <p>{auditFindingDisplayText(finding)}</p>
                       <p className="category-audit-question">{auditFindingQuestion(finding)}</p>
+                      <p className="category-audit-planning-hint">{auditPlanningHint(finding)}</p>
                     </div>
                     <div className="family-page-actions category-audit-tags">
                       <span className="category-audit-chip-label">Категории</span>

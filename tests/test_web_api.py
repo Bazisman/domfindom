@@ -907,6 +907,15 @@ class WebApiTestCase(unittest.TestCase):
             json={"name": "Самокат", "type": "expense"},
         )
         self.assertEqual(category_response.status_code, 201)
+        budget_response = self.client.post(
+            "/api/v1/budgets",
+            json={
+                "category_id": int(category_response.json()["id"]),
+                "amount": 4000.0,
+                "period": "monthly",
+            },
+        )
+        self.assertEqual(budget_response.status_code, 201)
         transaction_response = self.client.post(
             "/api/v1/transactions",
             json={
@@ -960,6 +969,16 @@ class WebApiTestCase(unittest.TestCase):
         self.assertTrue(any("Самокат" in item["category_names"] for item in audit_after.json()["resolutions"]))
         self.assertFalse(any("Самокат" in item["category_names"] for item in audit_after.json()["category_groups"]))
 
+        family_budget_status = self.client.get(f"/api/v1/budgets/status?family_id={family_id}")
+        self.assertEqual(family_budget_status.status_code, 200)
+        self.assertFalse(any(item["category_name"] == "Самокат" for item in family_budget_status.json()))
+
+        family_dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard.status_code, 200)
+        self.assertEqual(family_dashboard.json()["balance"]["expense"], 2500.0)
+        self.assertEqual(family_dashboard.json()["forecast"]["monthly_budget"], 0.0)
+        self.assertEqual(family_dashboard.json()["forecast"]["budget_remaining"], 0.0)
+
         restore_response = self.client.request(
             "DELETE",
             f"/api/v1/families/{family_id}/categories/audit/resolutions",
@@ -980,6 +999,9 @@ class WebApiTestCase(unittest.TestCase):
                 for item in audit_restored.json()["findings"]
             )
         )
+        family_budget_status_restored = self.client.get(f"/api/v1/budgets/status?family_id={family_id}")
+        self.assertEqual(family_budget_status_restored.status_code, 200)
+        self.assertTrue(any(item["category_name"] == "Самокат" for item in family_budget_status_restored.json()))
 
         second_client.close()
 
