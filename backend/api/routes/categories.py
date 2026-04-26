@@ -10,7 +10,7 @@ from backend.schemas.categories import (
 )
 from backend.schemas.common import MessageResponse
 from backend.services import category_service
-from backend.storage.shadow_write import mirror_category_shadow_write
+from backend.storage.shadow_write import mirror_category_shadow_write, require_mysql_shadow_write_success
 
 
 router = APIRouter()
@@ -69,7 +69,8 @@ def create_category(payload: CategoryCreateRequest, current_user=Depends(require
     category = category_service.get_category_by_id(category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория создана, но не найдена")
-    mirror_category_shadow_write(current_user, _to_shadow_row(category))
+    mirror_result = mirror_category_shadow_write(current_user, _to_shadow_row(category))
+    require_mysql_shadow_write_success(mirror_result, "category_create")
     return _to_response(category)
 
 
@@ -93,7 +94,8 @@ def update_category(
     refreshed = category_service.get_category_by_id(category_id)
     if not refreshed:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория обновлена, но не найдена")
-    mirror_category_shadow_write(current_user, _to_shadow_row(refreshed))
+    mirror_result = mirror_category_shadow_write(current_user, _to_shadow_row(refreshed))
+    require_mysql_shadow_write_success(mirror_result, "category_update")
     return _to_response(refreshed)
 
 
@@ -107,5 +109,6 @@ def delete_category(category_id: int, current_user=Depends(require_user)) -> Mes
     if not deleted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить категорию")
     disabled_category = category_service.get_category_by_id(category_id)
-    mirror_category_shadow_write(current_user, _to_shadow_row(disabled_category or category))
+    mirror_result = mirror_category_shadow_write(current_user, _to_shadow_row(disabled_category or category))
+    require_mysql_shadow_write_success(mirror_result, "category_delete")
     return MessageResponse(message="Категория отключена")

@@ -18,6 +18,61 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
         self.assertFalse(shadow_write.mysql_shadow_write_enabled(disabled))
         self.assertFalse(shadow_write.mysql_shadow_write_enabled(enabled_without_url))
 
+    def test_strict_categories_budgets_recurring_requires_shadow_write_flag_and_url(self):
+        disabled = SimpleNamespace(
+            mysql_shadow_write_enabled=False,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_categories_budgets_recurring_enabled=True,
+        )
+        enabled = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_categories_budgets_recurring_enabled=True,
+        )
+
+        self.assertFalse(shadow_write.mysql_strict_categories_budgets_recurring_enabled(disabled))
+        self.assertTrue(shadow_write.mysql_strict_categories_budgets_recurring_enabled(enabled))
+
+    def test_require_mysql_shadow_write_success_is_noop_when_strict_flag_is_off(self):
+        config = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_categories_budgets_recurring_enabled=False,
+        )
+
+        shadow_write.require_mysql_shadow_write_success(
+            {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed"}}},
+            "category_create",
+            config=config,
+        )
+
+    def test_require_mysql_shadow_write_success_accepts_mysql_ok_when_strict_flag_is_on(self):
+        config = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_categories_budgets_recurring_enabled=True,
+        )
+
+        shadow_write.require_mysql_shadow_write_success(
+            {"enabled": True, "status": "ok", "results": {"mysql": {"status": "ok"}}},
+            "category_create",
+            config=config,
+        )
+
+    def test_require_mysql_shadow_write_success_raises_on_mysql_failure_when_strict_flag_is_on(self):
+        config = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_categories_budgets_recurring_enabled=True,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "category_create"):
+            shadow_write.require_mysql_shadow_write_success(
+                {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
+                "category_create",
+                config=config,
+            )
+
     def test_category_shadow_write_calls_mysql_repository(self):
         config = SimpleNamespace(mysql_shadow_write_enabled=True, mysql_database_url="mysql+pymysql://example/db")
         category = _Row(id=7, name="Fuel", type="expense", color="#333333", icon="car", is_active=1)

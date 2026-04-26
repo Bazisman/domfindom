@@ -23,6 +23,27 @@ def mysql_shadow_write_enabled(config=settings) -> bool:
     )
 
 
+def mysql_strict_categories_budgets_recurring_enabled(config=settings) -> bool:
+    return bool(
+        getattr(config, "mysql_strict_write_categories_budgets_recurring_enabled", False)
+        and mysql_shadow_write_enabled(config)
+    )
+
+
+def require_mysql_shadow_write_success(
+    result: Dict[str, Any],
+    operation: str,
+    config=settings,
+) -> None:
+    if not mysql_strict_categories_budgets_recurring_enabled(config):
+        return
+    mysql_result = (result.get("results") or {}).get("mysql") or {}
+    if result.get("status") == "ok" and mysql_result.get("status") == "ok":
+        return
+    reason = mysql_result.get("reason") or result.get("reason") or result.get("status") or "unknown"
+    raise RuntimeError(f"MySQL strict shadow-write failed for {operation}: {reason}")
+
+
 def _row_to_dict(row: Any) -> Dict[str, Any]:
     if row is None:
         return {}

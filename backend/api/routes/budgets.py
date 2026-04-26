@@ -19,6 +19,7 @@ from backend.services import category_service, run_in_user_finance_db, transacti
 from backend.storage.shadow_write import (
     mirror_budget_shadow_write,
     mirror_deleted_budget_shadow_write,
+    require_mysql_shadow_write_success,
 )
 
 
@@ -168,7 +169,8 @@ def create_budget(payload: BudgetCreateRequest, current_user=Depends(require_use
     budgets = transaction_service.get_budgets()
     for item in budgets:
         if item["category_id"] == payload.category_id:
-            mirror_budget_shadow_write(current_user, item)
+            mirror_result = mirror_budget_shadow_write(current_user, item)
+            require_mysql_shadow_write_success(mirror_result, "budget_create")
             return _budget_response(item)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Бюджет создан, но не найден")
 
@@ -192,7 +194,8 @@ def update_budget(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить бюджет")
 
     refreshed = _get_budget_or_404(budget_id)
-    mirror_budget_shadow_write(current_user, refreshed)
+    mirror_result = mirror_budget_shadow_write(current_user, refreshed)
+    require_mysql_shadow_write_success(mirror_result, "budget_update")
     return _budget_response(refreshed)
 
 
@@ -228,5 +231,6 @@ def delete_budget(budget_id: int, current_user=Depends(require_user)) -> Dict[st
     deleted = transaction_service.delete_budget(budget_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить бюджет")
-    mirror_deleted_budget_shadow_write(current_user, budget_id)
+    mirror_result = mirror_deleted_budget_shadow_write(current_user, budget_id)
+    require_mysql_shadow_write_success(mirror_result, "budget_delete")
     return {"message": "Бюджет удален"}

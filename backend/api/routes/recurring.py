@@ -15,6 +15,7 @@ from backend.services import category_service, transaction_service
 from backend.storage.shadow_write import (
     mirror_deleted_recurring_template_shadow_write,
     mirror_recurring_template_shadow_write,
+    require_mysql_shadow_write_success,
 )
 
 
@@ -74,7 +75,8 @@ def create_recurring_template(
         category_name = category.name if category else None
     merged = dict(row)
     merged["category_name"] = category_name
-    mirror_recurring_template_shadow_write(current_user, row)
+    mirror_result = mirror_recurring_template_shadow_write(current_user, row)
+    require_mysql_shadow_write_success(mirror_result, "recurring_template_create")
     return _template_response(merged)
 
 
@@ -101,7 +103,8 @@ def update_recurring_template(
         category_name = category.name if category else None
     merged = dict(row)
     merged["category_name"] = category_name
-    mirror_recurring_template_shadow_write(current_user, row)
+    mirror_result = mirror_recurring_template_shadow_write(current_user, row)
+    require_mysql_shadow_write_success(mirror_result, "recurring_template_update")
     return _template_response(merged)
 
 
@@ -110,7 +113,8 @@ def delete_recurring_template(template_id: int, current_user=Depends(require_use
     deleted = transaction_service.delete_recurring_template(template_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаблон не найден")
-    mirror_deleted_recurring_template_shadow_write(current_user, template_id)
+    mirror_result = mirror_deleted_recurring_template_shadow_write(current_user, template_id)
+    require_mysql_shadow_write_success(mirror_result, "recurring_template_delete")
     return MessageResponse(message="Шаблон удален")
 
 
