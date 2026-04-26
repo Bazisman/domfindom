@@ -5,6 +5,7 @@ import {
   createAccount,
   createTransfer,
   deleteAccount,
+  getAccountPreferences,
   getAccounts,
   getFamilyCapitalHistory,
   getFamilyDashboard,
@@ -103,6 +104,14 @@ export function AccountsPage() {
     refetchOnMount: "always",
   });
 
+  const preferences = useQuery({
+    queryKey: ["account", "preferences"],
+    queryFn: getAccountPreferences,
+    enabled: isReady,
+    retry: 2,
+    refetchOnMount: "always",
+  });
+
   const transfers = useQuery({
     queryKey: ["transfers", "all"],
     queryFn: () => getTransfers({ limit: 20 }),
@@ -182,6 +191,13 @@ export function AccountsPage() {
   }, [familyDashboard.data]);
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
   const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
+  const familyDailyBalance = familyDashboard.data?.balance.main_balance ?? 0;
+  const familyForecastBalance = familyDashboard.data?.forecast.projected_balance ?? null;
+  const familyModeEnabled = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
+  const personalCashOnHand = dailyBalance;
+  const personalTotalVisibleMoney = dailyBalance + ownCapital;
+  const visibleEmergencyMoney = familyModeEnabled ? familyCapitalBalance : ownCapital;
+  const visibleDailyMoney = familyModeEnabled ? familyDailyBalance : dailyBalance;
   const personalAccountsPublishedToFamily = useMemo(
     () =>
       new Set(
@@ -697,8 +713,8 @@ export function AccountsPage() {
                 <strong>{defaultCapitalAccountName}</strong>
               </div>
 
-            <div className="auto-capital-info-row">
-              <span className="auto-capital-info-label">Тип</span>
+              <div className="auto-capital-info-row">
+                <span className="auto-capital-info-label">Тип</span>
                 <strong>
                   {activeAutoCapitalTarget?.tone ?? "Не выбрано"}
                 </strong>
@@ -935,6 +951,47 @@ export function AccountsPage() {
       </section>
 
       <section className="accounts-main">
+        <section className="panel panel-list money-overview-panel">
+          <div className="panel-header">
+            <h2>{familyModeEnabled ? "Деньги семьи" : "Мои деньги"}</h2>
+            <span>{familyModeEnabled ? "Семейный режим включен" : "Личный режим"}</span>
+          </div>
+
+          <div className="summary-grid summary-grid-3 accounts-summary-grid money-overview-grid">
+            <article className="summary-card summary-card-main account-summary-card account-summary-card-main">
+              <p className="panel-label">{familyModeEnabled ? "На жизнь у семьи" : "На жизнь"}</p>
+              <h3>{formatMoney(visibleDailyMoney)}</h3>
+              <p className="muted">Деньги для обычных покупок и платежей.</p>
+            </article>
+
+            {familyModeEnabled && (
+              <article className="summary-card account-summary-card">
+                <p className="panel-label">К концу месяца</p>
+                <h3>{familyForecastBalance === null ? "—" : formatMoney(familyForecastBalance)}</h3>
+                <p className="muted">С учетом будущих доходов, трат и отложений.</p>
+              </article>
+            )}
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">У меня на руках</p>
+              <h3>{formatMoney(personalCashOnHand)}</h3>
+              <p className="muted">Мои карты и наличные.</p>
+            </article>
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">{familyModeEnabled ? "Подушка семьи" : "Моя подушка"}</p>
+              <h3>{formatMoney(visibleEmergencyMoney)}</h3>
+              <p className="muted">Деньги, которые лучше не тратить каждый день.</p>
+            </article>
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">Мои всего</p>
+              <h3>{formatMoney(personalTotalVisibleMoney)}</h3>
+              <p className="muted">Личные деньги на жизнь и моя подушка.</p>
+            </article>
+          </div>
+        </section>
+
         {!!familyVisibleAccounts.length && (
           <section className="panel panel-list">
             <div className="panel-header">
