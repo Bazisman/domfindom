@@ -79,6 +79,7 @@
 - MySQL rollback-probe расширен на обычные transactions: проверяет actual transaction insert/update/delete в той же транзакции с rollback перед включением strict transaction dual-write.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL` для capital account create/update/delete и standalone transfers; rollback-probe расширен на capital account и transfer write paths.
 - AuthService получил выключенный по умолчанию MySQL auth shadow-write для users, sessions, tokens, preferences, login attempts и auth events; добавлен strict-флаг `FINANCE_APP_MYSQL_STRICT_WRITE_AUTH`, чтобы закрыть последний cutover-блокер после production-проверки.
+- Startup guard разрешает `FINANCE_APP_STORAGE_BACKEND=mysql` только в режиме `mysql-primary-read-strict-dual-write`: нужен MySQL URL, общий shadow-write и все strict-флаги; cutover-check теперь может показать runtime-ready при явном `--allow-mysql-backend`.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION`; reconciliation sources/apply теперь имеют MySQL shadow-write adapter paths, а rollback-probe проверяет reconciliation source и reconciliation writes.
 - Начат последний блокер `auth_and_sessions`: добавлен `MySqlAuthWriteRepository` и rollback-probe `tools/mysql_auth_write_probe.py` для users/sessions/preferences/login_attempts/auth_events/password/email/account-deletion tokens без изменения runtime auth path.
 

@@ -23,6 +23,14 @@ RUNTIME_WRITE_GROUPS = {
     "reconciliation_settings": "reconciliation sources and user finance settings still commit to SQLite core/auth first",
 }
 
+STRICT_GROUP_FLAGS = {
+    "auth_and_sessions": "FINANCE_APP_MYSQL_STRICT_WRITE_AUTH",
+    "transactions": "FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS",
+    "accounts_and_capital": "FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL",
+    "categories_budgets_recurring": "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING",
+    "reconciliation_settings": "FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION",
+}
+
 
 def env_bool(env: Dict[str, str], name: str) -> bool:
     return (env.get(name, "").strip().lower() in {"1", "true", "yes", "on"})
@@ -107,22 +115,40 @@ def check_schema_tables(database_url: str) -> Dict[str, Any]:
         return {"status": "blocked", "reason": str(exc)}
 
 
-def check_storage_backend(storage_backend: str, allow_mysql_backend: bool) -> Dict[str, Any]:
-    if storage_backend == "mysql" and not allow_mysql_backend:
+def strict_groups_ready(env: Dict[str, str], database_url: str) -> bool:
+    return bool(
+        database_url
+        and env_bool(env, "FINANCE_APP_MYSQL_SHADOW_WRITE")
+        and all(env_bool(env, flag) for flag in STRICT_GROUP_FLAGS.values())
+    )
+
+
+def check_storage_backend(storage_backend: str, allow_mysql_backend: bool, runtime_ready: bool = False) -> Dict[str, Any]:
+    if storage_backend == "mysql" and not (allow_mysql_backend and runtime_ready):
         return {
             "status": "blocked",
-            "reason": "runtime MySQL write backend is not wired yet; keep FINANCE_APP_STORAGE_BACKEND=sqlite",
+            "reason": "FINANCE_APP_STORAGE_BACKEND=mysql requires --allow-mysql-backend and all strict MySQL dual-write guards",
         }
-    return {"status": "ok", "storage_backend": storage_backend or "sqlite"}
+    result = {"status": "ok", "storage_backend": storage_backend or "sqlite"}
+    if storage_backend == "mysql":
+        result["mode"] = "mysql-primary-read-strict-dual-write"
+    return result
 
 
 def check_runtime_adapter_status(allow_mysql_backend: bool, guarded_groups: Sequence[str] = ()) -> Dict[str, Any]:
     guarded = [group for group in guarded_groups if group in RUNTIME_WRITE_GROUPS]
     groups = [group for group in RUNTIME_WRITE_GROUPS if group not in set(guarded)]
+    if allow_mysql_backend and not groups:
+        return {
+            "status": "ok",
+            "mode": "mysql-primary-read-strict-dual-write",
+            "guarded_groups": guarded,
+            "details": RUNTIME_WRITE_GROUPS,
+        }
     if allow_mysql_backend:
         return {
             "status": "blocked",
-            "reason": "allow flag was set, but primary MySQL write adapters are not complete",
+            "reason": "allow flag was set, but not every runtime group is protected by strict MySQL dual-write",
             "missing_groups": groups,
             "guarded_groups": guarded,
             "details": RUNTIME_WRITE_GROUPS,
@@ -259,6 +285,7 @@ def build_report(
         guarded_groups.append(strict_reconciliation["guarded_group"])
     if strict_auth.get("status") == "ok" and strict_auth.get("enabled"):
         guarded_groups.append(strict_auth["guarded_group"])
+    runtime_ready = strict_groups_ready(env, database_url)
 
     checks: Dict[str, Any] = {
         "python_dependencies": check_python_dependencies(),
@@ -267,6 +294,7 @@ def build_report(
         "storage_backend": check_storage_backend(
             env.get("FINANCE_APP_STORAGE_BACKEND", "sqlite").strip().lower() or "sqlite",
             allow_mysql_backend=allow_mysql_backend,
+            runtime_ready=runtime_ready,
         ),
         "primary_read_pilot": check_primary_read_pilot(env, database_url),
         "strict_transactions": strict_transactions,
@@ -274,7 +302,7 @@ def build_report(
         "strict_reconciliation": strict_reconciliation,
         "strict_categories_budgets_recurring": strict_categories,
         "strict_auth": strict_auth,
-        "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend, guarded_groups=guarded_groups),
+        "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend and runtime_ready, guarded_groups=guarded_groups),
     }
 
     if not skip_data_checks:
@@ -364,6 +392,10 @@ def render_markdown(report: Dict[str, Any]) -> str:
             detail = f"failed={check['report'].get('failed')}"
         elif name == "database_connection":
             detail = f"database={check.get('database')} user={check.get('user')}"
+        elif name == "storage_backend" and check.get("mode"):
+            detail = str(check.get("mode"))
+        elif name == "runtime_adapter" and check.get("mode"):
+            detail = str(check.get("mode"))
         elif name in {
             "strict_categories_budgets_recurring",
             "strict_transactions",

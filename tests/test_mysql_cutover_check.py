@@ -9,7 +9,17 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         check = mysql_cutover_check.check_storage_backend("mysql", allow_mysql_backend=False)
 
         self.assertEqual(check["status"], "blocked")
-        self.assertIn("write backend", check["reason"])
+        self.assertIn("strict MySQL dual-write", check["reason"])
+
+    def test_storage_backend_allows_mysql_when_runtime_ready_and_explicitly_allowed(self):
+        check = mysql_cutover_check.check_storage_backend(
+            "mysql",
+            allow_mysql_backend=True,
+            runtime_ready=True,
+        )
+
+        self.assertEqual(check["status"], "ok")
+        self.assertEqual(check["mode"], "mysql-primary-read-strict-dual-write")
 
     def test_storage_backend_allows_sqlite(self):
         check = mysql_cutover_check.check_storage_backend("sqlite", allow_mysql_backend=False)
@@ -23,11 +33,20 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         )
 
         self.assertEqual(check["status"], "blocked")
-        self.assertIn("primary MySQL write adapters", check["reason"])
+        self.assertIn("not every runtime group", check["reason"])
         self.assertIn("transactions", check["missing_groups"])
         self.assertNotIn("categories_budgets_recurring", check["missing_groups"])
         self.assertIn("categories_budgets_recurring", check["guarded_groups"])
         self.assertIn("auth_and_sessions", check["details"])
+
+    def test_runtime_adapter_status_ok_when_every_group_is_guarded_and_allowed(self):
+        check = mysql_cutover_check.check_runtime_adapter_status(
+            allow_mysql_backend=True,
+            guarded_groups=list(mysql_cutover_check.RUNTIME_WRITE_GROUPS),
+        )
+
+        self.assertEqual(check["status"], "ok")
+        self.assertEqual(check["mode"], "mysql-primary-read-strict-dual-write")
 
     def test_primary_read_pilot_requires_database_url(self):
         check = mysql_cutover_check.check_primary_read_pilot(
@@ -195,6 +214,42 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertIn("accounts_and_capital", report["checks"]["runtime_adapter"]["guarded_groups"])
         self.assertIn("reconciliation_settings", report["checks"]["runtime_adapter"]["guarded_groups"])
         self.assertIn("auth_and_sessions", report["checks"]["runtime_adapter"]["guarded_groups"])
+
+    def test_build_report_can_be_runtime_ready_with_all_strict_guards_and_allow_flag(self):
+        with (
+            patch.object(mysql_cutover_check, "check_python_dependencies", return_value={"status": "ok"}),
+            patch.object(mysql_cutover_check, "check_database_connection", return_value={"status": "ok"}),
+            patch.object(mysql_cutover_check, "check_schema_tables", return_value={"status": "ok"}),
+        ):
+            with patch.dict(
+                mysql_cutover_check.os.environ,
+                {
+                    "FINANCE_APP_MYSQL_SHADOW_WRITE": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_AUTH": "true",
+                    "FINANCE_APP_STORAGE_BACKEND": "mysql",
+                },
+                clear=False,
+            ):
+                report = mysql_cutover_check.build_report(
+                    source_root=mysql_cutover_check.PROJECT_ROOT,
+                    database_url="mysql+pymysql://user:pass@localhost:3306/db",
+                    auth_db="auth.db",
+                    root_finance_db="finance.db",
+                    users_dir="data/users",
+                    year=2026,
+                    month=4,
+                    allow_mysql_backend=True,
+                    skip_data_checks=True,
+                )
+
+        self.assertTrue(report["ready_for_runtime_mysql"])
+        self.assertEqual(report["blockers"], [])
+        self.assertEqual(report["checks"]["runtime_adapter"]["status"], "ok")
+        self.assertEqual(report["checks"]["storage_backend"]["mode"], "mysql-primary-read-strict-dual-write")
 
     def test_render_markdown_includes_readiness(self):
         report = {

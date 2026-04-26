@@ -9,23 +9,32 @@ import core
 from backend.auth.service import auth_service
 from backend.api.router import api_router
 from backend.config import settings
+from backend.storage.mysql_runtime import mysql_runtime_mode
 from backend.services import transaction_service
 from utils.logger import app_logger
 
 
 def _guard_unwired_postgres_backend() -> None:
-    if settings.storage_backend in {"postgres", "mysql"}:
+    if settings.storage_backend == "postgres":
         raise RuntimeError(
             f"FINANCE_APP_STORAGE_BACKEND={settings.storage_backend} is not enabled yet: "
             "SQL migration currently supports ETL, reconciliation and shadow-read only."
         )
+    if settings.storage_backend == "mysql":
+        mode = mysql_runtime_mode()
+        if mode == "blocked":
+            raise RuntimeError(
+                "FINANCE_APP_STORAGE_BACKEND=mysql requires FINANCE_APP_MYSQL_DATABASE_URL, "
+                "FINANCE_APP_MYSQL_SHADOW_WRITE=true and all strict MySQL dual-write flags enabled."
+            )
+        app_logger.info("MySQL runtime mode enabled: %s", mode)
     if settings.postgres_read_shadow_enabled:
         app_logger.info("PostgreSQL shadow-read is enabled; primary runtime storage remains SQLite")
     if settings.postgres_shadow_write_enabled:
         app_logger.info("PostgreSQL shadow-write is enabled; primary runtime storage remains SQLite")
-    if settings.mysql_read_shadow_enabled:
+    if settings.mysql_read_shadow_enabled and settings.storage_backend != "mysql":
         app_logger.info("MySQL shadow-read is enabled; primary runtime storage remains SQLite")
-    if settings.mysql_shadow_write_enabled:
+    if settings.mysql_shadow_write_enabled and settings.storage_backend != "mysql":
         app_logger.info("MySQL shadow-write is enabled; primary runtime storage remains SQLite")
 
 
