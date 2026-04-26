@@ -28,6 +28,7 @@
 - Добавлен первый read-only PostgreSQL storage adapter `backend/storage/postgres_read.py` и parity compare `tools/postgres_read_compare.py`: на production snapshot ответы PostgreSQL по balance, transactions, category totals и monthly stats совпали со SQLite для 11 пользователей (`failed=0`).
 - Для read-model категорий с одинаковой суммой закреплен детерминированный порядок `total DESC, category ASC`, чтобы будущий API не зависел от случайного порядка БД.
 - Для перехода на PostgreSQL подготовлен безопасный runtime-шаг без cutover: добавлены конфиги `FINANCE_APP_STORAGE_BACKEND`, `FINANCE_APP_DATABASE_URL`, `FINANCE_APP_RUN_DB_MIGRATIONS`, `FINANCE_APP_POSTGRES_READ_SHADOW`, а `/dashboard` получил выключенный по умолчанию shadow-read, который при явном включении сравнивает SQLite-ответ с PostgreSQL read-model и пишет в лог только факт/количество расхождений.
+- PostgreSQL migration/shadow-read код выложен на production без переключения основной БД: сервер обновлен до `ca29eb0`, Passenger перезапущен, health вернул `{"status":"ok"}`; полный PostgreSQL cutover отложен до появления production PostgreSQL target и write-path адаптера.
 
 ### 2026-04-25
 
