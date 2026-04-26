@@ -420,6 +420,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     forecast_executed_planned_income = 0.0
     forecast_executed_planned_expense = 0.0
     recent_transactions: List[Dict[str, object]] = []
+    member_money: List[Dict[str, object]] = []
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
     personal_category_names = _personal_category_names_for_family(family_id)
@@ -449,7 +450,16 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         balance, stats, direct_capital_outflow, items, forecast = _run_in_user_db(user_id, _action)
         family_capital_outflow = float(family_capital_outflow_by_source_user.get(user_id, 0.0))
         capital_outflow = float(direct_capital_outflow or 0.0) + family_capital_outflow
-        main_balance += float(balance.main_balance)
+        member_main_balance = float(balance.main_balance)
+        main_balance += member_main_balance
+        member_money.append(
+            {
+                "user_id": user_id,
+                "email": user_email,
+                "display_name": user_display_name,
+                "main_balance": round(member_main_balance, 2),
+            }
+        )
         income += float(stats.get("income", 0.0) or 0.0)
         expense += float(stats.get("expense", 0.0) or 0.0) + capital_outflow
         forecast_planned_income += float(forecast.get("planned_income", 0.0) or 0.0)
@@ -503,6 +513,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
             expense=round(expense, 2),
             difference=round(income - expense, 2),
         ),
+        member_money=member_money,
         forecast=family_forecast,
         capital_accounts=[FamilyCapitalAccountItemResponse(**item) for item in capital_accounts],
         current_member_capital_target=FamilyCapitalSelectionResponse(

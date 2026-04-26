@@ -387,6 +387,12 @@ export type FamilyDashboardResponse = {
     expense: number;
     difference: number;
   };
+  member_money: Array<{
+    user_id: number;
+    email: string;
+    display_name: string;
+    main_balance: number;
+  }>;
   forecast: DashboardResponse["forecast"];
   capital_accounts: Array<{
     owner_user_id: number;

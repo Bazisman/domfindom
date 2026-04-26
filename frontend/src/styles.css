@@ -438,6 +438,37 @@ body {
   background: rgba(123, 203, 166, 0.92);
 }
 
+.family-money-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.family-money-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.family-money-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.family-money-item strong {
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .family-money-item {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .panel h2,
 .panel h3 {
   margin: 10px 0 0;

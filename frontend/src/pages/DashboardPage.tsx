@@ -191,6 +191,7 @@ export function DashboardPage() {
   const personalBalance = dashboard.data?.balance;
   const familyForecast = familyDashboardQuery.data?.forecast;
   const familyBalance = familyDashboardQuery.data?.balance;
+  const familyMemberMoney = familyDashboardQuery.data?.member_money ?? [];
   const showFamilyBalanceSlide = showFamilyCards && familyBalance !== undefined;
   const showFamilyForecastSlide = showFamilyCards && familyForecast !== undefined;
   const desktopBalanceSlides = useMemo(
@@ -801,6 +802,16 @@ export function DashboardPage() {
       <article className="balance-slide" key={key}>
         <p className="panel-label">Деньги семьи</p>
         <h2>{familyBalance ? formatMoney(familyBalance.main_balance) : "—"}</h2>
+        {!!familyMemberMoney.length && (
+          <div className="family-money-list" aria-label="Деньги на руках у участников">
+            {familyMemberMoney.map((member) => (
+              <div className="family-money-item" key={member.user_id}>
+                <span>{member.display_name || member.email}</span>
+                <strong>{formatMoney(member.main_balance)}</strong>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="stats-row">
           <div>
             <span>Доход семьи</span>

@@ -95,6 +95,13 @@ class FamilyDashboardBalanceResponse(BaseModel):
     difference: float
 
 
+class FamilyDashboardMemberMoneyResponse(BaseModel):
+    user_id: int
+    email: str
+    display_name: str
+    main_balance: float
+
+
 class FamilyCapitalAccountItemResponse(BaseModel):
     owner_user_id: int
     owner_email: str
@@ -159,6 +166,7 @@ class FamilyDashboardResponse(BaseModel):
     family_name: str
     members_count: int
     balance: FamilyDashboardBalanceResponse
+    member_money: List[FamilyDashboardMemberMoneyResponse] = []
     forecast: ForecastResponse
     capital_accounts: List[FamilyCapitalAccountItemResponse] = []
     current_member_capital_target: FamilyCapitalSelectionResponse = FamilyCapitalSelectionResponse()

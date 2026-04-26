@@ -1520,6 +1520,13 @@ class WebApiTestCase(unittest.TestCase):
 
         family_dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
         self.assertEqual(family_dashboard.status_code, 200)
+        member_money = family_dashboard.json()["member_money"]
+        self.assertEqual(
+            sum(float(item["main_balance"]) for item in member_money),
+            family_dashboard.json()["balance"]["main_balance"],
+        )
+        self.assertTrue(any(item["email"] == self._primary_email and item["main_balance"] == 1000.0 for item in member_money))
+        self.assertTrue(any(item["email"] == second_email and item["main_balance"] == 500.0 for item in member_money))
 
         owner_accounts = self.client.get("/api/v1/accounts")
         self.assertEqual(owner_accounts.status_code, 200)
