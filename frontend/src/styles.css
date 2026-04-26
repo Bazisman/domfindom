@@ -1308,6 +1308,12 @@ body {
   color: var(--green);
 }
 
+.transfer-kind-chip {
+  border-color: rgba(53, 120, 229, 0.28);
+  background: rgba(53, 120, 229, 0.1);
+  color: var(--blue);
+}
+
 .transaction-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1319,6 +1325,11 @@ body {
 .transaction-date {
   margin: 4px 0 0;
   color: var(--muted);
+}
+
+.transaction-main .transfer-note {
+  margin-top: 6px;
+  color: var(--text);
 }
 
 .transaction-owner-row,

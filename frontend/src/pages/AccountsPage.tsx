@@ -17,6 +17,7 @@ import {
   updateFamilyCapitalTarget,
   updateSettings,
   type Account,
+  type Transfer,
 } from "../lib/api";
 
 const ACCOUNT_COLORS = [
@@ -45,6 +46,38 @@ function getInitialAccountForm() {
     name: "",
     balance: "",
     color: ACCOUNT_COLORS[0],
+  };
+}
+
+function isDailyTransferAccount(accountId: number) {
+  return accountId === 1 || accountId === 2;
+}
+
+function getTransferStory(transfer: Transfer) {
+  const fromIsDaily = isDailyTransferAccount(transfer.from_account_id);
+  const toIsDaily = isDailyTransferAccount(transfer.to_account_id);
+
+  if (fromIsDaily && !toIsDaily) {
+    return {
+      label: "Отложили в подушку",
+      note: "Это не расход: деньги на жизнь уменьшились, подушка выросла.",
+    };
+  }
+  if (!fromIsDaily && toIsDaily) {
+    return {
+      label: "Вернули из подушки",
+      note: "Подушка уменьшилась, деньги на жизнь выросли.",
+    };
+  }
+  if (fromIsDaily && toIsDaily) {
+    return {
+      label: "Переложили деньги",
+      note: "Общая сумма на руках не изменилась.",
+    };
+  }
+  return {
+    label: "Перенесли между подушками",
+    note: "Общая сумма в подушках не изменилась.",
   };
 }
 
@@ -1295,20 +1328,27 @@ export function AccountsPage() {
           </div>
 
           <div className="transaction-table">
-            {(transfers.data ?? []).map((transfer) => (
-              <article className="transaction-row" key={transfer.id}>
-                <div className="transaction-main">
-                  <strong>
-                    {transfer.from_name} → {transfer.to_name}
-                  </strong>
-                  <p>{transfer.comment || "Без комментария"}</p>
-                </div>
-                <div className="transaction-meta">
-                  <span className="transaction-date">{transfer.date}</span>
-                  <strong className="money">{formatMoney(transfer.amount)}</strong>
-                </div>
-              </article>
-            ))}
+            {(transfers.data ?? []).map((transfer) => {
+              const story = getTransferStory(transfer);
+              return (
+                <article className="transaction-row" key={transfer.id}>
+                  <div className="transaction-main">
+                    <div className="transaction-title-row">
+                      <strong>
+                        {transfer.from_name} → {transfer.to_name}
+                      </strong>
+                      <span className="status-chip transfer-kind-chip">{story.label}</span>
+                    </div>
+                    <p>{transfer.comment || story.label}</p>
+                    <p className="transfer-note">{story.note}</p>
+                  </div>
+                  <div className="transaction-meta">
+                    <span className="transaction-date">{transfer.date}</span>
+                    <strong className="money">{formatMoney(transfer.amount)}</strong>
+                  </div>
+                </article>
+              );
+            })}
 
             {transfersError && <p className="form-error">{transfersError}</p>}
 
