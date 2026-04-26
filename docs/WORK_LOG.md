@@ -45,6 +45,7 @@
 - Добавлен read-only MySQL adapter и `tools/mysql_read_compare.py`; production read-compare по 11 пользователям совпал со SQLite (`failed=0`) для balance, transactions, category totals и monthly stats.
 - Runtime подготовлен к MySQL shadow-read: добавлены `FINANCE_APP_MYSQL_DATABASE_URL` и `FINANCE_APP_MYSQL_READ_SHADOW`, `/dashboard` может сравнивать SQLite-ответ с MySQL без изменения ответа пользователю.
 - MySQL shadow-write начат с личных actual transactions: create/update/delete зеркалируются в MySQL после SQLite-коммита; rollback-probe на production прошел без сохранения тестовой записи, reconciliation перед включением показал `failed=0`.
+- MySQL shadow-write расширен на личные planned transactions и recurring templates: шаблоны пересинхронизируют актуальный набор связанных planned rows после SQLite-коммита.
 
 ### 2026-04-25
 

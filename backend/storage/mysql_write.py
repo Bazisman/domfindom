@@ -392,3 +392,164 @@ class MySqlWriteRepository(MySqlReadRepository):
             "delete": delete_result,
             "insert": insert_result,
         }
+
+    def mirror_planned_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        transaction: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        status = str(transaction.get("status") or "actual")
+        if status != "planned":
+            raise RuntimeError("mirror_planned_transaction expects a planned transaction")
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_transaction_id = int(transaction["id"])
+        template_id = None
+        if transaction.get("template_id") is not None:
+            template_id = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, int(transaction["template_id"]))
+            if template_id is None:
+                return {"status": "skipped", "reason": "recurring_template_not_mirrored"}
+        existing = self._finance_id_by_legacy(conn, "transactions", mysql_user_id, legacy_transaction_id)
+        category = str(transaction["category"])
+        params = (
+            str(transaction["type"]),
+            category,
+            self._category_id_by_name(conn, mysql_user_id, category),
+            to_minor(transaction["amount"]),
+            transaction.get("comment"),
+            transaction["date"],
+            str(transaction.get("money_source") or "cashless"),
+            template_id,
+        )
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_transactions
+                    SET type = %s,
+                        category = %s,
+                        category_id = %s,
+                        amount_minor = %s,
+                        comment = %s,
+                        date = %s,
+                        money_source = %s,
+                        status = 'planned',
+                        template_id = %s
+                    WHERE id = %s
+                    """,
+                    (*params, existing),
+                )
+            return {"status": "updated", "transaction_id": existing}
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_transactions (
+                    user_id, legacy_local_id, type, category, category_id,
+                    amount_minor, comment, date, money_source, status, template_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'planned', %s)
+                """,
+                (mysql_user_id, legacy_transaction_id, *params),
+            )
+            mysql_transaction_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "transactions", legacy_transaction_id, "transactions", mysql_transaction_id)
+        return {"status": "inserted", "transaction_id": mysql_transaction_id}
+
+    def mirror_recurring_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        template: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_template_id = int(template["id"])
+        category_id = self._finance_id_by_legacy(conn, "categories", mysql_user_id, template.get("category_id"))
+        params = (
+            str(template["type"]),
+            str(template["name"]),
+            to_minor(template["amount"]),
+            int(template["day_of_month"]),
+            category_id,
+            template.get("comment_template"),
+            str(template.get("money_source") or "cashless"),
+            int(template.get("months_ahead") or 12),
+            bool(template.get("working_days_only")),
+            bool(template.get("is_active", True)),
+        )
+        existing = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, legacy_template_id)
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_recurring_templates
+                    SET type = %s,
+                        name = %s,
+                        amount_minor = %s,
+                        day_of_month = %s,
+                        category_id = %s,
+                        comment_template = %s,
+                        money_source = %s,
+                        months_ahead = %s,
+                        working_days_only = %s,
+                        is_active = %s
+                    WHERE id = %s
+                    """,
+                    (*params, existing),
+                )
+            return {"status": "updated", "template_id": existing}
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_recurring_templates (
+                    user_id, legacy_local_id, type, name, amount_minor, day_of_month, category_id,
+                    comment_template, money_source, months_ahead, working_days_only, is_active
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (mysql_user_id, legacy_template_id, *params),
+            )
+            mysql_template_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "recurring_templates", legacy_template_id, "recurring_templates", mysql_template_id)
+        return {"status": "inserted", "template_id": mysql_template_id}
+
+    def delete_planned_transactions_for_template(self, conn, legacy_user_id: int, legacy_template_id: int) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_template_id = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, legacy_template_id)
+        if mysql_template_id is None:
+            return {"status": "missing_template", "deleted": 0}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM finance_transactions
+                WHERE user_id = %s
+                  AND template_id = %s
+                  AND status = 'planned'
+                """,
+                (mysql_user_id, mysql_template_id),
+            )
+            deleted = int(cursor.rowcount)
+        return {"status": "deleted", "deleted": deleted, "template_id": mysql_template_id}
+
+    def mirror_delete_recurring_template(self, conn, legacy_user_id: int, legacy_template_id: int) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_template_id = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, legacy_template_id)
+        if mysql_template_id is None:
+            return {"status": "missing"}
+        planned_result = self.delete_planned_transactions_for_template(conn, legacy_user_id, legacy_template_id)
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM finance_recurring_templates WHERE id = %s", (mysql_template_id,))
+        return {"status": "deleted", "template_id": mysql_template_id, "planned_deleted": planned_result.get("deleted", 0)}
