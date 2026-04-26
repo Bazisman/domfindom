@@ -95,6 +95,25 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                 "amount": 654.32,
                 "comment": "rollback probe actual updated",
             }
+            capital_account = {
+                "id": source_local_id + 2,
+                "name": "__mysql_strict_probe_capital__",
+                "balance": 1000.0,
+                "currency": "RUB",
+                "icon": "probe",
+                "color": "#795548",
+                "is_default": False,
+                "is_active": True,
+            }
+            transfer = {
+                "id": source_local_id + 3,
+                "from_account_id": 1,
+                "to_account_id": capital_account["id"],
+                "amount": 111.11,
+                "date": "2099-01-03",
+                "comment": "rollback probe transfer",
+                "is_active": True,
+            }
 
             category_result = repo.mirror_category(conn, source_legacy_user_id, source_db_path, category)
             budget_result = repo.mirror_budget(conn, source_legacy_user_id, source_db_path, budget)
@@ -117,6 +136,18 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                 source_legacy_user_id,
                 actual_transaction_id,
             )
+            capital_account_result = repo.mirror_capital_account(
+                conn,
+                source_legacy_user_id,
+                source_db_path,
+                capital_account,
+            )
+            transfer_result = repo.mirror_standalone_transfer(
+                conn,
+                source_legacy_user_id,
+                source_db_path,
+                transfer,
+            )
             budget_delete_result = repo.mirror_delete_budget(conn, source_legacy_user_id, source_local_id)
             template_delete_result = repo.mirror_delete_recurring_template(conn, source_legacy_user_id, source_local_id)
 
@@ -132,6 +163,8 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                     "actual_transaction": actual_result,
                     "transaction_update": update_result,
                     "transaction_delete": transaction_delete_result,
+                    "capital_account": capital_account_result,
+                    "transfer": transfer_result,
                     "budget_delete": budget_delete_result,
                     "template_delete": template_delete_result,
                 },

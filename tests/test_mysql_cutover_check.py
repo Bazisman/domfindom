@@ -90,6 +90,28 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertTrue(check["enabled"])
         self.assertEqual(check["guarded_group"], "transactions")
 
+    def test_strict_accounts_capital_requires_shadow_write(self):
+        check = mysql_cutover_check.check_strict_accounts_capital(
+            {"FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL": "true"},
+            "mysql+pymysql://user:pass@localhost:3306/db",
+        )
+
+        self.assertEqual(check["status"], "blocked")
+        self.assertIn("FINANCE_APP_MYSQL_SHADOW_WRITE", check["reason"])
+
+    def test_strict_accounts_capital_can_be_enabled(self):
+        check = mysql_cutover_check.check_strict_accounts_capital(
+            {
+                "FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL": "true",
+                "FINANCE_APP_MYSQL_SHADOW_WRITE": "true",
+            },
+            "mysql+pymysql://user:pass@localhost:3306/db",
+        )
+
+        self.assertEqual(check["status"], "ok")
+        self.assertTrue(check["enabled"])
+        self.assertEqual(check["guarded_group"], "accounts_and_capital")
+
     def test_build_report_can_be_shadow_ready_but_not_runtime_ready(self):
         with (
             patch.object(mysql_cutover_check, "check_python_dependencies", return_value={"status": "ok"}),
@@ -102,6 +124,7 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
                     "FINANCE_APP_MYSQL_SHADOW_WRITE": "true",
                     "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING": "true",
                     "FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL": "true",
                 },
                 clear=False,
             ):
@@ -123,6 +146,7 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertIn("strict_categories_budgets_recurring", report["checks"])
         self.assertIn("categories_budgets_recurring", report["checks"]["runtime_adapter"]["guarded_groups"])
         self.assertIn("transactions", report["checks"]["runtime_adapter"]["guarded_groups"])
+        self.assertIn("accounts_and_capital", report["checks"]["runtime_adapter"]["guarded_groups"])
 
     def test_render_markdown_includes_readiness(self):
         report = {
@@ -218,6 +242,26 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         rendered = mysql_cutover_check.render_markdown(report)
 
         self.assertIn("`strict_transactions`", rendered)
+        self.assertIn("mode=strict-dual-write", rendered)
+
+    def test_render_markdown_includes_strict_accounts_capital(self):
+        report = {
+            "source_root": ".",
+            "ready_for_shadow_read": True,
+            "ready_for_runtime_mysql": False,
+            "blockers": ["runtime_adapter"],
+            "checks": {
+                "strict_accounts_capital": {
+                    "status": "ok",
+                    "enabled": True,
+                    "mode": "strict-dual-write",
+                }
+            },
+        }
+
+        rendered = mysql_cutover_check.render_markdown(report)
+
+        self.assertIn("`strict_accounts_capital`", rendered)
         self.assertIn("mode=strict-dual-write", rendered)
 
 

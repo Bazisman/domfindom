@@ -77,6 +77,7 @@
 - Runtime adapter report теперь отделяет `guarded_groups` от `missing_groups`, чтобы включенный strict dual-write по categories/budgets/recurring был виден как защищённый промежуточный этап, а не как полностью нетронутый блокер.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS` для обычных transaction create/update/delete; family capital contribution ветка пока остаётся отдельным неподготовленным случаем.
 - MySQL rollback-probe расширен на обычные transactions: проверяет actual transaction insert/update/delete в той же транзакции с rollback перед включением strict transaction dual-write.
+- Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL` для capital account create/update/delete и standalone transfers; rollback-probe расширен на capital account и transfer write paths.
 
 ### 2026-04-25
 

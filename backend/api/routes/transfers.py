@@ -7,7 +7,10 @@ from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.accounts import TransferCreateRequest, TransferResponse
 from backend.services import run_in_user_finance_db, transaction_service
-from backend.storage.shadow_write import mirror_transfer_shadow_write
+from backend.storage.shadow_write import (
+    mirror_transfer_shadow_write,
+    require_mysql_accounts_capital_shadow_write_success,
+)
 
 
 router = APIRouter()
@@ -120,11 +123,13 @@ def create_transfer(payload: TransferCreateRequest, current_user=Depends(require
             and float(_row_value(item, "amount", 0) or 0) == float(payload.amount)
             and _row_value(item, "comment", "") == payload.comment
         ):
-            mirror_transfer_shadow_write(current_user, item)
+            mirror_result = mirror_transfer_shadow_write(current_user, item)
+            require_mysql_accounts_capital_shadow_write_success(mirror_result, "transfer_create")
             return _transfer_response(item)
 
     fallback = transaction_service.get_transfers_history(limit=1, include_inactive=True)
     if not fallback:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Перевод создан, но не найден")
-    mirror_transfer_shadow_write(current_user, fallback[0])
+    mirror_result = mirror_transfer_shadow_write(current_user, fallback[0])
+    require_mysql_accounts_capital_shadow_write_success(mirror_result, "transfer_create")
     return _transfer_response(fallback[0])

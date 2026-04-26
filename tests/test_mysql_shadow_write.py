@@ -48,6 +48,21 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
         self.assertFalse(shadow_write.mysql_strict_transactions_enabled(disabled))
         self.assertTrue(shadow_write.mysql_strict_transactions_enabled(enabled))
 
+    def test_strict_accounts_capital_requires_shadow_write_flag_and_url(self):
+        disabled = SimpleNamespace(
+            mysql_shadow_write_enabled=False,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_accounts_capital_enabled=True,
+        )
+        enabled = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_accounts_capital_enabled=True,
+        )
+
+        self.assertFalse(shadow_write.mysql_strict_accounts_capital_enabled(disabled))
+        self.assertTrue(shadow_write.mysql_strict_accounts_capital_enabled(enabled))
+
     def test_require_mysql_shadow_write_success_is_noop_when_strict_flag_is_off(self):
         config = SimpleNamespace(
             mysql_shadow_write_enabled=True,
@@ -99,6 +114,20 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
             shadow_write.require_mysql_transaction_shadow_write_success(
                 {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
                 "transaction_create",
+                config=config,
+            )
+
+    def test_require_mysql_accounts_capital_shadow_write_success_raises_on_failure_when_strict_flag_is_on(self):
+        config = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_accounts_capital_enabled=True,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "transfer_create"):
+            shadow_write.require_mysql_accounts_capital_shadow_write_success(
+                {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
+                "transfer_create",
                 config=config,
             )
 
@@ -203,6 +232,44 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
             conn,
             legacy_user_id=12,
             legacy_template_id=3,
+        )
+        conn.commit.assert_called_once_with()
+
+    def test_capital_accounts_shadow_write_calls_mysql_repository_for_each_account(self):
+        config = SimpleNamespace(mysql_shadow_write_enabled=True, mysql_database_url="mysql+pymysql://example/db")
+        accounts = [_Row(id=100, name="Reserve", balance=1000.0, is_active=1)]
+        with mock.patch.object(shadow_write, "MySqlWriteRepository") as repository:
+            repo = repository.return_value
+            conn = repo.connect.return_value.__enter__.return_value
+            repo.mirror_capital_account.return_value = {"status": "inserted", "account_id": 77}
+
+            result = shadow_write.mirror_capital_accounts_shadow_write({"id": 12}, accounts, config=config)
+
+        self.assertEqual(result["status"], "ok")
+        repo.mirror_capital_account.assert_called_once_with(
+            conn,
+            legacy_user_id=12,
+            source_db_path="data/users/12/finance.db",
+            account=dict(accounts[0]),
+        )
+        conn.commit.assert_called_once_with()
+
+    def test_transfer_shadow_write_calls_mysql_repository(self):
+        config = SimpleNamespace(mysql_shadow_write_enabled=True, mysql_database_url="mysql+pymysql://example/db")
+        transfer = _Row(id=11, from_account_id=1, to_account_id=100, amount=500.0, date="2026-04-26", comment="")
+        with mock.patch.object(shadow_write, "MySqlWriteRepository") as repository:
+            repo = repository.return_value
+            conn = repo.connect.return_value.__enter__.return_value
+            repo.mirror_standalone_transfer.return_value = {"status": "inserted", "transfer_id": 88}
+
+            result = shadow_write.mirror_transfer_shadow_write({"id": 12}, transfer, config=config)
+
+        self.assertEqual(result["status"], "ok")
+        repo.mirror_standalone_transfer.assert_called_once_with(
+            conn,
+            legacy_user_id=12,
+            source_db_path="data/users/12/finance.db",
+            transfer=dict(transfer),
         )
         conn.commit.assert_called_once_with()
 

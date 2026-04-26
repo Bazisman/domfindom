@@ -173,6 +173,21 @@ def check_strict_transactions(env: Dict[str, str], database_url: str) -> Dict[st
     }
 
 
+def check_strict_accounts_capital(env: Dict[str, str], database_url: str) -> Dict[str, Any]:
+    enabled = env_bool(env, "FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL")
+    shadow_write_enabled = env_bool(env, "FINANCE_APP_MYSQL_SHADOW_WRITE")
+    if enabled and not database_url:
+        return {"status": "blocked", "enabled": enabled, "reason": "strict accounts/capital write requires FINANCE_APP_MYSQL_DATABASE_URL"}
+    if enabled and not shadow_write_enabled:
+        return {"status": "blocked", "enabled": enabled, "reason": "strict accounts/capital write requires FINANCE_APP_MYSQL_SHADOW_WRITE=true"}
+    return {
+        "status": "ok",
+        "enabled": enabled,
+        "guarded_group": "accounts_and_capital",
+        "mode": "strict-dual-write" if enabled else "shadow-write-only",
+    }
+
+
 def run_json_tool(command: Sequence[str], env: Dict[str, str]) -> Dict[str, Any]:
     step = run_step(command, env)
     parsed = parse_json_stdout(step)
@@ -198,6 +213,7 @@ def build_report(
 
     strict_categories = check_strict_categories_budgets_recurring(env, database_url)
     strict_transactions = check_strict_transactions(env, database_url)
+    strict_accounts = check_strict_accounts_capital(env, database_url)
     guarded_groups = (
         [strict_categories["guarded_group"]]
         if strict_categories.get("status") == "ok" and strict_categories.get("enabled")
@@ -205,6 +221,8 @@ def build_report(
     )
     if strict_transactions.get("status") == "ok" and strict_transactions.get("enabled"):
         guarded_groups.append(strict_transactions["guarded_group"])
+    if strict_accounts.get("status") == "ok" and strict_accounts.get("enabled"):
+        guarded_groups.append(strict_accounts["guarded_group"])
 
     checks: Dict[str, Any] = {
         "python_dependencies": check_python_dependencies(),
@@ -216,6 +234,7 @@ def build_report(
         ),
         "primary_read_pilot": check_primary_read_pilot(env, database_url),
         "strict_transactions": strict_transactions,
+        "strict_accounts_capital": strict_accounts,
         "strict_categories_budgets_recurring": strict_categories,
         "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend, guarded_groups=guarded_groups),
     }
@@ -307,7 +326,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
             detail = f"failed={check['report'].get('failed')}"
         elif name == "database_connection":
             detail = f"database={check.get('database')} user={check.get('user')}"
-        elif name in {"strict_categories_budgets_recurring", "strict_transactions"}:
+        elif name in {"strict_categories_budgets_recurring", "strict_transactions", "strict_accounts_capital"}:
             detail = f"enabled={check.get('enabled')} mode={check.get('mode')}"
         lines.append(f"| `{name}` | `{check.get('status')}` | {detail} |")
     return "\n".join(lines)
