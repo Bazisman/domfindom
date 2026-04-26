@@ -55,6 +55,10 @@ function isDailyTransferAccount(accountId: number) {
   return accountId === 1 || accountId === 2;
 }
 
+function getDailyAccountName(account: Account, fallback: string) {
+  return account.name.trim().toLocaleLowerCase("ru-RU") === "безнал" ? fallback : account.name || fallback;
+}
+
 function getCapitalPurposeLabel(purpose: Account["purpose"] | undefined) {
   if (purpose === "personal") {
     return "Для платежей";
@@ -425,6 +429,7 @@ export function AccountsPage() {
       ),
     [familyVisibleAccounts, me.data?.id],
   );
+  const currentUserLabel = preferences.data?.display_name || me.data?.email || "Я";
   const moneyPlaces = useMemo(() => {
     const places: Array<{
       key: string;
@@ -434,24 +439,24 @@ export function AccountsPage() {
       color: string;
       group: string;
     }> = [];
-    if (!familyModeEnabled && cashlessAccount) {
+    if (cashlessAccount) {
       places.push({
         key: `daily:${cashlessAccount.id}`,
-        name: cashlessAccount.name || "Карта",
-        tone: "Мои деньги на каждый день",
+        name: getDailyAccountName(cashlessAccount, "Карта"),
+        tone: familyModeEnabled ? `Сюда списываются траты с карты · ${currentUserLabel}` : "Мои деньги на каждый день",
         balance: cashlessAccount.balance,
         color: cashlessAccount.color ?? "#3578e5",
-        group: "Деньги на жизнь",
+        group: familyModeEnabled ? "Для платежей семьи" : "Деньги на жизнь",
       });
     }
-    if (!familyModeEnabled && cashAccount && cashAccount.balance !== 0) {
+    if (cashAccount && cashAccount.balance !== 0) {
       places.push({
         key: `daily:${cashAccount.id}`,
-        name: cashAccount.name || "Наличные",
-        tone: "Деньги на руках",
+        name: getDailyAccountName(cashAccount, "Наличные"),
+        tone: familyModeEnabled ? `Наличные для семейных трат · ${currentUserLabel}` : "Деньги на руках",
         balance: cashAccount.balance,
         color: cashAccount.color ?? "#1d8f61",
-        group: "Деньги на жизнь",
+        group: familyModeEnabled ? "Для платежей семьи" : "Деньги на жизнь",
       });
     }
     capitalAccounts
@@ -481,7 +486,7 @@ export function AccountsPage() {
       });
     });
     return places;
-  }, [capitalAccounts, cashAccount, cashlessAccount, familyModeEnabled, familyVisibleAccounts, personalAccountsPublishedToFamily]);
+  }, [capitalAccounts, cashAccount, cashlessAccount, currentUserLabel, familyModeEnabled, familyVisibleAccounts, personalAccountsPublishedToFamily]);
   const moneyPlaceGroups = useMemo(() => {
     const order = ["Деньги на жизнь", "Для платежей семьи", "Подушка", "Инвестиции", "Личные деньги"];
     return order
