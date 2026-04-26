@@ -1019,9 +1019,33 @@ class TransactionService:
     def get_budget_status(self, category_id: int = None):
         """Получает статус бюджета для категории"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_budget_status(conn, legacy_user_id, category_id=category_id)
             return core.get_budget_status(category_id)
         except Exception as e:
             app_logger.error(f"Ошибка получения статуса бюджета: {e}", exc_info=True)
             if category_id is None:
                 return []
             return {'spent': 0, 'budget': 0, 'remaining': 0, 'percent': 0}
+
+    def get_budget_report(self, month: str = None):
+        """Получает отчет по бюджетам."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_budget_report(conn, legacy_user_id, month=month)
+            return core.get_budget_report(month)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения отчета по бюджетам: {e}", exc_info=True)
+            return []
+
+    def get_budget_monthly_limit(self, amount: float, period: str, reference_date=None) -> float:
+        """Возвращает месячный эквивалент бюджета."""
+        try:
+            return core._get_budget_monthly_limit(amount, period, reference_date)
+        except Exception as e:
+            app_logger.error(f"Ошибка пересчета бюджета в месяц: {e}", exc_info=True)
+            return float(amount or 0)

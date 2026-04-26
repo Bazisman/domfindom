@@ -355,6 +355,8 @@ class MySqlReadRepository:
                     b.legacy_local_id AS id,
                     c.legacy_local_id AS category_id,
                     c.name AS category,
+                    c.icon,
+                    c.color,
                     b.amount_minor,
                     b.period
                 FROM finance_budgets b
@@ -370,11 +372,139 @@ class MySqlReadRepository:
                 "id": int(row["id"]),
                 "category_id": int(row["category_id"]),
                 "category": row["category"],
+                "icon": row.get("icon"),
+                "color": row.get("color"),
                 "amount": from_minor_float(row["amount_minor"]),
                 "period": row["period"],
             }
             for row in rows
         ]
+
+    @staticmethod
+    def _budget_monthly_limit(amount: float, period: Optional[str], year: int, month: int) -> float:
+        import calendar
+
+        normalized = str(period or "monthly").lower()
+        if normalized == "daily":
+            return float(amount) * calendar.monthrange(int(year), int(month))[1]
+        if normalized == "weekly":
+            return float(amount) * 4
+        if normalized == "yearly":
+            return float(amount) / 12
+        return float(amount)
+
+    def get_budget_report(self, conn, legacy_user_id: int, month: Optional[str] = None) -> List[Dict[str, Any]]:
+        from datetime import datetime
+
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        if month is None:
+            month = datetime.now().strftime("%Y-%m")
+        year, month_num = map(int, month.split("-"))
+        start_date = f"{year}-{month_num:02d}-01"
+        if month_num == 12:
+            end_date = f"{year + 1}-01-01"
+        else:
+            end_date = f"{year}-{month_num + 1:02d}-01"
+
+        report = []
+        budgets = self.get_budgets(conn, legacy_user_id)
+        with conn.cursor() as cursor:
+            for budget in budgets:
+                budget_amount = self._budget_monthly_limit(
+                    budget.get("amount") or 0,
+                    budget.get("period"),
+                    year,
+                    month_num,
+                )
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+                    FROM finance_transactions
+                    WHERE user_id = %s
+                      AND type = 'expense'
+                      AND category = %s
+                      AND status = 'actual'
+                      AND date >= %s
+                      AND date < %s
+                    """,
+                    (user_id, budget["category"], start_date, end_date),
+                )
+                spent = from_minor_float(cursor.fetchone()["total_minor"])
+                percent = (spent / budget_amount * 100) if budget_amount > 0 else 0
+                report.append(
+                    {
+                        "category_id": budget["category_id"],
+                        "category": budget["category"],
+                        "budget": budget_amount,
+                        "spent": spent,
+                        "remaining": budget_amount - spent,
+                        "percent": percent,
+                        "status": "OK" if spent <= budget_amount else "ПРЕВЫШЕНИЕ",
+                    }
+                )
+        return report
+
+    def get_budget_status(self, conn, legacy_user_id: int, category_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        import calendar
+        from datetime import datetime
+
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+
+        today = datetime.now()
+        start_of_month = today.replace(day=1).strftime("%Y-%m-%d")
+        end_of_month = today.strftime("%Y-%m-%d")
+        days_in_month = calendar.monthrange(today.year, today.month)[1]
+        remaining_days_including_today = max(days_in_month - today.day + 1, 0)
+
+        result = []
+        budgets = self.get_budgets(conn, legacy_user_id)
+        with conn.cursor() as cursor:
+            for budget in budgets:
+                normalized_period = str(budget.get("period") or "monthly").lower()
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount_minor), 0) AS spent_minor
+                    FROM finance_transactions
+                    WHERE user_id = %s
+                      AND type = 'expense'
+                      AND category = %s
+                      AND date >= %s
+                      AND date <= %s
+                      AND status = 'actual'
+                    """,
+                    (user_id, budget["category"], start_of_month, end_of_month),
+                )
+                spent = from_minor_float(cursor.fetchone()["spent_minor"])
+                if normalized_period == "daily":
+                    budget_amount = spent + (float(budget.get("amount") or 0) * remaining_days_including_today)
+                else:
+                    budget_amount = self._budget_monthly_limit(
+                        budget.get("amount") or 0,
+                        budget.get("period"),
+                        today.year,
+                        today.month,
+                    )
+                remaining = budget_amount - spent
+                result.append(
+                    {
+                        "category_id": budget["category_id"],
+                        "category_name": budget["category"],
+                        "icon": budget.get("icon"),
+                        "color": budget.get("color"),
+                        "budget_amount": round(budget_amount, 2),
+                        "spent": round(spent, 2),
+                        "remaining": round(remaining, 2),
+                        "percent": round((spent / budget_amount * 100) if budget_amount > 0 else 0, 1),
+                        "over_budget": remaining < 0,
+                    }
+                )
+        if category_id is not None:
+            result = [item for item in result if int(item["category_id"]) == int(category_id)]
+        return result
 
     def get_recurring_templates(self, conn, legacy_user_id: int, template_type: Optional[str] = None) -> List[Dict[str, Any]]:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)

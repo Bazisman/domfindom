@@ -80,65 +80,42 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
         user_db_path = auth_service.ensure_user_finance_db(user_id)
         db_token = core.push_db_name(user_db_path)
         try:
-            with core.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT category, COALESCE(SUM(amount), 0) AS spent
-                    FROM transactions
-                    WHERE type = 'expense'
-                      AND date >= ?
-                      AND date <= ?
-                      AND (status = 'actual' OR status IS NULL)
-                    GROUP BY category
-                    """,
-                    (start_of_month, end_of_month),
-                )
-                for row in cursor.fetchall():
-                    normalized = _normalize_budget_category_name(row["category"])
-                    if normalized:
-                        spent_by_category_name[normalized] += float(row["spent"] or 0.0)
+            for row in transaction_service.get_expenses_by_category(start_of_month, end_of_month):
+                normalized = _normalize_budget_category_name(row["category"])
+                if normalized:
+                    spent_by_category_name[normalized] += float(row["total"] or 0.0)
 
-                cursor.execute(
-                    """
-                    SELECT b.id,
-                           b.category_id,
-                           c.name AS category_name,
-                           c.icon,
-                           c.color,
-                           b.amount,
-                           b.period
-                    FROM budgets b
-                    JOIN categories c ON b.category_id = c.id
-                    ORDER BY c.name
-                    """
+            for row in transaction_service.get_budgets():
+                category_id = int(row["category_id"] or 0)
+                category = category_service.get_category_by_id(category_id)
+                category_name = str(row["category"] or (category.name if category else ""))
+                normalized = _normalize_budget_category_name(category_name)
+                if not normalized or normalized in personal_category_names:
+                    continue
+                period = str(row["period"] or "monthly").strip().lower()
+                amount = float(row["amount"] or 0.0)
+                row_keys = row.keys() if hasattr(row, "keys") else []
+                row_icon = row["icon"] if "icon" in row_keys else ""
+                row_color = row["color"] if "color" in row_keys else ""
+                bucket = budgets_by_category_name.setdefault(
+                    normalized,
+                    {
+                        "category_id": category_id,
+                        "category_name": category_name,
+                        "icon": str((category.icon if category else row_icon) or ""),
+                        "color": str((category.color if category else row_color) or ""),
+                        "monthly_amount": 0.0,
+                        "daily_amount": 0.0,
+                        "has_non_daily": False,
+                    },
                 )
-                for row in cursor.fetchall():
-                    category_name = str(row["category_name"] or "")
-                    normalized = _normalize_budget_category_name(category_name)
-                    if not normalized or normalized in personal_category_names:
-                        continue
-                    period = str(row["period"] or "monthly").strip().lower()
-                    amount = float(row["amount"] or 0.0)
-                    bucket = budgets_by_category_name.setdefault(
-                        normalized,
-                        {
-                            "category_id": int(row["category_id"] or 0),
-                            "category_name": category_name,
-                            "icon": str(row["icon"] or ""),
-                            "color": str(row["color"] or ""),
-                            "monthly_amount": 0.0,
-                            "daily_amount": 0.0,
-                            "has_non_daily": False,
-                        },
-                    )
-                    bucket["monthly_amount"] = float(bucket["monthly_amount"]) + float(
-                        core._get_budget_monthly_limit(amount, period, today)
-                    )
-                    if period == "daily":
-                        bucket["daily_amount"] = float(bucket["daily_amount"]) + amount
-                    else:
-                        bucket["has_non_daily"] = True
+                bucket["monthly_amount"] = float(bucket["monthly_amount"]) + float(
+                    transaction_service.get_budget_monthly_limit(amount, period, today)
+                )
+                if period == "daily":
+                    bucket["daily_amount"] = float(bucket["daily_amount"]) + amount
+                else:
+                    bucket["has_non_daily"] = True
         finally:
             core.pop_db_name(db_token)
 
@@ -224,7 +201,7 @@ def update_budget(
 
 @router.get("/report", response_model=List[BudgetReportItem])
 def budget_report(month: Optional[str] = Query(default=None)) -> List[BudgetReportItem]:
-    report = core.get_budget_report(month)
+    report = transaction_service.get_budget_report(month)
     return [BudgetReportItem(**item) for item in report]
 
 
