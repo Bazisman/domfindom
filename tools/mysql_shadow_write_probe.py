@@ -57,7 +57,7 @@ def _daily_account_legacy_id(conn, user_id: int) -> int:
     return int(row["legacy_local_id"])
 
 
-def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> Dict[str, Any]:
+def build_probe(database_url: str, legacy_user_id: int, source_db_path: str, family_id: int | None = None) -> Dict[str, Any]:
     repo = MySqlWriteRepository(database_url)
     conn = repo.connect()
     try:
@@ -144,6 +144,14 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
             },
         )
         delete_budget_result = repo.mirror_delete_budget(conn, legacy_user_id, 900000102)
+        family_result = None
+        if family_id is not None:
+            from backend.storage.shadow_write import _auth_rows_for_family
+
+            snapshot = _auth_rows_for_family(int(family_id))
+            if not snapshot:
+                raise RuntimeError(f"Family {family_id} was not found")
+            family_result = repo.mirror_family_snapshot(conn, source_db_path="auth.db", snapshot=snapshot)
         after_delete_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transactions WHERE user_id = %s", (mysql_user_id,))
         conn.rollback()
         after_rollback_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transactions WHERE user_id = %s", (mysql_user_id,))
@@ -179,6 +187,7 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
             "capital_account": capital_result,
             "transfer": transfer_result,
             "budget_delete": delete_budget_result,
+            "family": family_result,
         }
     except Exception:
         conn.rollback()
@@ -192,9 +201,10 @@ def main() -> int:
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--legacy-user-id", type=int, required=True)
     parser.add_argument("--source-db-path", required=True)
+    parser.add_argument("--family-id", type=int)
     parser.add_argument("--format", choices=("json", "markdown"), default="markdown")
     args = parser.parse_args()
-    report = build_probe(args.database_url, args.legacy_user_id, args.source_db_path)
+    report = build_probe(args.database_url, args.legacy_user_id, args.source_db_path, family_id=args.family_id)
     if args.format == "json":
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
@@ -206,6 +216,8 @@ def main() -> int:
         print(f"Before count: `{report['before_count']}`")
         print(f"After delete count: `{report['after_delete_count']}`")
         print(f"After rollback count: `{report['after_rollback_count']}`")
+        if report.get("family") is not None:
+            print(f"Family snapshot: `{report['family']['status']}`")
     return 0 if report["status"] == "ok" else 1
 
 

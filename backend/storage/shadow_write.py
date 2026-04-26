@@ -858,11 +858,32 @@ def mirror_family_snapshot_shadow_write(
     family_id: int,
     config=settings,
 ) -> Dict[str, Any]:
-    if not postgres_shadow_write_enabled(config):
+    if not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
     snapshot = _auth_rows_for_family(int(family_id))
     if not snapshot:
         return {"enabled": True, "status": "skipped", "reason": "missing_family"}
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_family_snapshot(
+                    conn,
+                    source_db_path="auth.db",
+                    snapshot=snapshot,
+                )
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write family snapshot failed for family_id=%s: %s",
+                int(family_id),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
@@ -872,11 +893,13 @@ def mirror_family_snapshot_shadow_write(
                 snapshot=snapshot,
             )
             conn.commit()
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write family snapshot failed for family_id=%s: %s",
             int(family_id),
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
