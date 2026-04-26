@@ -923,6 +923,29 @@ class TransactionService:
             if from_balance < amount:
                 app_logger.warning(f"Недостаточно средств: {from_balance} < {amount}")
                 return False
+
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_standalone_transfer(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        from_account_id=from_account_id,
+                        to_account_id=to_account_id,
+                        amount=amount,
+                        date=date,
+                        comment=comment,
+                    )
+                    if write_result.get("status") != "inserted":
+                        conn.rollback()
+                        app_logger.warning(f"MySQL transfer rejected: {write_result}")
+                        return False
+                    conn.commit()
+
+                self.notify_listeners()
+                app_logger.info(f"Перевод {amount} выполнен успешно")
+                return True
             
             # Обновляем балансы
             core.update_account_balance(from_account_id, -amount)

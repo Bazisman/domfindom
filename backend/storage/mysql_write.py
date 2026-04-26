@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Iterable, Optional, Set
 
 from backend.storage.mysql_read import MySqlReadRepository
@@ -73,6 +74,32 @@ class MySqlWriteRepository(MySqlReadRepository):
                 )
             if cursor.rowcount <= 0:
                 raise RuntimeError(f"MySQL account legacy_local_id={legacy_account_id} was not found")
+
+    def _account_balance_minor(self, conn, user_id: int, legacy_account_id: int) -> Optional[int]:
+        ref = self._account_ref(legacy_account_id)
+        with conn.cursor() as cursor:
+            if ref["kind"] == "daily":
+                cursor.execute(
+                    """
+                    SELECT balance_minor
+                    FROM finance_accounts
+                    WHERE user_id = %s AND legacy_local_id = %s AND is_active = TRUE
+                    FOR UPDATE
+                    """,
+                    (int(user_id), int(legacy_account_id)),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT balance_minor
+                    FROM finance_capital_accounts
+                    WHERE user_id = %s AND legacy_local_id = %s AND is_active = TRUE
+                    FOR UPDATE
+                    """,
+                    (int(user_id), int(legacy_account_id)),
+                )
+            row = cursor.fetchone()
+        return int(row["balance_minor"]) if row else None
 
     def _insert_id_map(
         self,
@@ -1083,6 +1110,48 @@ class MySqlWriteRepository(MySqlReadRepository):
             self._adjust_account_minor(conn, mysql_user_id, from_legacy, -amount_minor)
             self._adjust_account_minor(conn, mysql_user_id, to_legacy, amount_minor)
         return {"status": "inserted", "transfer_id": mysql_transfer_id}
+
+    def create_standalone_transfer(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        from_account_id: int,
+        to_account_id: int,
+        amount: float,
+        date: Optional[str] = None,
+        comment: str = "",
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        if amount <= 0:
+            return {"status": "invalid_amount"}
+
+        legacy_transfer_id = self._next_legacy_id(conn, mysql_user_id, "transfers")
+        from_legacy = int(from_account_id)
+        to_legacy = int(to_account_id)
+        amount_minor = to_minor(amount)
+        from_balance = self._account_balance_minor(conn, mysql_user_id, from_legacy)
+        if from_balance is None:
+            return {"status": "missing_from_account"}
+        if from_balance < amount_minor:
+            return {"status": "insufficient_funds"}
+        if self._account_balance_minor(conn, mysql_user_id, to_legacy) is None:
+            return {"status": "missing_to_account"}
+
+        transfer_date = date or datetime.now().strftime("%Y-%m-%d")
+        transfer = {
+            "id": legacy_transfer_id,
+            "from_account_id": from_legacy,
+            "to_account_id": to_legacy,
+            "amount": amount,
+            "date": transfer_date,
+            "comment": comment,
+            "is_active": True,
+        }
+        result = self.mirror_standalone_transfer(conn, legacy_user_id, source_db_path, transfer)
+        return {**result, "legacy_transfer_id": legacy_transfer_id}
 
     def mirror_reconciliation_source(
         self,
