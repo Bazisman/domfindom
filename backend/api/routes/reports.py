@@ -11,7 +11,7 @@ from backend.schemas.reports import (
     CategorySummaryItemResponse,
     CategorySummaryResponse,
 )
-from backend.services import transaction_service
+from backend.services import category_service, transaction_service
 
 
 router = APIRouter()
@@ -63,12 +63,12 @@ def _load_personal_category_rows(
 
 
 def _map_category_meta(category_name: str) -> Dict[str, str]:
-    category = core.get_category_by_name(category_name)
+    category = category_service.get_category_by_name(category_name)
     if not category:
         return {"color": "#808080", "icon": "📁"}
     return {
-        "color": str(category["color"] or "#808080"),
-        "icon": str(category["icon"] or "📁"),
+        "color": str(category.color or "#808080"),
+        "icon": str(category.icon or "📁"),
     }
 
 
