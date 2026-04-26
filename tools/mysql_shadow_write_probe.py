@@ -39,6 +39,24 @@ def _category_name(conn, user_id: int) -> str:
     return str(row["name"])
 
 
+def _daily_account_legacy_id(conn, user_id: int) -> int:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT legacy_local_id
+            FROM finance_accounts
+            WHERE user_id = %s AND legacy_local_id IN (1, 2)
+            ORDER BY legacy_local_id
+            LIMIT 1
+            """,
+            (int(user_id),),
+        )
+        row = cursor.fetchone()
+    if not row:
+        raise RuntimeError(f"No daily account found for MySQL user {user_id}")
+    return int(row["legacy_local_id"])
+
+
 def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> Dict[str, Any]:
     repo = MySqlWriteRepository(database_url)
     conn = repo.connect()
@@ -47,7 +65,12 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         if mysql_user_id is None:
             raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
         before_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transactions WHERE user_id = %s", (mysql_user_id,))
+        before_category_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_categories WHERE user_id = %s", (mysql_user_id,))
+        before_budget_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_budgets WHERE user_id = %s", (mysql_user_id,))
+        before_capital_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_capital_accounts WHERE user_id = %s", (mysql_user_id,))
+        before_transfer_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transfers WHERE user_id = %s", (mysql_user_id,))
         category = _category_name(conn, mysql_user_id)
+        daily_account_id = _daily_account_legacy_id(conn, mysql_user_id)
         legacy_transaction_id = 900000001
         transaction = {
             "id": legacy_transaction_id,
@@ -76,19 +99,86 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
             transfers=[],
         )
         delete_result = repo.mirror_delete_transaction(conn, legacy_user_id, legacy_transaction_id)
+        probe_category = {
+            "id": 900000101,
+            "name": "mysql shadow write rollback category",
+            "type": "expense",
+            "color": "#64748b",
+            "icon": "probe",
+            "is_active": 1,
+        }
+        category_result = repo.mirror_category(conn, legacy_user_id, source_db_path, probe_category)
+        budget_result = repo.mirror_budget(
+            conn,
+            legacy_user_id,
+            source_db_path,
+            {"id": 900000102, "category_id": probe_category["id"], "amount": 321.0, "period": "monthly"},
+        )
+        capital_result = repo.mirror_capital_account(
+            conn,
+            legacy_user_id,
+            source_db_path,
+            {
+                "id": 900000103,
+                "name": "mysql shadow write rollback capital",
+                "balance": 0,
+                "currency": "RUB",
+                "icon": "probe",
+                "color": "#64748b",
+                "is_default": 0,
+                "is_active": 1,
+            },
+        )
+        transfer_result = repo.mirror_standalone_transfer(
+            conn,
+            legacy_user_id,
+            source_db_path,
+            {
+                "id": 900000104,
+                "from_account_id": daily_account_id,
+                "to_account_id": 900000103,
+                "amount": 10.0,
+                "date": date.today().isoformat(),
+                "comment": "mysql shadow write rollback transfer",
+                "is_active": 1,
+            },
+        )
+        delete_budget_result = repo.mirror_delete_budget(conn, legacy_user_id, 900000102)
         after_delete_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transactions WHERE user_id = %s", (mysql_user_id,))
         conn.rollback()
         after_rollback_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transactions WHERE user_id = %s", (mysql_user_id,))
+        after_category_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_categories WHERE user_id = %s", (mysql_user_id,))
+        after_budget_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_budgets WHERE user_id = %s", (mysql_user_id,))
+        after_capital_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_capital_accounts WHERE user_id = %s", (mysql_user_id,))
+        after_transfer_count = _scalar(conn, "SELECT COUNT(*) AS count FROM finance_transfers WHERE user_id = %s", (mysql_user_id,))
+        counts_ok = (
+            before_count == after_rollback_count
+            and before_category_count == after_category_count
+            and before_budget_count == after_budget_count
+            and before_capital_count == after_capital_count
+            and before_transfer_count == after_transfer_count
+        )
         return {
-            "status": "ok" if before_count == after_rollback_count else "failed",
+            "status": "ok" if counts_ok else "failed",
             "legacy_user_id": legacy_user_id,
             "mysql_user_id": mysql_user_id,
             "before_count": before_count,
             "after_delete_count": after_delete_count,
             "after_rollback_count": after_rollback_count,
+            "metadata_counts": {
+                "categories": [before_category_count, after_category_count],
+                "budgets": [before_budget_count, after_budget_count],
+                "capital_accounts": [before_capital_count, after_capital_count],
+                "transfers": [before_transfer_count, after_transfer_count],
+            },
             "insert": insert_result,
             "update": update_result,
             "delete": delete_result,
+            "category": category_result,
+            "budget": budget_result,
+            "capital_account": capital_result,
+            "transfer": transfer_result,
+            "budget_delete": delete_budget_result,
         }
     except Exception:
         conn.rollback()

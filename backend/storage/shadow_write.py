@@ -496,24 +496,44 @@ def mirror_category_shadow_write(
     sqlite_category_row: Any,
     config=settings,
 ) -> Dict[str, Any]:
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
     category = _row_to_dict(sqlite_category_row)
     if not category:
         return {"enabled": True, "status": "skipped", "reason": "missing_category"}
 
     legacy_user_id = int(current_user["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_category(conn, legacy_user_id, source_db_path, category)
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write category failed for user_id=%s category_id=%s: %s",
+                legacy_user_id,
+                category.get("id"),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
             result = repo.mirror_category(
                 conn,
                 legacy_user_id=legacy_user_id,
-                source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                source_db_path=source_db_path,
                 category=category,
             )
             conn.commit()
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write category failed for user_id=%s category_id=%s: %s",
@@ -521,7 +541,8 @@ def mirror_category_shadow_write(
             category.get("id"),
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_budget_shadow_write(
@@ -529,24 +550,44 @@ def mirror_budget_shadow_write(
     sqlite_budget_row: Any,
     config=settings,
 ) -> Dict[str, Any]:
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
     budget = _row_to_dict(sqlite_budget_row)
     if not budget:
         return {"enabled": True, "status": "skipped", "reason": "missing_budget"}
 
     legacy_user_id = int(current_user["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_budget(conn, legacy_user_id, source_db_path, budget)
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write budget failed for user_id=%s budget_id=%s: %s",
+                legacy_user_id,
+                budget.get("id"),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
             result = repo.mirror_budget(
                 conn,
                 legacy_user_id=legacy_user_id,
-                source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                source_db_path=source_db_path,
                 budget=budget,
             )
             conn.commit()
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write budget failed for user_id=%s budget_id=%s: %s",
@@ -554,7 +595,8 @@ def mirror_budget_shadow_write(
             budget.get("id"),
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_deleted_budget_shadow_write(
@@ -562,15 +604,34 @@ def mirror_deleted_budget_shadow_write(
     legacy_budget_id: int,
     config=settings,
 ) -> Dict[str, Any]:
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
     legacy_user_id = int(current_user["id"])
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_delete_budget(conn, legacy_user_id, int(legacy_budget_id))
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write budget delete failed for user_id=%s budget_id=%s: %s",
+                legacy_user_id,
+                int(legacy_budget_id),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
             result = repo.mirror_delete_budget(conn, legacy_user_id, int(legacy_budget_id))
             conn.commit()
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write budget delete failed for user_id=%s budget_id=%s: %s",
@@ -578,7 +639,8 @@ def mirror_deleted_budget_shadow_write(
             int(legacy_budget_id),
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_capital_accounts_shadow_write(
@@ -586,32 +648,61 @@ def mirror_capital_accounts_shadow_write(
     sqlite_account_rows: List[Any],
     config=settings,
 ) -> Dict[str, Any]:
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
     accounts = [_row_to_dict(row) for row in sqlite_account_rows]
     legacy_user_id = int(current_user["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                mirrored = [
+                    repo.mirror_capital_account(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        account=account,
+                    )
+                    for account in accounts
+                    if account
+                ]
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": {"accounts": mirrored}}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write capital accounts failed for user_id=%s: %s",
+                legacy_user_id,
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
-            results = [
+            mirrored = [
                 repo.mirror_capital_account(
                     conn,
                     legacy_user_id=legacy_user_id,
-                    source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                    source_db_path=source_db_path,
                     account=account,
                 )
                 for account in accounts
                 if account
             ]
             conn.commit()
-        return {"enabled": True, "status": "ok", "result": {"accounts": results}}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": {"accounts": mirrored}}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write capital accounts failed for user_id=%s: %s",
             legacy_user_id,
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_transfer_shadow_write(
@@ -619,24 +710,49 @@ def mirror_transfer_shadow_write(
     sqlite_transfer_row: Any,
     config=settings,
 ) -> Dict[str, Any]:
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
     transfer = _row_to_dict(sqlite_transfer_row)
     if not transfer:
         return {"enabled": True, "status": "skipped", "reason": "missing_transfer"}
 
     legacy_user_id = int(current_user["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_standalone_transfer(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    source_db_path=source_db_path,
+                    transfer=transfer,
+                )
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write transfer failed for user_id=%s transfer_id=%s: %s",
+                legacy_user_id,
+                transfer.get("id"),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
             result = repo.mirror_standalone_transfer(
                 conn,
                 legacy_user_id=legacy_user_id,
-                source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                source_db_path=source_db_path,
                 transfer=transfer,
             )
             conn.commit()
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write transfer failed for user_id=%s transfer_id=%s: %s",
@@ -644,7 +760,8 @@ def mirror_transfer_shadow_write(
             transfer.get("id"),
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def _auth_rows_for_family(family_id: int) -> Dict[str, Any]:

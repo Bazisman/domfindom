@@ -46,6 +46,7 @@
 - Runtime подготовлен к MySQL shadow-read: добавлены `FINANCE_APP_MYSQL_DATABASE_URL` и `FINANCE_APP_MYSQL_READ_SHADOW`, `/dashboard` может сравнивать SQLite-ответ с MySQL без изменения ответа пользователю.
 - MySQL shadow-write начат с личных actual transactions: create/update/delete зеркалируются в MySQL после SQLite-коммита; rollback-probe на production прошел без сохранения тестовой записи, reconciliation перед включением показал `failed=0`.
 - MySQL shadow-write расширен на личные planned transactions и recurring templates: шаблоны пересинхронизируют актуальный набор связанных planned rows после SQLite-коммита.
+- MySQL shadow-write расширен на личные категории, бюджеты, счета капитала и ручные transfers; rollback-probe проверяет новые методы в транзакции с откатом, основной SQLite runtime не переключается.
 
 ### 2026-04-25
 

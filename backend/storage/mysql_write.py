@@ -553,3 +553,175 @@ class MySqlWriteRepository(MySqlReadRepository):
         with conn.cursor() as cursor:
             cursor.execute("DELETE FROM finance_recurring_templates WHERE id = %s", (mysql_template_id,))
         return {"status": "deleted", "template_id": mysql_template_id, "planned_deleted": planned_result.get("deleted", 0)}
+
+    def mirror_category(self, conn, legacy_user_id: int, source_db_path: str, category: Dict[str, Any]) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_category_id = int(category["id"])
+        existing = self._finance_id_by_legacy(conn, "categories", mysql_user_id, legacy_category_id)
+        values = (
+            str(category["name"]),
+            str(category.get("type") or "both"),
+            category.get("color"),
+            category.get("icon"),
+            bool(category.get("is_active", True)),
+        )
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_categories
+                    SET name = %s, type = %s, color = %s, icon = %s, is_active = %s
+                    WHERE id = %s
+                    """,
+                    (*values, existing),
+                )
+            return {"status": "updated", "category_id": existing}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_categories (user_id, legacy_local_id, name, type, color, icon, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (mysql_user_id, legacy_category_id, *values),
+            )
+            mysql_category_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "categories", legacy_category_id, "categories", mysql_category_id)
+        return {"status": "inserted", "category_id": mysql_category_id}
+
+    def mirror_budget(self, conn, legacy_user_id: int, source_db_path: str, budget: Dict[str, Any]) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_budget_id = int(budget["id"])
+        category_id = self._finance_id_by_legacy(conn, "categories", mysql_user_id, budget.get("category_id"))
+        if category_id is None:
+            return {"status": "skipped", "reason": "category_not_mirrored"}
+        values = (category_id, to_minor(budget["amount"]), str(budget.get("period") or "monthly"))
+        existing = self._finance_id_by_legacy(conn, "budgets", mysql_user_id, legacy_budget_id)
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE finance_budgets SET category_id = %s, amount_minor = %s, period = %s WHERE id = %s",
+                    (*values, existing),
+                )
+            return {"status": "updated", "budget_id": existing}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO finance_budgets (user_id, legacy_local_id, category_id, amount_minor, period) VALUES (%s, %s, %s, %s, %s)",
+                (mysql_user_id, legacy_budget_id, *values),
+            )
+            mysql_budget_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "budgets", legacy_budget_id, "budgets", mysql_budget_id)
+        return {"status": "inserted", "budget_id": mysql_budget_id}
+
+    def mirror_delete_budget(self, conn, legacy_user_id: int, legacy_budget_id: int) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_budget_id = self._finance_id_by_legacy(conn, "budgets", mysql_user_id, legacy_budget_id)
+        if mysql_budget_id is None:
+            return {"status": "missing"}
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM finance_budgets WHERE id = %s", (mysql_budget_id,))
+        return {"status": "deleted", "budget_id": mysql_budget_id}
+
+    def mirror_capital_account(self, conn, legacy_user_id: int, source_db_path: str, account: Dict[str, Any]) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_account_id = int(account["id"])
+        existing = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, legacy_account_id)
+        values = (
+            str(account["name"]),
+            to_minor(account.get("balance") or 0),
+            str(account.get("currency") or "RUB"),
+            account.get("icon"),
+            account.get("color"),
+            bool(account.get("is_default", False)),
+            bool(account.get("is_active", True)),
+        )
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_capital_accounts
+                    SET name = %s,
+                        balance_minor = %s,
+                        currency = %s,
+                        icon = %s,
+                        color = %s,
+                        is_default = %s,
+                        is_active = %s
+                    WHERE id = %s
+                    """,
+                    (*values, existing),
+                )
+            return {"status": "updated", "account_id": existing}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_capital_accounts (
+                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, is_default, is_active
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (mysql_user_id, legacy_account_id, *values),
+            )
+            mysql_account_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "capital_accounts", legacy_account_id, "capital_accounts", mysql_account_id)
+        return {"status": "inserted", "account_id": mysql_account_id}
+
+    def mirror_standalone_transfer(self, conn, legacy_user_id: int, source_db_path: str, transfer: Dict[str, Any]) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_transfer_id = int(transfer["id"])
+        existing = self._finance_id_by_legacy(conn, "transfers", mysql_user_id, legacy_transfer_id)
+        if existing is not None:
+            return {"status": "exists", "transfer_id": existing}
+
+        from_legacy = int(transfer["from_account_id"])
+        to_legacy = int(transfer["to_account_id"])
+        from_ref = self._account_ref(from_legacy)
+        to_ref = self._account_ref(to_legacy)
+        amount_minor = to_minor(transfer["amount"])
+        from_daily_id = self._finance_id_by_legacy(conn, "accounts", mysql_user_id, from_ref["daily_legacy_id"])
+        to_daily_id = self._finance_id_by_legacy(conn, "accounts", mysql_user_id, to_ref["daily_legacy_id"])
+        from_capital_id = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, from_ref["capital_legacy_id"])
+        to_capital_id = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, to_ref["capital_legacy_id"])
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_transfers (
+                    user_id, legacy_local_id, legacy_from_account_id, legacy_to_account_id,
+                    from_account_kind, to_account_kind, from_daily_account_id, to_daily_account_id,
+                    from_capital_account_id, to_capital_account_id, amount_minor, transaction_id,
+                    date, comment, is_active
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s, %s)
+                """,
+                (
+                    mysql_user_id,
+                    legacy_transfer_id,
+                    from_legacy,
+                    to_legacy,
+                    from_ref["kind"],
+                    to_ref["kind"],
+                    from_daily_id,
+                    to_daily_id,
+                    from_capital_id,
+                    to_capital_id,
+                    amount_minor,
+                    transfer["date"],
+                    transfer.get("comment"),
+                    bool(transfer.get("is_active", True)),
+                ),
+            )
+            mysql_transfer_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "transfers", legacy_transfer_id, "transfers", mysql_transfer_id)
+        if bool(transfer.get("is_active", True)):
+            self._adjust_account_minor(conn, mysql_user_id, from_legacy, -amount_minor)
+            self._adjust_account_minor(conn, mysql_user_id, to_legacy, amount_minor)
+        return {"status": "inserted", "transfer_id": mysql_transfer_id}
