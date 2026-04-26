@@ -734,6 +734,15 @@ class TransactionService:
         """Корректирует дневной счёт наличных или безнала."""
         try:
             account_id = 2 if money_source == "cash" else 1
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.adjust_account_balance(conn, legacy_user_id, account_id, amount_delta)
+                    conn.commit()
+                if write_result.get("status") != "updated":
+                    raise RuntimeError(f"MySQL daily account adjustment failed: {write_result}")
+                self.notify_listeners()
+                return
             core.update_account_balance(account_id, amount_delta)
             self.notify_listeners()
         except Exception as e:
@@ -743,6 +752,15 @@ class TransactionService:
     def adjust_capital_account_balance(self, capital_account_id: int, amount_delta: float) -> bool:
         """Корректирует баланс активного счёта капитала."""
         try:
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.adjust_account_balance(conn, legacy_user_id, capital_account_id, amount_delta)
+                    conn.commit()
+                updated = write_result.get("status") == "updated"
+                if updated:
+                    self.notify_listeners()
+                return updated
             with core.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(

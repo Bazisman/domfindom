@@ -936,6 +936,21 @@ class MySqlWriteRepository(MySqlReadRepository):
         result = self.mirror_capital_account(conn, legacy_user_id, source_db_path, account)
         return {**result, "legacy_account_id": legacy_account_id}
 
+    def adjust_account_balance(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_account_id: int,
+        amount_delta: float,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        if self._account_balance_minor(conn, mysql_user_id, legacy_account_id) is None:
+            return {"status": "missing"}
+        self._adjust_account_minor(conn, mysql_user_id, legacy_account_id, to_minor(amount_delta))
+        return {"status": "updated"}
+
     def update_capital_account(
         self,
         conn,
