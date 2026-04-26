@@ -82,13 +82,13 @@ class MySqlReadRepository:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if user_id is None:
             return []
-        filters = ["user_id = %s"]
+        filters = ["t.user_id = %s"]
         params: List[Any] = [user_id]
         if start_date:
-            filters.append("date >= %s")
+            filters.append("t.date >= %s")
             params.append(start_date)
         if end_date:
-            filters.append("date <= %s")
+            filters.append("t.date <= %s")
             params.append(end_date)
         params.extend([int(limit), int(offset)])
         with conn.cursor() as cursor:
