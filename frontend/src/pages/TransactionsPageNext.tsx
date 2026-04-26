@@ -551,7 +551,7 @@ export function TransactionsPageNext() {
       });
       resetAutoCapitalModal();
     } catch (error) {
-      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось сохранить доход без автоотчислений.");
+      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось сохранить доход без откладывания.");
       setAutoCapitalBusy(false);
     }
   }
@@ -587,7 +587,7 @@ export function TransactionsPageNext() {
       });
       resetAutoCapitalModal();
     } catch (error) {
-      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось создать счет для автоотчислений.");
+      setAutoCapitalError(error instanceof Error ? error.message : "Не удалось создать подушку.");
       setAutoCapitalBusy(false);
     }
   }

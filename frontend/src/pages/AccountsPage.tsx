@@ -501,7 +501,7 @@ export function AccountsPage() {
       if (targetKey.startsWith("personal:")) {
         const accountId = Number(targetKey.slice("personal:".length));
         if (!Number.isFinite(accountId) || accountId <= 0) {
-          throw new Error("Не удалось определить личный счет для автоотчислений.");
+          throw new Error("Не удалось определить личную подушку.");
         }
         if (selectedFamilyId !== null) {
           await updateFamilyCapitalTarget({
@@ -521,7 +521,7 @@ export function AccountsPage() {
         const ownerUserId = Number(ownerRaw);
         const capitalAccountId = Number(accountRaw);
         if (!Number.isFinite(ownerUserId) || !Number.isFinite(capitalAccountId) || ownerUserId <= 0 || capitalAccountId <= 0) {
-          throw new Error("Не удалось определить семейный счет для автоотчислений.");
+          throw new Error("Не удалось определить семейную подушку.");
         }
         return updateFamilyCapitalTarget({
           familyId: selectedFamilyId,
@@ -530,7 +530,7 @@ export function AccountsPage() {
         });
       }
 
-      throw new Error("Выберите счет для автоотчислений.");
+      throw new Error("Выбери, куда откладывать.");
     },
     onSuccess: async () => {
       setSettingsError(null);
@@ -559,7 +559,7 @@ export function AccountsPage() {
   function applySettings(enabled: boolean, percentValue: string) {
     const percent = Number(percentValue.replace(",", "."));
     if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
-      setSettingsError("Процент автоотчислений должен быть целым числом от 0 до 100.");
+      setSettingsError("Укажи целое число от 0 до 100.");
       return;
     }
 
@@ -722,7 +722,7 @@ export function AccountsPage() {
 
   function saveFamilyTarget() {
     if (!selectedTargetKey) {
-      setSettingsError("Выберите счет для автоотчислений.");
+      setSettingsError("Выбери, куда откладывать.");
       return;
     }
     setSettingsSavedNotice(false);
@@ -755,7 +755,7 @@ export function AccountsPage() {
       <section className="accounts-sidebar">
         <section className="panel panel-form">
           <div className="panel-header">
-            <h2>Автоотчисления</h2>
+            <h2>Копить автоматически</h2>
           </div>
 
           <form className="transaction-form auto-capital-form">
@@ -783,7 +783,7 @@ export function AccountsPage() {
             </div>
 
             <label className="field">
-              <span>Процент с дохода</span>
+              <span>Сколько откладывать с дохода</span>
               <input
                 inputMode="numeric"
                 max="100"
@@ -800,7 +800,7 @@ export function AccountsPage() {
 
             <div className="auto-capital-info">
               <div className="auto-capital-info-row">
-                <span className="auto-capital-info-label">Текущая цель</span>
+                <span className="auto-capital-info-label">Куда сейчас</span>
                 <strong>{defaultCapitalAccountName}</strong>
               </div>
 
@@ -812,7 +812,7 @@ export function AccountsPage() {
               </div>
             </div>
             <label className="field">
-              <span>Куда откладывать с доходов</span>
+              <span>Куда откладывать</span>
               <select
                 onChange={(event) => {
                   setSelectedTargetKey(event.target.value);
@@ -863,7 +863,7 @@ export function AccountsPage() {
               onClick={saveFamilyTarget}
               type="button"
             >
-              {updateAutoCapitalTargetMutation.isPending ? "Сохраняем..." : "Сохранить подушку"}
+              {updateAutoCapitalTargetMutation.isPending ? "Сохраняем..." : "Сохранить"}
             </button>
             {settingsError && <p className="form-error">{settingsError}</p>}
             {!settingsError &&

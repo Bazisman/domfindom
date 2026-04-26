@@ -32,19 +32,19 @@ export function AutoCapitalSetupModal({
   return (
     <div className="confirm-modal-backdrop" onClick={busy ? undefined : onClose}>
       <div className="confirm-modal auto-capital-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-        <h3>Нужен счет для автоотчислений</h3>
+        <h3>Нужно выбрать подушку</h3>
         <p>
-          Автоотчисления включены на <strong>{percent}%</strong>, но счет для них пока не настроен.
+          Ты хочешь откладывать <strong>{percent}%</strong> с дохода, но подушка пока не выбрана.
         </p>
-        <p>Можно отключить автоотчисления для этого сценария или сразу создать счет, чтобы доход и отчисление сохранились одним действием.</p>
+        <p>Можно сохранить доход без откладывания или сразу добавить подушку.</p>
 
         <label className="confirm-check">
           <input checked={dontAskAgain} disabled={busy} onChange={(event) => onDontAskAgainChange(event.target.checked)} type="checkbox" />
-          <span>Больше не спрашивать и отключить автоотчисления</span>
+          <span>Больше не спрашивать и не откладывать автоматически</span>
         </label>
 
         <label className="confirm-field">
-          <span>Добавить счет сейчас</span>
+          <span>Добавить подушку сейчас</span>
           <input
             disabled={busy}
             onChange={(event) => onAccountNameChange(event.target.value)}
@@ -60,7 +60,7 @@ export function AutoCapitalSetupModal({
             Отмена
           </button>
           <button className="ghost-button" disabled={busy} onClick={onSkip} type="button">
-            {busy ? "Подождите..." : "Сохранить без отчислений"}
+            {busy ? "Подождите..." : "Сохранить без откладывания"}
           </button>
           <button className="primary-button" disabled={busy} onClick={onCreateNow} type="button">
             {busy ? "Создаем..." : "Добавить сейчас"}
