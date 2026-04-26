@@ -775,6 +775,119 @@ class MySqlWriteRepository(MySqlReadRepository):
             self._adjust_account_minor(conn, mysql_user_id, to_legacy, amount_minor)
         return {"status": "inserted", "transfer_id": mysql_transfer_id}
 
+    def mirror_reconciliation_source(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        source: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_source_id = int(source["id"])
+        existing = self._finance_id_by_legacy(conn, "reconciliation_sources", mysql_user_id, legacy_source_id)
+        values = (
+            str(source["name"]),
+            to_minor(source.get("balance") or 0),
+            bool(source.get("is_active", True)),
+        )
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_reconciliation_sources
+                    SET name = %s, balance_minor = %s, is_active = %s
+                    WHERE id = %s
+                    """,
+                    (*values, existing),
+                )
+            return {"status": "updated", "source_id": existing}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_reconciliation_sources (
+                    user_id, legacy_local_id, name, balance_minor, is_active
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (mysql_user_id, legacy_source_id, *values),
+            )
+            mysql_source_id = int(cursor.lastrowid)
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "reconciliation_sources",
+            legacy_source_id,
+            "reconciliation_sources",
+            mysql_source_id,
+        )
+        return {"status": "inserted", "source_id": mysql_source_id}
+
+    def mirror_reconciliation(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        reconciliation: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_reconciliation_id = int(reconciliation["id"])
+        adjustment_transaction_id = None
+        if reconciliation.get("adjustment_transaction_id") is not None:
+            adjustment_transaction_id = self._finance_id_by_legacy(
+                conn,
+                "transactions",
+                mysql_user_id,
+                int(reconciliation["adjustment_transaction_id"]),
+            )
+        values = (
+            to_minor(reconciliation.get("real_balance") or 0),
+            to_minor(reconciliation.get("program_balance") or 0),
+            to_minor(reconciliation.get("difference") or 0),
+            adjustment_transaction_id,
+        )
+        existing = self._finance_id_by_legacy(conn, "reconciliations", mysql_user_id, legacy_reconciliation_id)
+        if existing is not None:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_reconciliations
+                    SET real_balance_minor = %s,
+                        program_balance_minor = %s,
+                        difference_minor = %s,
+                        adjustment_transaction_id = %s
+                    WHERE id = %s
+                    """,
+                    (*values, existing),
+                )
+            return {"status": "updated", "reconciliation_id": existing}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_reconciliations (
+                    user_id, legacy_local_id, real_balance_minor, program_balance_minor,
+                    difference_minor, adjustment_transaction_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (mysql_user_id, legacy_reconciliation_id, *values),
+            )
+            mysql_reconciliation_id = int(cursor.lastrowid)
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "reconciliations",
+            legacy_reconciliation_id,
+            "reconciliations",
+            mysql_reconciliation_id,
+        )
+        return {"status": "inserted", "reconciliation_id": mysql_reconciliation_id}
+
     def mirror_family_snapshot(self, conn, source_db_path: str, snapshot: Dict[str, Any]) -> Dict[str, Any]:
         family = snapshot.get("family") or {}
         legacy_family_id = int(family["id"])

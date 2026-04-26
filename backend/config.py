@@ -70,6 +70,7 @@ class AppConfig:
     mysql_primary_read_pilot_enabled: bool
     mysql_strict_write_transactions_enabled: bool
     mysql_strict_write_accounts_capital_enabled: bool
+    mysql_strict_write_reconciliation_enabled: bool
     mysql_strict_write_categories_budgets_recurring_enabled: bool
     auth_db_name: str
     users_data_dir: str
@@ -127,6 +128,9 @@ settings = AppConfig(
     ),
     mysql_strict_write_accounts_capital_enabled=_parse_bool(
         os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL", "false")
+    ),
+    mysql_strict_write_reconciliation_enabled=_parse_bool(
+        os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION", "false")
     ),
     mysql_strict_write_categories_budgets_recurring_enabled=_parse_bool(
         os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING", "false")

@@ -50,6 +50,8 @@ class MySqlStrictWriteProbeTestCase(unittest.TestCase):
             repo.mirror_delete_transaction.return_value = {"status": "deleted"}
             repo.mirror_capital_account.return_value = {"status": "inserted"}
             repo.mirror_standalone_transfer.return_value = {"status": "inserted"}
+            repo.mirror_reconciliation_source.return_value = {"status": "inserted"}
+            repo.mirror_reconciliation.return_value = {"status": "inserted"}
             repo.mirror_delete_budget.return_value = {"status": "deleted"}
             repo.mirror_delete_recurring_template.return_value = {"status": "deleted"}
 
@@ -67,6 +69,8 @@ class MySqlStrictWriteProbeTestCase(unittest.TestCase):
         repo.mirror_delete_transaction.assert_called_once()
         repo.mirror_capital_account.assert_called_once()
         repo.mirror_standalone_transfer.assert_called_once()
+        repo.mirror_reconciliation_source.assert_called_once()
+        repo.mirror_reconciliation.assert_called_once()
 
 
 if __name__ == "__main__":

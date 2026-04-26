@@ -78,6 +78,7 @@
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS` для обычных transaction create/update/delete; family capital contribution ветка пока остаётся отдельным неподготовленным случаем.
 - MySQL rollback-probe расширен на обычные transactions: проверяет actual transaction insert/update/delete в той же транзакции с rollback перед включением strict transaction dual-write.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL` для capital account create/update/delete и standalone transfers; rollback-probe расширен на capital account и transfer write paths.
+- Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION`; reconciliation sources/apply теперь имеют MySQL shadow-write adapter paths, а rollback-probe проверяет reconciliation source и reconciliation writes.
 
 ### 2026-04-25
 

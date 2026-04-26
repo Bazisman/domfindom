@@ -44,6 +44,13 @@ def mysql_strict_accounts_capital_enabled(config=settings) -> bool:
     )
 
 
+def mysql_strict_reconciliation_enabled(config=settings) -> bool:
+    return bool(
+        getattr(config, "mysql_strict_write_reconciliation_enabled", False)
+        and mysql_shadow_write_enabled(config)
+    )
+
+
 def require_mysql_shadow_write_success(
     result: Dict[str, Any],
     operation: str,
@@ -84,6 +91,20 @@ def require_mysql_accounts_capital_shadow_write_success(
         return
     reason = mysql_result.get("reason") or result.get("reason") or result.get("status") or "unknown"
     raise RuntimeError(f"MySQL strict accounts/capital shadow-write failed for {operation}: {reason}")
+
+
+def require_mysql_reconciliation_shadow_write_success(
+    result: Dict[str, Any],
+    operation: str,
+    config=settings,
+) -> None:
+    if not mysql_strict_reconciliation_enabled(config):
+        return
+    mysql_result = (result.get("results") or {}).get("mysql") or {}
+    if result.get("status") == "ok" and mysql_result.get("status") == "ok":
+        return
+    reason = mysql_result.get("reason") or result.get("reason") or result.get("status") or "unknown"
+    raise RuntimeError(f"MySQL strict reconciliation shadow-write failed for {operation}: {reason}")
 
 
 def _row_to_dict(row: Any) -> Dict[str, Any]:
@@ -825,6 +846,70 @@ def mirror_transfer_shadow_write(
         )
         results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
         return {"enabled": True, "status": "failed", "results": results}
+
+
+def mirror_reconciliation_source_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_source_row: Any,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
+        return {"enabled": False, "status": "disabled"}
+    source = _row_to_dict(sqlite_source_row)
+    if not source:
+        return {"enabled": True, "status": "skipped", "reason": "missing_reconciliation_source"}
+
+    legacy_user_id = int(current_user["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_reconciliation_source(conn, legacy_user_id, source_db_path, source)
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write reconciliation source failed for user_id=%s source_id=%s: %s",
+                legacy_user_id,
+                source.get("id"),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
+
+
+def mirror_reconciliation_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_reconciliation_row: Any,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
+        return {"enabled": False, "status": "disabled"}
+    reconciliation = _row_to_dict(sqlite_reconciliation_row)
+    if not reconciliation:
+        return {"enabled": True, "status": "skipped", "reason": "missing_reconciliation"}
+
+    legacy_user_id = int(current_user["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_reconciliation(conn, legacy_user_id, source_db_path, reconciliation)
+                conn.commit()
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write reconciliation failed for user_id=%s reconciliation_id=%s: %s",
+                legacy_user_id,
+                reconciliation.get("id"),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
 
 
 def _auth_rows_for_family(family_id: int) -> Dict[str, Any]:

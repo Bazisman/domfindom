@@ -63,6 +63,21 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
         self.assertFalse(shadow_write.mysql_strict_accounts_capital_enabled(disabled))
         self.assertTrue(shadow_write.mysql_strict_accounts_capital_enabled(enabled))
 
+    def test_strict_reconciliation_requires_shadow_write_flag_and_url(self):
+        disabled = SimpleNamespace(
+            mysql_shadow_write_enabled=False,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_reconciliation_enabled=True,
+        )
+        enabled = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_reconciliation_enabled=True,
+        )
+
+        self.assertFalse(shadow_write.mysql_strict_reconciliation_enabled(disabled))
+        self.assertTrue(shadow_write.mysql_strict_reconciliation_enabled(enabled))
+
     def test_require_mysql_shadow_write_success_is_noop_when_strict_flag_is_off(self):
         config = SimpleNamespace(
             mysql_shadow_write_enabled=True,
@@ -128,6 +143,20 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
             shadow_write.require_mysql_accounts_capital_shadow_write_success(
                 {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
                 "transfer_create",
+                config=config,
+            )
+
+    def test_require_mysql_reconciliation_shadow_write_success_raises_on_failure_when_strict_flag_is_on(self):
+        config = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_reconciliation_enabled=True,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "reconciliation_apply"):
+            shadow_write.require_mysql_reconciliation_shadow_write_success(
+                {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
+                "reconciliation_apply",
                 config=config,
             )
 
@@ -270,6 +299,44 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
             legacy_user_id=12,
             source_db_path="data/users/12/finance.db",
             transfer=dict(transfer),
+        )
+        conn.commit.assert_called_once_with()
+
+    def test_reconciliation_source_shadow_write_calls_mysql_repository(self):
+        config = SimpleNamespace(mysql_shadow_write_enabled=True, mysql_database_url="mysql+pymysql://example/db")
+        source = _Row(id=5, name="Wallet", balance=1000.0, is_active=1)
+        with mock.patch.object(shadow_write, "MySqlWriteRepository") as repository:
+            repo = repository.return_value
+            conn = repo.connect.return_value.__enter__.return_value
+            repo.mirror_reconciliation_source.return_value = {"status": "inserted", "source_id": 66}
+
+            result = shadow_write.mirror_reconciliation_source_shadow_write({"id": 12}, source, config=config)
+
+        self.assertEqual(result["status"], "ok")
+        repo.mirror_reconciliation_source.assert_called_once_with(
+            conn,
+            12,
+            "data/users/12/finance.db",
+            dict(source),
+        )
+        conn.commit.assert_called_once_with()
+
+    def test_reconciliation_shadow_write_calls_mysql_repository(self):
+        config = SimpleNamespace(mysql_shadow_write_enabled=True, mysql_database_url="mysql+pymysql://example/db")
+        reconciliation = _Row(id=6, real_balance=1000.0, program_balance=900.0, difference=100.0)
+        with mock.patch.object(shadow_write, "MySqlWriteRepository") as repository:
+            repo = repository.return_value
+            conn = repo.connect.return_value.__enter__.return_value
+            repo.mirror_reconciliation.return_value = {"status": "inserted", "reconciliation_id": 67}
+
+            result = shadow_write.mirror_reconciliation_shadow_write({"id": 12}, reconciliation, config=config)
+
+        self.assertEqual(result["status"], "ok")
+        repo.mirror_reconciliation.assert_called_once_with(
+            conn,
+            12,
+            "data/users/12/finance.db",
+            dict(reconciliation),
         )
         conn.commit.assert_called_once_with()
 

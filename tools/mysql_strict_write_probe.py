@@ -114,6 +114,19 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                 "comment": "rollback probe transfer",
                 "is_active": True,
             }
+            reconciliation_source = {
+                "id": source_local_id + 4,
+                "name": "__mysql_strict_probe_reconciliation_source__",
+                "balance": 2222.22,
+                "is_active": True,
+            }
+            reconciliation = {
+                "id": source_local_id + 5,
+                "real_balance": 2222.22,
+                "program_balance": 2000.00,
+                "difference": 222.22,
+                "adjustment_transaction_id": None,
+            }
 
             category_result = repo.mirror_category(conn, source_legacy_user_id, source_db_path, category)
             budget_result = repo.mirror_budget(conn, source_legacy_user_id, source_db_path, budget)
@@ -148,6 +161,18 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                 source_db_path,
                 transfer,
             )
+            reconciliation_source_result = repo.mirror_reconciliation_source(
+                conn,
+                source_legacy_user_id,
+                source_db_path,
+                reconciliation_source,
+            )
+            reconciliation_result = repo.mirror_reconciliation(
+                conn,
+                source_legacy_user_id,
+                source_db_path,
+                reconciliation,
+            )
             budget_delete_result = repo.mirror_delete_budget(conn, source_legacy_user_id, source_local_id)
             template_delete_result = repo.mirror_delete_recurring_template(conn, source_legacy_user_id, source_local_id)
 
@@ -165,6 +190,8 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                     "transaction_delete": transaction_delete_result,
                     "capital_account": capital_account_result,
                     "transfer": transfer_result,
+                    "reconciliation_source": reconciliation_source_result,
+                    "reconciliation": reconciliation_result,
                     "budget_delete": budget_delete_result,
                     "template_delete": template_delete_result,
                 },
