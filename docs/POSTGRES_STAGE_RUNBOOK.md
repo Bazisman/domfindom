@@ -117,8 +117,9 @@ FINANCE_APP_POSTGRES_SHADOW_WRITE=true
 - ошибки PostgreSQL пишутся в лог и не ломают пользовательский запрос;
 - удаление личной actual transaction зеркалируется в PostgreSQL с откатом balance effects;
 - редактирование личной actual transaction зеркалируется в PostgreSQL как delete+insert текущего SQLite-состояния;
-- личные planned transactions без recurring template зеркалируются без изменения balances;
-- planned transactions с recurring template и семейные автоотчисления пока пропускаются.
+- личные planned transactions зеркалируются без изменения balances, включая связь с recurring template;
+- create/update/delete recurring templates зеркалируются вместе с актуальным набором связанных planned transactions;
+- семейные автоотчисления пока пропускаются до отдельного family write-path.
 
 ## Что нельзя делать
 

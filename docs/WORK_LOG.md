@@ -35,6 +35,7 @@
 - Shadow-write расширен на удаление личных actual transactions: PostgreSQL-зеркало откатывает balance effects, деактивирует связанные transfers и удаляет transaction row; семейные отчисления по-прежнему пропускаются до отдельного family write-path.
 - Shadow-write расширен на редактирование личных actual transactions: PostgreSQL-зеркало пересобирает запись по текущему SQLite-состоянию через delete+insert внутри своей транзакции, включая актуальные transfers и balances.
 - Shadow-write расширен на личные planned transactions без recurring template: create/update/delete зеркалируются в PostgreSQL без изменения balances; recurring-template planned rows остаются явным skip до отдельного переноса шаблонов.
+- Shadow-write расширен на recurring templates: create/update/delete шаблонов зеркалируются в PostgreSQL, а связанные planned transactions пересинхронизируются по текущему SQLite-состоянию с PostgreSQL `template_id`.
 
 ### 2026-04-25
 

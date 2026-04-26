@@ -39,10 +39,8 @@ def _active_transfers_for_transaction(transaction_id: int) -> List[Dict[str, Any
         return [_row_to_dict(row) for row in cursor.fetchall()]
 
 
-def _planned_template_skip_reason(transaction: Dict[str, Any]) -> str:
-    if str(transaction.get("status") or "actual") == "planned" and transaction.get("template_id") is not None:
-        return "recurring_template_not_mirrored"
-    return ""
+def _planned_transactions_for_template(template_id: int) -> List[Dict[str, Any]]:
+    return [_row_to_dict(row) for row in core.get_planned_transactions_by_template(int(template_id))]
 
 
 def mirror_created_transaction_shadow_write(
@@ -60,9 +58,6 @@ def mirror_created_transaction_shadow_write(
     if not transaction:
         return {"enabled": True, "status": "skipped", "reason": "missing_transaction"}
     status = str(transaction.get("status") or "actual")
-    planned_skip_reason = _planned_template_skip_reason(transaction)
-    if planned_skip_reason:
-        return {"enabled": True, "status": "skipped", "reason": planned_skip_reason}
     if status not in {"actual", "planned"}:
         return {"enabled": True, "status": "skipped", "reason": "non_actual_transaction"}
 
@@ -159,9 +154,6 @@ def mirror_updated_transaction_shadow_write(
     if not transaction:
         return {"enabled": True, "status": "skipped", "reason": "missing_transaction"}
     status = str(transaction.get("status") or "actual")
-    planned_skip_reason = _planned_template_skip_reason(transaction)
-    if planned_skip_reason:
-        return {"enabled": True, "status": "skipped", "reason": planned_skip_reason}
     if status not in {"actual", "planned"}:
         return {"enabled": True, "status": "skipped", "reason": "non_actual_transaction"}
 
@@ -192,6 +184,107 @@ def mirror_updated_transaction_shadow_write(
             "PostgreSQL shadow-write update failed for user_id=%s transaction_id=%s: %s",
             legacy_user_id,
             legacy_transaction_id,
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_recurring_template_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_template_row: Any,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+
+    template = _row_to_dict(sqlite_template_row)
+    if not template:
+        return {"enabled": True, "status": "skipped", "reason": "missing_template"}
+
+    legacy_user_id = int(current_user["id"])
+    legacy_template_id = int(template["id"])
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    try:
+        planned_transactions = _planned_transactions_for_template(legacy_template_id)
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            template_result = repo.mirror_recurring_template(
+                conn,
+                legacy_user_id=legacy_user_id,
+                source_db_path=source_db_path,
+                template=template,
+            )
+            delete_result = repo.delete_planned_transactions_for_template(
+                conn,
+                legacy_user_id=legacy_user_id,
+                legacy_template_id=legacy_template_id,
+            )
+            planned_results = [
+                repo.mirror_planned_transaction(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    source_db_path=source_db_path,
+                    transaction=transaction,
+                )
+                for transaction in planned_transactions
+            ]
+            conn.commit()
+        app_logger.info(
+            "PostgreSQL shadow-write mirrored recurring template user_id=%s template_id=%s status=%s planned=%s",
+            legacy_user_id,
+            legacy_template_id,
+            template_result.get("status"),
+            len(planned_results),
+        )
+        return {
+            "enabled": True,
+            "status": "ok",
+            "result": {
+                "template": template_result,
+                "stale_planned": delete_result,
+                "planned": planned_results,
+            },
+        }
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write recurring template failed for user_id=%s template_id=%s: %s",
+            legacy_user_id,
+            legacy_template_id,
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_deleted_recurring_template_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    legacy_template_id: int,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_delete_recurring_template(
+                conn,
+                legacy_user_id=legacy_user_id,
+                legacy_template_id=int(legacy_template_id),
+            )
+            conn.commit()
+        app_logger.info(
+            "PostgreSQL shadow-write mirrored recurring template delete user_id=%s template_id=%s status=%s",
+            legacy_user_id,
+            int(legacy_template_id),
+            result.get("status"),
+        )
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write recurring template delete failed for user_id=%s template_id=%s: %s",
+            legacy_user_id,
+            int(legacy_template_id),
             exc,
         )
         return {"enabled": True, "status": "failed", "reason": str(exc)}

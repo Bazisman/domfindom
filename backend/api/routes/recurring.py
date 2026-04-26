@@ -1,8 +1,9 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 import core
+from backend.auth.dependencies import require_user
 from backend.schemas.common import MessageResponse
 from backend.schemas.recurring import (
     ExecutePlannedResponse,
@@ -12,6 +13,10 @@ from backend.schemas.recurring import (
     RecurringTemplateUpdateRequest,
 )
 from backend.services import transaction_service
+from backend.storage.shadow_write import (
+    mirror_deleted_recurring_template_shadow_write,
+    mirror_recurring_template_shadow_write,
+)
 
 
 router = APIRouter()
@@ -43,7 +48,10 @@ def list_recurring_templates(
 
 
 @router.post("", response_model=RecurringTemplateResponse, status_code=status.HTTP_201_CREATED)
-def create_recurring_template(payload: RecurringTemplateCreateRequest) -> RecurringTemplateResponse:
+def create_recurring_template(
+    payload: RecurringTemplateCreateRequest,
+    current_user=Depends(require_user),
+) -> RecurringTemplateResponse:
     template_id = transaction_service.create_recurring_template(
         template_type=payload.type,
         name=payload.name,
@@ -67,11 +75,16 @@ def create_recurring_template(payload: RecurringTemplateCreateRequest) -> Recurr
         category_name = category["name"] if category else None
     merged = dict(row)
     merged["category_name"] = category_name
+    mirror_recurring_template_shadow_write(current_user, row)
     return _template_response(merged)
 
 
 @router.patch("/{template_id}", response_model=RecurringTemplateResponse)
-def update_recurring_template(template_id: int, payload: RecurringTemplateUpdateRequest) -> RecurringTemplateResponse:
+def update_recurring_template(
+    template_id: int,
+    payload: RecurringTemplateUpdateRequest,
+    current_user=Depends(require_user),
+) -> RecurringTemplateResponse:
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не переданы изменения")
@@ -89,14 +102,16 @@ def update_recurring_template(template_id: int, payload: RecurringTemplateUpdate
         category_name = category["name"] if category else None
     merged = dict(row)
     merged["category_name"] = category_name
+    mirror_recurring_template_shadow_write(current_user, row)
     return _template_response(merged)
 
 
 @router.delete("/{template_id}", response_model=MessageResponse)
-def delete_recurring_template(template_id: int) -> MessageResponse:
+def delete_recurring_template(template_id: int, current_user=Depends(require_user)) -> MessageResponse:
     deleted = transaction_service.delete_recurring_template(template_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаблон не найден")
+    mirror_deleted_recurring_template_shadow_write(current_user, template_id)
     return MessageResponse(message="Шаблон удален")
 
 

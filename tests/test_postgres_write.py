@@ -54,17 +54,16 @@ class PostgresWriteRepositoryTestCase(unittest.TestCase):
 
         self.assertEqual(result, {"status": "skipped", "reason": "non_actual_transaction"})
 
-    def test_planned_transaction_with_template_is_skipped_before_database_lookup(self):
+    def test_planned_transaction_requires_planned_status_before_database_lookup(self):
         repo = PostgresWriteRepository("postgresql://example")
 
-        result = repo.mirror_planned_transaction(
-            conn=None,
-            legacy_user_id=12,
-            source_db_path="data/users/12/finance.db",
-            transaction={"id": 1, "status": "planned", "template_id": 99},
-        )
-
-        self.assertEqual(result, {"status": "skipped", "reason": "recurring_template_not_mirrored"})
+        with self.assertRaisesRegex(RuntimeError, "expects a planned transaction"):
+            repo.mirror_planned_transaction(
+                conn=None,
+                legacy_user_id=12,
+                source_db_path="data/users/12/finance.db",
+                transaction={"id": 1, "status": "actual"},
+            )
 
 
 if __name__ == "__main__":

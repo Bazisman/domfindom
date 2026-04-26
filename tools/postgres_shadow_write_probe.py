@@ -26,19 +26,37 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         pg_user_id = repo.get_user_id_by_legacy(conn, legacy_user_id)
         if pg_user_id is None:
             raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
-        category = scalar(
-            conn,
+        category_row = conn.execute(
             """
-            SELECT name
+            SELECT name, legacy_local_id
             FROM finance.categories
             WHERE user_id = %s AND is_active = true AND type IN ('expense', 'both')
             ORDER BY id
             LIMIT 1
             """,
             (pg_user_id,),
-        )
+        ).fetchone()
+        category = category_row["name"] if category_row else None
+        category_legacy_id = category_row["legacy_local_id"] if category_row else None
         if category is None:
             raise RuntimeError("No expense category available for write probe")
+        income_category_row = conn.execute(
+            """
+            SELECT name, legacy_local_id
+            FROM finance.categories
+            WHERE user_id = %s AND is_active = true AND type IN ('income', 'both')
+            ORDER BY id
+            LIMIT 1
+            """,
+            (pg_user_id,),
+        ).fetchone()
+        template_category_id = category_legacy_id
+        template_type = "expense"
+        template_category = category
+        if income_category_row:
+            template_category_id = income_category_row["legacy_local_id"]
+            template_type = "income"
+            template_category = income_category_row["name"]
         legacy_local_id = int(
             scalar(
                 conn,
@@ -135,6 +153,49 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         after_planned_delete_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
         )
+        template_legacy_id = legacy_local_id + 2000000
+        template_result = repo.mirror_recurring_template(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            template={
+                "id": template_legacy_id,
+                "type": template_type,
+                "name": "postgres recurring shadow write rollback probe",
+                "amount": 5.43,
+                "day_of_month": 26,
+                "category_id": template_category_id,
+                "comment_template": "postgres recurring shadow write rollback probe",
+                "money_source": "cashless",
+                "months_ahead": 2,
+                "working_days_only": False,
+                "is_active": True,
+            },
+        )
+        templated_planned_legacy_id = legacy_local_id + 3000000
+        templated_planned_result = repo.mirror_planned_transaction(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transaction={
+                "id": templated_planned_legacy_id,
+                "type": template_type,
+                "category": template_category,
+                "amount": 5.43,
+                "comment": "postgres templated planned rollback probe",
+                "date": "2026-06-26",
+                "money_source": "cashless",
+                "status": "planned",
+                "template_id": template_legacy_id,
+            },
+        )
+        after_templated_planned_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
+        template_delete_result = repo.mirror_delete_recurring_template(conn, legacy_user_id, template_legacy_id)
+        after_template_delete_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
         conn.rollback()
     return {
         "legacy_user_id": legacy_user_id,
@@ -153,6 +214,11 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
             and after_planned_update_count == before_count + 1
             and planned_delete_result["status"] == "deleted"
             and after_planned_delete_count == before_count
+            and template_result["status"] == "inserted"
+            and templated_planned_result["status"] == "inserted"
+            and after_templated_planned_count == before_count + 1
+            and template_delete_result["status"] == "deleted"
+            and after_template_delete_count == before_count
         )
         else "failed",
         "insert_status": result["status"],
@@ -161,6 +227,9 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         "planned_insert_status": planned_insert_result["status"],
         "planned_update_status": planned_update_result["status"],
         "planned_delete_status": planned_delete_result["status"],
+        "template_status": template_result["status"],
+        "templated_planned_status": templated_planned_result["status"],
+        "template_delete_status": template_delete_result["status"],
         "before_count": before_count,
         "after_count_inside_transaction": after_count,
         "after_update_count_inside_transaction": after_update_count,
@@ -168,6 +237,8 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         "after_planned_count_inside_transaction": after_planned_count,
         "after_planned_update_count_inside_transaction": after_planned_update_count,
         "after_planned_delete_count_inside_transaction": after_planned_delete_count,
+        "after_templated_planned_count_inside_transaction": after_templated_planned_count,
+        "after_template_delete_count_inside_transaction": after_template_delete_count,
         "rolled_back": True,
     }
 
@@ -186,6 +257,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"Planned insert status: `{report['planned_insert_status']}`",
             f"Planned update status: `{report['planned_update_status']}`",
             f"Planned delete status: `{report['planned_delete_status']}`",
+            f"Template status: `{report['template_status']}`",
+            f"Templated planned status: `{report['templated_planned_status']}`",
+            f"Template delete status: `{report['template_delete_status']}`",
             f"Before count: `{report['before_count']}`",
             f"After count inside transaction: `{report['after_count_inside_transaction']}`",
             f"After update count inside transaction: `{report['after_update_count_inside_transaction']}`",
@@ -193,6 +267,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"After planned count inside transaction: `{report['after_planned_count_inside_transaction']}`",
             f"After planned update count inside transaction: `{report['after_planned_update_count_inside_transaction']}`",
             f"After planned delete count inside transaction: `{report['after_planned_delete_count_inside_transaction']}`",
+            f"After templated planned count inside transaction: `{report['after_templated_planned_count_inside_transaction']}`",
+            f"After template delete count inside transaction: `{report['after_template_delete_count_inside_transaction']}`",
             f"Rolled back: `{report['rolled_back']}`",
         ]
     )

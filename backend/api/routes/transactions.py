@@ -18,6 +18,7 @@ from backend.schemas.transactions import (
 from backend.services import category_service, row_to_transaction_response, transaction_service
 from backend.storage.shadow_write import (
     mirror_created_transaction_shadow_write,
+    mirror_recurring_template_shadow_write,
     mirror_deleted_transaction_shadow_write,
     mirror_updated_transaction_shadow_write,
 )
@@ -284,7 +285,6 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         planned_date = core._adjust_to_workday(payload.date)
 
     if is_future:
-        shadow_write_skip_reason = "recurring_planned_transaction" if recurring_payload else ""
         created_id = core.add_planned_transaction(
             payload.type,
             category_name,
@@ -351,6 +351,9 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         core.delete_planned_transactions_in_period(template_id, month_start, month_end)
         if is_future:
             core.assign_template_to_planned_transaction(created_id, template_id)
+        template_row = core.get_recurring_template_by_id(template_id)
+        if template_row:
+            mirror_recurring_template_shadow_write(current_user, template_row)
 
     row = core.get_transaction_by_id(created_id)
     if not row:

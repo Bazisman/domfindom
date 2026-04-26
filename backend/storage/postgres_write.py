@@ -57,6 +57,11 @@ class PostgresWriteRepository(PostgresReadRepository):
         ).fetchone()
         return int(row["id"]) if row else None
 
+    def _category_id_by_legacy(self, conn, user_id: int, legacy_category_id: Optional[int]) -> Optional[int]:
+        if legacy_category_id is None:
+            return None
+        return self._finance_id_by_legacy(conn, "categories", user_id, int(legacy_category_id))
+
     def _adjust_account_minor(
         self,
         conn,
@@ -236,9 +241,6 @@ class PostgresWriteRepository(PostgresReadRepository):
         status = str(transaction.get("status") or "actual")
         if status != "planned":
             raise RuntimeError("mirror_planned_transaction expects a planned transaction")
-        if transaction.get("template_id") is not None:
-            return {"status": "skipped", "reason": "recurring_template_not_mirrored"}
-
         pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if pg_user_id is None:
             raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
@@ -249,6 +251,16 @@ class PostgresWriteRepository(PostgresReadRepository):
         money_source = str(transaction.get("money_source") or "cashless")
         category = str(transaction["category"])
         category_id = self._category_id_by_name(conn, pg_user_id, category)
+        template_id = None
+        if transaction.get("template_id") is not None:
+            template_id = self._finance_id_by_legacy(
+                conn,
+                "recurring_templates",
+                pg_user_id,
+                int(transaction["template_id"]),
+            )
+            if template_id is None:
+                return {"status": "skipped", "reason": "recurring_template_not_mirrored"}
         existing = self._finance_id_by_legacy(conn, "transactions", pg_user_id, legacy_transaction_id)
 
         if existing is not None:
@@ -264,7 +276,7 @@ class PostgresWriteRepository(PostgresReadRepository):
                     date = %s,
                     money_source = %s,
                     status = 'planned',
-                    template_id = NULL
+                    template_id = %s
                 WHERE id = %s
                 """,
                 (
@@ -275,6 +287,7 @@ class PostgresWriteRepository(PostgresReadRepository):
                     transaction.get("comment"),
                     transaction["date"],
                     money_source,
+                    template_id,
                     existing,
                 ),
             )
@@ -286,7 +299,7 @@ class PostgresWriteRepository(PostgresReadRepository):
                 user_id, legacy_local_id, type, category, category_id,
                 amount_minor, comment, date, money_source, status, template_id
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'planned', NULL)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'planned', %s)
             RETURNING id
             """,
             (
@@ -299,6 +312,7 @@ class PostgresWriteRepository(PostgresReadRepository):
                 transaction.get("comment"),
                 transaction["date"],
                 money_source,
+                template_id,
             ),
         ).fetchone()
         pg_transaction_id = int(row["id"])
@@ -312,6 +326,141 @@ class PostgresWriteRepository(PostgresReadRepository):
             pg_transaction_id,
         )
         return {"status": "inserted", "transaction_id": pg_transaction_id}
+
+    def mirror_recurring_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        template: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Mirror one SQLite recurring template into PostgreSQL."""
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_template_id = int(template["id"])
+        category_id = self._category_id_by_legacy(conn, pg_user_id, template.get("category_id"))
+        amount_minor = to_minor(template["amount"])
+        money_source = str(template.get("money_source") or "cashless")
+        months_ahead = int(template.get("months_ahead") or 12)
+        working_days_only = bool(template.get("working_days_only"))
+        is_active = bool(template.get("is_active", True))
+        existing = self._finance_id_by_legacy(conn, "recurring_templates", pg_user_id, legacy_template_id)
+
+        if existing is not None:
+            conn.execute(
+                """
+                UPDATE finance.recurring_templates
+                SET
+                    type = %s,
+                    name = %s,
+                    amount_minor = %s,
+                    day_of_month = %s,
+                    category_id = %s,
+                    comment_template = %s,
+                    money_source = %s,
+                    months_ahead = %s,
+                    working_days_only = %s,
+                    is_active = %s,
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (
+                    str(template["type"]),
+                    str(template["name"]),
+                    amount_minor,
+                    int(template["day_of_month"]),
+                    category_id,
+                    template.get("comment_template"),
+                    money_source,
+                    months_ahead,
+                    working_days_only,
+                    is_active,
+                    existing,
+                ),
+            )
+            return {"status": "updated", "template_id": existing}
+
+        row = conn.execute(
+            """
+            INSERT INTO finance.recurring_templates (
+                user_id, legacy_local_id, type, name, amount_minor, day_of_month, category_id,
+                comment_template, money_source, months_ahead, working_days_only, is_active
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                pg_user_id,
+                legacy_template_id,
+                str(template["type"]),
+                str(template["name"]),
+                amount_minor,
+                int(template["day_of_month"]),
+                category_id,
+                template.get("comment_template"),
+                money_source,
+                months_ahead,
+                working_days_only,
+                is_active,
+            ),
+        ).fetchone()
+        pg_template_id = int(row["id"])
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "recurring_templates",
+            legacy_template_id,
+            "recurring_templates",
+            pg_template_id,
+        )
+        return {"status": "inserted", "template_id": pg_template_id}
+
+    def delete_planned_transactions_for_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_template_id: int,
+    ) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+        pg_template_id = self._finance_id_by_legacy(conn, "recurring_templates", pg_user_id, legacy_template_id)
+        if pg_template_id is None:
+            return {"status": "missing_template", "deleted": 0}
+        rows = conn.execute(
+            """
+            DELETE FROM finance.transactions
+            WHERE user_id = %s
+              AND template_id = %s
+              AND status = 'planned'
+            RETURNING id
+            """,
+            (pg_user_id, pg_template_id),
+        ).fetchall()
+        return {"status": "deleted", "deleted": len(rows), "template_id": pg_template_id}
+
+    def mirror_delete_recurring_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_template_id: int,
+    ) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+        pg_template_id = self._finance_id_by_legacy(conn, "recurring_templates", pg_user_id, legacy_template_id)
+        if pg_template_id is None:
+            return {"status": "missing"}
+        planned_result = self.delete_planned_transactions_for_template(conn, legacy_user_id, legacy_template_id)
+        conn.execute("DELETE FROM finance.recurring_templates WHERE id = %s", (pg_template_id,))
+        return {
+            "status": "deleted",
+            "template_id": pg_template_id,
+            "planned_deleted": planned_result.get("deleted", 0),
+        }
 
     def _mirror_transfer(
         self,

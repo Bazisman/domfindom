@@ -31,16 +31,36 @@ class PostgresShadowWriteTestCase(unittest.TestCase):
         self.assertEqual(result, {"enabled": False, "status": "skipped", "reason": "recurring_planned_transaction"})
         repository.assert_not_called()
 
-    def test_shadow_write_skips_planned_transaction_with_template(self):
+    def test_shadow_write_mirrors_planned_transaction_with_template(self):
         config = SimpleNamespace(postgres_shadow_write_enabled=True, database_url="postgresql://example")
         with mock.patch.object(shadow_write, "PostgresWriteRepository") as repository:
+            repo = repository.return_value
+            conn = repo.connect.return_value.__enter__.return_value
+            repo.mirror_planned_transaction.return_value = {"status": "inserted", "transaction_id": 5}
             result = shadow_write.mirror_created_transaction_shadow_write(
                 {"id": 12},
                 _Row(id=1, status="planned", template_id=99),
                 config=config,
             )
 
-        self.assertEqual(result, {"enabled": True, "status": "skipped", "reason": "recurring_template_not_mirrored"})
+        self.assertEqual(result["status"], "ok")
+        repo.mirror_planned_transaction.assert_called_once_with(
+            conn,
+            legacy_user_id=12,
+            source_db_path="data/users/12/finance.db",
+            transaction={"id": 1, "status": "planned", "template_id": 99},
+        )
+
+    def test_recurring_template_shadow_write_disabled_does_not_call_repository(self):
+        config = SimpleNamespace(postgres_shadow_write_enabled=False, database_url="")
+        with mock.patch.object(shadow_write, "PostgresWriteRepository") as repository:
+            result = shadow_write.mirror_recurring_template_shadow_write(
+                {"id": 12},
+                _Row(id=1, type="expense", name="Rent"),
+                config=config,
+            )
+
+        self.assertEqual(result, {"enabled": False, "status": "disabled"})
         repository.assert_not_called()
 
     def test_shadow_write_disabled_does_not_call_repository(self):
