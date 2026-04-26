@@ -20,6 +20,7 @@ from backend.storage.shadow_write import (
     mirror_recurring_template_shadow_write,
     mirror_deleted_transaction_shadow_write,
     mirror_updated_transaction_shadow_write,
+    require_mysql_transaction_shadow_write_success,
 )
 from models import Transaction
 
@@ -350,7 +351,9 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         status=row["status"] if "status" in row.keys() else "actual",
         money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
     )
-    mirror_created_transaction_shadow_write(current_user, row, skip_reason=shadow_write_skip_reason)
+    mirror_result = mirror_created_transaction_shadow_write(current_user, row, skip_reason=shadow_write_skip_reason)
+    if not shadow_write_skip_reason:
+        require_mysql_transaction_shadow_write_success(mirror_result, "transaction_create")
     return TransactionCreateResponse(
         id=created_id,
         message="Транзакция создана",
@@ -370,11 +373,13 @@ def delete_transaction(transaction_id: int, current_user=Depends(require_user)) 
         transaction_id,
         existing.money_source if existing else "cashless",
     )
-    mirror_deleted_transaction_shadow_write(
+    mirror_result = mirror_deleted_transaction_shadow_write(
         current_user,
         transaction_id,
         skip_reason="family_capital_contribution" if family_contribution else "",
     )
+    if not family_contribution:
+        require_mysql_transaction_shadow_write_success(mirror_result, "transaction_delete")
     return MessageResponse(message="Транзакция удалена")
 
 
@@ -437,10 +442,12 @@ def update_transaction(
         status=row["status"] if "status" in row.keys() else "actual",
         money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
     )
-    mirror_updated_transaction_shadow_write(
+    mirror_result = mirror_updated_transaction_shadow_write(
         current_user,
         row,
         skip_reason="family_capital_contribution" if family_contribution else "",
     )
+    if not family_contribution:
+        require_mysql_transaction_shadow_write_success(mirror_result, "transaction_update")
     transaction_service.notify_listeners()
     return TransactionResponse(**row_to_transaction_response(transaction))

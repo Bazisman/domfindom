@@ -79,11 +79,44 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                 "status": "planned",
                 "template_id": source_local_id,
             }
+            actual_transaction_id = source_local_id + 1
+            actual_transaction = {
+                "id": actual_transaction_id,
+                "type": "expense",
+                "category": category["name"],
+                "amount": 321.09,
+                "comment": "rollback probe actual",
+                "date": "2099-01-02",
+                "money_source": "cashless",
+                "status": "actual",
+            }
+            updated_transaction = {
+                **actual_transaction,
+                "amount": 654.32,
+                "comment": "rollback probe actual updated",
+            }
 
             category_result = repo.mirror_category(conn, source_legacy_user_id, source_db_path, category)
             budget_result = repo.mirror_budget(conn, source_legacy_user_id, source_db_path, budget)
             template_result = repo.mirror_recurring_template(conn, source_legacy_user_id, source_db_path, template)
             planned_result = repo.mirror_planned_transaction(conn, source_legacy_user_id, source_db_path, planned)
+            actual_result = repo.mirror_actual_transaction(
+                conn,
+                source_legacy_user_id,
+                source_db_path,
+                actual_transaction,
+            )
+            update_result = repo.mirror_update_transaction(
+                conn,
+                source_legacy_user_id,
+                source_db_path,
+                updated_transaction,
+            )
+            transaction_delete_result = repo.mirror_delete_transaction(
+                conn,
+                source_legacy_user_id,
+                actual_transaction_id,
+            )
             budget_delete_result = repo.mirror_delete_budget(conn, source_legacy_user_id, source_local_id)
             template_delete_result = repo.mirror_delete_recurring_template(conn, source_legacy_user_id, source_local_id)
 
@@ -96,6 +129,9 @@ def run_probe(database_url: str, legacy_user_id: Optional[int] = None) -> Dict[s
                     "budget": budget_result,
                     "template": template_result,
                     "planned": planned_result,
+                    "actual_transaction": actual_result,
+                    "transaction_update": update_result,
+                    "transaction_delete": transaction_delete_result,
                     "budget_delete": budget_delete_result,
                     "template_delete": template_delete_result,
                 },

@@ -33,6 +33,21 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
         self.assertFalse(shadow_write.mysql_strict_categories_budgets_recurring_enabled(disabled))
         self.assertTrue(shadow_write.mysql_strict_categories_budgets_recurring_enabled(enabled))
 
+    def test_strict_transactions_requires_shadow_write_flag_and_url(self):
+        disabled = SimpleNamespace(
+            mysql_shadow_write_enabled=False,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_transactions_enabled=True,
+        )
+        enabled = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_transactions_enabled=True,
+        )
+
+        self.assertFalse(shadow_write.mysql_strict_transactions_enabled(disabled))
+        self.assertTrue(shadow_write.mysql_strict_transactions_enabled(enabled))
+
     def test_require_mysql_shadow_write_success_is_noop_when_strict_flag_is_off(self):
         config = SimpleNamespace(
             mysql_shadow_write_enabled=True,
@@ -70,6 +85,20 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
             shadow_write.require_mysql_shadow_write_success(
                 {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
                 "category_create",
+                config=config,
+            )
+
+    def test_require_mysql_transaction_shadow_write_success_raises_on_failure_when_strict_flag_is_on(self):
+        config = SimpleNamespace(
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+            mysql_strict_write_transactions_enabled=True,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "transaction_create"):
+            shadow_write.require_mysql_transaction_shadow_write_success(
+                {"enabled": True, "status": "failed", "results": {"mysql": {"status": "failed", "reason": "boom"}}},
+                "transaction_create",
                 config=config,
             )
 

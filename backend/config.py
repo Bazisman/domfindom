@@ -68,6 +68,7 @@ class AppConfig:
     mysql_read_shadow_enabled: bool
     mysql_shadow_write_enabled: bool
     mysql_primary_read_pilot_enabled: bool
+    mysql_strict_write_transactions_enabled: bool
     mysql_strict_write_categories_budgets_recurring_enabled: bool
     auth_db_name: str
     users_data_dir: str
@@ -120,6 +121,9 @@ settings = AppConfig(
     mysql_read_shadow_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_READ_SHADOW", "false")),
     mysql_shadow_write_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_SHADOW_WRITE", "false")),
     mysql_primary_read_pilot_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_PRIMARY_READ_PILOT", "false")),
+    mysql_strict_write_transactions_enabled=_parse_bool(
+        os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS", "false")
+    ),
     mysql_strict_write_categories_budgets_recurring_enabled=_parse_bool(
         os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING", "false")
     ),

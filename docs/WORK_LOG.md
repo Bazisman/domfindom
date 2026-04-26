@@ -75,6 +75,8 @@
 - MySQL cutover-check получил отдельную проверку `strict_categories_budgets_recurring`, которая показывает режим `shadow-write-only`/`strict-dual-write` и блокирует ошибочную конфигурацию без MySQL URL или `FINANCE_APP_MYSQL_SHADOW_WRITE=true`.
 - Добавлен rollback-probe `tools/mysql_strict_write_probe.py` для MySQL strict categories/budgets/recurring: проверяет category/budget/template/planned writes и delete paths внутри транзакции с обязательным rollback.
 - Runtime adapter report теперь отделяет `guarded_groups` от `missing_groups`, чтобы включенный strict dual-write по categories/budgets/recurring был виден как защищённый промежуточный этап, а не как полностью нетронутый блокер.
+- Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS` для обычных transaction create/update/delete; family capital contribution ветка пока остаётся отдельным неподготовленным случаем.
+- MySQL rollback-probe расширен на обычные transactions: проверяет actual transaction insert/update/delete в той же транзакции с rollback перед включением strict transaction dual-write.
 
 ### 2026-04-25
 
