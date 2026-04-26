@@ -450,7 +450,7 @@ export default function AppShellNext() {
     { to: "/transactions", label: "Транзакции" },
     { to: "/categories", label: "Категории" },
     { to: "/planning", label: "Планирование" },
-    { to: "/accounts", label: "Счета" },
+    { to: "/accounts", label: "Деньги" },
     ...(showFamilyTab ? [{ to: "/family", label: "Семья" }] : []),
   ];
 

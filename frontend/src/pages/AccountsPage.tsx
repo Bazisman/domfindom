@@ -198,12 +198,12 @@ export function AccountsPage() {
         .map((account) => ({
           key: `personal:${account.id}`,
           label: account.name,
-          description: "Личный счет капитала",
+          description: "Личная подушка",
         })),
       ...familyVisibleAccounts.map((account) => ({
         key: `family:${account.owner_user_id}:${account.capital_account_id}`,
         label: account.name,
-        description: `Семейный счет · ${account.owner_display_name || account.owner_email || "Семья"}`,
+        description: `Подушка семьи · ${account.owner_display_name || account.owner_email || "Семья"}`,
       })),
     ],
     [capitalAccounts, familyVisibleAccounts, personalAccountsPublishedToFamily],
@@ -237,7 +237,7 @@ export function AccountsPage() {
         name: account.name,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
-        tone: "Личный счет для автоотчислений",
+        tone: "Личная подушка",
       };
     }
     if (effectiveAutoCapitalTargetKey.startsWith("family:")) {
@@ -257,7 +257,7 @@ export function AccountsPage() {
         name: account.name,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
-        tone: `Семейный счет · ${ownerLabel}`,
+        tone: `Подушка семьи · ${ownerLabel}`,
       };
     }
     return null;
@@ -559,7 +559,7 @@ export function AccountsPage() {
     const balance = accountForm.balance ? Number(accountForm.balance.replace(",", ".")) : 0;
 
     if (!name) {
-      setAccountError("Укажи название счёта.");
+      setAccountError("Укажи название.");
       return;
     }
     if (Number.isNaN(balance) || balance < 0) {
@@ -592,11 +592,11 @@ export function AccountsPage() {
 
     const amount = Number(transferForm.amount.replace(",", "."));
     if (!transferForm.fromAccountId || !transferForm.toAccountId) {
-      setTransferError("Выбери оба счёта для перевода.");
+      setTransferError("Выбери, откуда и куда перевести деньги.");
       return;
     }
     if (transferForm.fromAccountId === transferForm.toAccountId) {
-      setTransferError("Счета перевода должны отличаться.");
+      setTransferError("Нужно выбрать два разных места.");
       return;
     }
     if (!amount || amount <= 0) {
@@ -624,14 +624,14 @@ export function AccountsPage() {
   }
 
   function getAccountTone(account: Account) {
-    return "Счёт капитала";
+    return "Подушка";
   }
 
   function getTransferAccountLabel(account: Account) {
     if (account.type === "capital") {
-      return `Капитал · ${account.name}`;
+      return `Подушка · ${account.name}`;
     }
-    return account.money_source === "cash" ? "Наличные" : "Безнал";
+    return account.money_source === "cash" ? "Наличные" : "Для трат";
   }
 
   function saveDefaultMoneySource(source: "cashless" | "cash") {
@@ -641,7 +641,7 @@ export function AccountsPage() {
     });
   }
 
-  const defaultCapitalAccountName = activeAutoCapitalTarget?.name ?? "счёт ещё не выбран";
+  const defaultCapitalAccountName = activeAutoCapitalTarget?.name ?? "подушка ещё не выбрана";
 
   return (
     <main className="accounts-layout">
@@ -697,15 +697,15 @@ export function AccountsPage() {
                 <strong>{defaultCapitalAccountName}</strong>
               </div>
 
-              <div className="auto-capital-info-row">
-                <span className="auto-capital-info-label">Тип</span>
+            <div className="auto-capital-info-row">
+              <span className="auto-capital-info-label">Тип</span>
                 <strong>
                   {activeAutoCapitalTarget?.tone ?? "Не выбрано"}
                 </strong>
               </div>
             </div>
             <label className="field">
-              <span>Куда отправлять автоотчисления с доходов</span>
+              <span>Куда откладывать с доходов</span>
               <select
                 onChange={(event) => {
                   setSelectedTargetKey(event.target.value);
@@ -713,7 +713,7 @@ export function AccountsPage() {
                 }}
                 value={selectedTargetKey}
               >
-                <option value="">Выбери счет</option>
+                <option value="">Выбери подушку</option>
                 {autoCapitalTargetOptions.map((option) => (
                   <option key={option.key} value={option.key}>
                     {option.description + " · " + option.label}
@@ -722,7 +722,7 @@ export function AccountsPage() {
               </select>
             </label>
 
-            <p className="auto-capital-note">Личные и семейные счета для автоотчислений настраиваются здесь.</p>
+            <p className="auto-capital-note">Это не расход: деньги уходят из трат в подушку.</p>
 
             <div className="field">
               <span>Основной способ оплаты</span>
@@ -733,7 +733,7 @@ export function AccountsPage() {
                   onClick={() => saveDefaultMoneySource("cashless")}
                   type="button"
                 >
-                  Безнал
+                  Для трат
                 </button>
                 <button
                   className={settings.data?.default_money_source === "cash" ? "toggle active" : "toggle"}
@@ -756,7 +756,7 @@ export function AccountsPage() {
               onClick={saveFamilyTarget}
               type="button"
             >
-              {updateAutoCapitalTargetMutation.isPending ? "Сохраняем..." : "Сохранить цель автоотчислений"}
+              {updateAutoCapitalTargetMutation.isPending ? "Сохраняем..." : "Сохранить подушку"}
             </button>
             {settingsError && <p className="form-error">{settingsError}</p>}
             {!settingsError &&
@@ -776,13 +776,13 @@ export function AccountsPage() {
           ref={accountFormPanelRef}
         >
           <div className="panel-header">
-            <h2>{editingAccountId !== null ? "Редактирование счёта" : "Новый счёт капитала"}</h2>
+            <h2>{editingAccountId !== null ? "Редактирование подушки" : "Новая подушка"}</h2>
           </div>
 
           <form className="transaction-form" onSubmit={submitAccountForm}>
             {editingAccountId !== null && (
               <div className="editing-banner" role="status">
-                <strong>Сейчас редактируется:</strong> {accountForm.name || "счёт"}
+                <strong>Сейчас редактируется:</strong> {accountForm.name || "подушка"}
               </div>
             )}
             <label className="field">
@@ -790,13 +790,13 @@ export function AccountsPage() {
               <input
                 ref={accountNameInputRef}
                 onChange={(event) => setAccountForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Например, Сбер вклад"
+                placeholder="Например, Подушка в Сбере"
                 value={accountForm.name}
               />
             </label>
 
             <label className="field">
-              <span>{editingAccountId !== null ? "Текущий баланс" : "Стартовый баланс"}</span>
+              <span>{editingAccountId !== null ? "Сколько сейчас" : "Сколько сейчас"}</span>
               <input
                 inputMode="decimal"
                 onChange={(event) => setAccountForm((current) => ({ ...current, balance: event.target.value }))}
@@ -832,10 +832,10 @@ export function AccountsPage() {
                 {editingAccountId !== null
                   ? updateAccountMutation.isPending
                     ? "Сохраняем..."
-                    : "Сохранить счёт"
+                    : "Сохранить"
                   : createAccountMutation.isPending
                     ? "Создаём..."
-                    : "Добавить счёт"}
+                    : "Добавить подушку"}
               </button>
 
               {editingAccountId !== null && (
@@ -849,20 +849,20 @@ export function AccountsPage() {
 
         <section className="panel panel-form">
           <div className="panel-header">
-            <h2>Перевод между счетами</h2>
+            <h2>Перевод денег</h2>
           </div>
 
           <form className="transaction-form" onSubmit={submitTransferForm}>
             <div className="field-row">
               <label className="field">
-                <span>Со счёта</span>
+                <span>Откуда</span>
                 <select
                   onChange={(event) =>
                     setTransferForm((current) => ({ ...current, fromAccountId: event.target.value }))
                   }
                   value={transferForm.fromAccountId}
                 >
-                  <option value="">Выбери счёт</option>
+                  <option value="">Выбери место</option>
                   {transferAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
                       {getTransferAccountLabel(account)}
@@ -872,14 +872,14 @@ export function AccountsPage() {
               </label>
 
               <label className="field">
-                <span>На счёт</span>
+                <span>Куда</span>
                 <select
                   onChange={(event) =>
                     setTransferForm((current) => ({ ...current, toAccountId: event.target.value }))
                   }
                   value={transferForm.toAccountId}
                 >
-                  <option value="">Выбери счёт</option>
+                  <option value="">Выбери место</option>
                   {transferAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
                       {getTransferAccountLabel(account)}
@@ -920,7 +920,7 @@ export function AccountsPage() {
               <span>Комментарий</span>
               <input
                 onChange={(event) => setTransferForm((current) => ({ ...current, comment: event.target.value }))}
-                placeholder="Например, в накопления"
+                placeholder="Например, в подушку"
                 value={transferForm.comment}
               />
             </label>
@@ -938,7 +938,7 @@ export function AccountsPage() {
         {!!familyVisibleAccounts.length && (
           <section className="panel panel-list">
             <div className="panel-header">
-              <h2>Семейные счета капитала</h2>
+              <h2>Подушка семьи</h2>
             </div>
 
             <div className="category-card-grid">
@@ -958,7 +958,7 @@ export function AccountsPage() {
                       />
                       <div>
                         <strong>{account.name}</strong>
-                        <p>{isTarget ? `Цель семейных отчислений · ${ownerLabel}` : `Семейный счет · ${ownerLabel}`}</p>
+                        <p>{isTarget ? `Сюда откладываем · ${ownerLabel}` : `Подушка семьи · ${ownerLabel}`}</p>
                       </div>
                     </div>
                     <div className="account-balance">
@@ -979,40 +979,40 @@ export function AccountsPage() {
 
           <div className="summary-grid summary-grid-3 accounts-summary-grid">
             <article className="summary-card summary-card-main account-summary-card account-summary-card-main">
-              <p className="panel-label">Повседневные деньги</p>
+              <p className="panel-label">Деньги на жизнь</p>
               <h3>{formatMoney(dailyBalance)}</h3>
-              <p className="muted">Безнал и наличные для обычных доходов и расходов.</p>
+              <p className="muted">Этими деньгами можно пользоваться каждый день.</p>
             </article>
 
             <article className="summary-card account-summary-card">
-              <p className="panel-label">Безнал</p>
+              <p className="panel-label">Для трат</p>
               <h3>{formatMoney(cashlessAccount?.balance ?? 0)}</h3>
-              <p className="muted">Деньги на карте и в безналичных расчетах.</p>
+              <p className="muted">Карты и деньги, которыми платим за обычные покупки.</p>
             </article>
 
             <article className="summary-card account-summary-card">
               <p className="panel-label">Наличные</p>
               <h3>{formatMoney(cashAccount?.balance ?? 0)}</h3>
-              <p className="muted">Деньги в кошельке и наличных источниках.</p>
+              <p className="muted">Деньги на руках.</p>
             </article>
 
             <article className="summary-card account-summary-card">
-              <p className="panel-label">Мои счета капитала</p>
+              <p className="panel-label">Моя подушка</p>
               <h3>{formatMoney(ownCapital)}</h3>
-              <p className="muted">Сумма ваших личных накопительных счетов.</p>
+              <p className="muted">Резерв на случай проблем.</p>
             </article>
 
             <article className="summary-card account-summary-card">
-              <p className="panel-label">Семейный капитал</p>
+              <p className="panel-label">Подушка семьи</p>
               <h3>{formatMoney(familyCapitalBalance)}</h3>
-              <p className="muted">Общий капитал, опубликованный для семейного бюджета.</p>
+              <p className="muted">Общий резерв семьи.</p>
             </article>
           </div>
 
           {activeAutoCapitalTarget ? (
             <div className="account-section">
               <div className="account-section-header">
-                <h3>Счет для автоотчислений</h3>
+                <h3>Куда откладываем</h3>
               </div>
 
               <article className="account-card account-card-main">
@@ -1036,7 +1036,7 @@ export function AccountsPage() {
 
           <div className="account-section">
             <div className="account-section-header">
-              <h3>Счета капитала</h3>
+              <h3>Подушки</h3>
             </div>
 
             <div className="category-card-grid">
@@ -1075,11 +1075,11 @@ export function AccountsPage() {
               {accountsError && <p className="form-error">{accountsError}</p>}
 
               {!accountsError && !accounts.data?.length && (
-                <p className="empty">{isAccountsPending ? "Загружаем счета..." : "Счета пока не найдены."}</p>
+                <p className="empty">{isAccountsPending ? "Загружаем деньги..." : "Деньги пока не найдены."}</p>
               )}
 
               {!!accounts.data?.length && !capitalAccounts.length && (
-                <p className="empty">Счетов капитала пока нет.</p>
+                <p className="empty">Подушек пока нет.</p>
               )}
             </div>
           </div>
@@ -1088,7 +1088,7 @@ export function AccountsPage() {
         {!!familyVisibleAccounts.length && (
           <section className="panel panel-list">
             <div className="panel-header">
-              <h2>История семейного капитала</h2>
+              <h2>История подушки семьи</h2>
             </div>
 
             <div className="transaction-table">
@@ -1096,9 +1096,9 @@ export function AccountsPage() {
                 <article className="transaction-row" key={item.id}>
                   <div className="transaction-main">
                     <strong>
-                      {(item.source_display_name || item.source_email || "Участник")} → {item.target_account_name || "Семейный счет"}
+                      {(item.source_display_name || item.source_email || "Участник")} → {item.target_account_name || "Подушка семьи"}
                     </strong>
-                    <p>{item.comment || "Автоотчисление в семейный капитал"}</p>
+                    <p>{item.comment || "Отложили в подушку семьи"}</p>
                     <p className="muted">
                       Получатель: {item.target_owner_display_name || item.target_owner_email || "Семья"}
                     </p>
@@ -1112,7 +1112,7 @@ export function AccountsPage() {
 
               {!familyCapitalHistory.data?.items?.length && (
                 <p className="empty">
-                  {familyCapitalHistory.isLoading ? "Загружаем историю семейного капитала..." : "Движений семейного капитала пока нет."}
+                  {familyCapitalHistory.isLoading ? "Загружаем историю подушки..." : "Движений подушки пока нет."}
                 </p>
               )}
             </div>

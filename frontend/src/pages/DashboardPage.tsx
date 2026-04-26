@@ -371,7 +371,7 @@ export function DashboardPage() {
 
     const accountName = autoCapitalAccountName.trim();
     if (!accountName) {
-      setAutoCapitalError("Укажите название счета для автоотчислений.");
+      setAutoCapitalError("Укажите название подушки.");
       return;
     }
 
@@ -770,7 +770,7 @@ export function DashboardPage() {
     const personalRemainingExpense = personalPlannedExpenseTotal - personalExecutedExpense;
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Текущий баланс</p>
+        <p className="panel-label">Мои деньги</p>
         <h2>{dashboard.data?.balance.main_balance !== undefined ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
         <div className="stats-row">
           <div>
@@ -797,7 +797,7 @@ export function DashboardPage() {
   function renderFamilyBalanceSlide(key: string) {
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Текущий баланс семьи</p>
+        <p className="panel-label">Деньги семьи</p>
         <h2>{familyBalance ? formatMoney(familyBalance.main_balance) : "—"}</h2>
         <div className="stats-row">
           <div>
@@ -824,7 +824,7 @@ export function DashboardPage() {
 
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Личный остаток</p>
+        <p className="panel-label">Мой остаток на конец месяца</p>
         <h2>{personalForecast ? formatMoney(personalForecast.projected_balance) : "—"}</h2>
         <p className="stat-note">{personalForecast ? `На конец ${personalForecastMonthLabel}` : "Личный режим"}</p>
       </article>
@@ -836,7 +836,7 @@ export function DashboardPage() {
 
     return (
       <article className="balance-slide" key={key}>
-        <p className="panel-label">Семейный остаток</p>
+        <p className="panel-label">Остаток семьи на конец месяца</p>
         <h2>{familyForecast ? formatMoney(familyForecast.projected_balance) : "—"}</h2>
         <p className="stat-note">{familyForecast ? `На конец ${familyForecastMonthLabel}` : "Семейный режим"}</p>
       </article>
@@ -849,7 +849,7 @@ export function DashboardPage() {
         <div className="hero-copy">
           <h1>Домашняя бухгалтерия</h1>
           <p className="hero-text">
-            Короткий обзор месяца: текущий баланс, факт и план по доходам и расходам, быстрый ввод.
+            Короткий обзор: сколько денег есть сейчас, сколько останется в конце месяца и что уже произошло.
           </p>
         </div>
       </header>
@@ -896,15 +896,15 @@ export function DashboardPage() {
             )}
 
             {showFamilyBalanceSlide ? (
-              <div className="balance-carousel-nav" aria-label="Переключение карточек баланса">
+              <div className="balance-carousel-nav" aria-label="Переключение карточек денег">
                 <button
-                  aria-label="Личный баланс"
+                  aria-label="Мои деньги"
                   className={indicatorBalanceSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                   onClick={() => handleBalanceDotClick(0)}
                   type="button"
                 />
                 <button
-                  aria-label="Баланс семьи"
+                  aria-label="Деньги семьи"
                   className={indicatorBalanceSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                   onClick={() => handleBalanceDotClick(1)}
                   type="button"
@@ -943,13 +943,13 @@ export function DashboardPage() {
             {showFamilyForecastSlide ? (
               <div className="balance-carousel-nav" aria-label="Переключение карточек остатка">
                   <button
-                    aria-label="Личный остаток"
+                    aria-label="Мой остаток на конец месяца"
                     className={indicatorForecastSlide === 0 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                     onClick={() => handleForecastDotClick(0)}
                     type="button"
                   />
                   <button
-                    aria-label="Семейный остаток"
+                    aria-label="Остаток семьи на конец месяца"
                     className={indicatorForecastSlide === 1 ? "balance-carousel-dot active" : "balance-carousel-dot"}
                     onClick={() => handleForecastDotClick(1)}
                     type="button"

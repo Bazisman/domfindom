@@ -48,7 +48,7 @@ const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 const MONEY_SOURCE_OPTIONS: Array<{ value: MoneySource; label: string }> = [
-  { value: "cashless", label: "Безнал" },
+  { value: "cashless", label: "Для трат" },
   { value: "cash", label: "Наличные" },
 ];
 
@@ -71,7 +71,7 @@ function getToday() {
 }
 
 function moneySourceLabel(source: MoneySource | undefined) {
-  return source === "cash" ? "Наличные" : "Безнал";
+  return source === "cash" ? "Наличные" : "Для трат";
 }
 
 function formatReconciliationDate(value: string) {
@@ -564,7 +564,7 @@ export function TransactionsPageNext() {
 
     const accountName = autoCapitalAccountName.trim();
     if (!accountName) {
-      setAutoCapitalError("Укажите название счета для автоотчислений.");
+      setAutoCapitalError("Укажите название подушки.");
       return;
     }
 
@@ -1036,7 +1036,7 @@ export function TransactionsPageNext() {
             })}
 
             {!reconciliationSummary.isLoading && !reconciliationSummary.data?.sources.length && (
-              <p className="empty">Добавьте источники фактических денег для сверки: наличные, карты, счета в банке.</p>
+              <p className="empty">Добавьте источники фактических денег для сверки: наличные, карты, деньги в банке.</p>
             )}
           </div>
 

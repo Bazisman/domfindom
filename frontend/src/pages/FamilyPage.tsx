@@ -353,9 +353,9 @@ export function FamilyPage() {
       updateAccount(accountId, {
         family_visible: familyVisible,
         family_default_target: familyDefaultTarget,
-      }),
+    }),
     onSuccess: async () => {
-      setMessage("Настройки семейного капитала обновлены.");
+      setMessage("Настройки подушки семьи обновлены.");
       setError("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["accounts"] }),
@@ -710,13 +710,13 @@ export function FamilyPage() {
           <div className="family-summary-grid">
             <article className="list-item">
               <div>
-                <strong>Текущий семейный баланс</strong>
+                <strong>Деньги семьи</strong>
                 <p>{formatMoney(familyDashboardQuery.data?.balance.main_balance ?? 0)}</p>
               </div>
             </article>
             <article className="list-item">
               <div>
-                <strong>Семейный капитал</strong>
+                <strong>Подушка семьи</strong>
                 <p>{formatMoney(familyDashboardQuery.data?.balance.capital_balance ?? 0)}</p>
               </div>
             </article>
@@ -1077,13 +1077,13 @@ export function FamilyPage() {
       {familyId !== null ? (
         <section className="panel panel-wide">
           <div className="panel-header">
-            <h3>Семейный капитал</h3>
-            <span>Общие накопительные счета для семьи</span>
+            <h3>Подушка семьи</h3>
+            <span>Общий резерв на случай проблем</span>
           </div>
 
           <div className="transaction-form">
             <label className="field">
-              <span>Мой счет для публикации семье</span>
+              <span>Моя подушка для семьи</span>
               <div className="list">
                 {capitalAccounts.map((account) => {
                   const accountKey = `${meQuery.data?.id ?? 0}:${account.id}`;
@@ -1110,14 +1110,14 @@ export function FamilyPage() {
                             onClick={() => makeDefaultFamilyCapital(account.id)}
                             type="button"
                           >
-                            Семейный по умолчанию
+                            Откладывать сюда
                           </button>
                         ) : null}
                       </div>
                     </article>
                   );
                 })}
-                {!capitalAccounts.length ? <p className="muted">У вас пока нет активных счетов капитала.</p> : null}
+                {!capitalAccounts.length ? <p className="muted">У вас пока нет подушек.</p> : null}
               </div>
             </label>
 
@@ -1137,7 +1137,7 @@ export function FamilyPage() {
               </article>
             ))}
             {!familyDashboardQuery.isLoading && !(familyDashboardQuery.data?.capital_accounts ?? []).length ? (
-              <p className="muted">Семейные счета капитала пока не настроены.</p>
+              <p className="muted">Подушка семьи пока не настроена.</p>
             ) : null}
           </div>
         </section>

@@ -41,7 +41,7 @@ export default function AppShell() {
             className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
             to="/accounts"
           >
-            Счета
+            Деньги
           </NavLink>
           <NavLink
             className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
