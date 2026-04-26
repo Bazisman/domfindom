@@ -82,6 +82,7 @@
 - Startup guard разрешает `FINANCE_APP_STORAGE_BACKEND=mysql` только в режиме `mysql-primary-read-strict-dual-write`: нужен MySQL URL, общий shadow-write и все strict-флаги; cutover-check теперь может показать runtime-ready при явном `--allow-mysql-backend`.
 - Production переключен на `FINANCE_APP_STORAGE_BACKEND=mysql` в режиме `mysql-primary-read-strict-dual-write`: health вернул `ok`, cutover-check с `--allow-mysql-backend` показал `ready_for_runtime_mysql=True`, blockers `0`, reconciliation/read_compare `failed=0`.
 - MySQL cutover-check после фактического `FINANCE_APP_STORAGE_BACKEND=mysql` больше не требует отдельный `--allow-mysql-backend`: startup guard уже защищает конфигурацию, а обычная проверка должна отражать текущий runtime как ready.
+- `/api/v1/health` расширен полями `storage_backend` и `runtime_mode`, чтобы после MySQL cutover внешний smoke-check сразу показывал активный storage режим без доступа к серверной `.env`.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION`; reconciliation sources/apply теперь имеют MySQL shadow-write adapter paths, а rollback-probe проверяет reconciliation source и reconciliation writes.
 - Начат последний блокер `auth_and_sessions`: добавлен `MySqlAuthWriteRepository` и rollback-probe `tools/mysql_auth_write_probe.py` для users/sessions/preferences/login_attempts/auth_events/password/email/account-deletion tokens без изменения runtime auth path.
 

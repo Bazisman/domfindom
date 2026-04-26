@@ -157,7 +157,10 @@ class WebApiTestCase(unittest.TestCase):
         response = self.client.get("/api/v1/health")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["storage_backend"], settings.storage_backend)
+        self.assertIn("runtime_mode", payload)
 
     def test_protected_endpoint_requires_auth_after_logout(self):
         logout_response = self.client.post("/api/v1/auth/logout")
