@@ -418,6 +418,179 @@ class PostgresWriteRepository(PostgresReadRepository):
         )
         return {"status": "inserted", "template_id": pg_template_id}
 
+    def mirror_category(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        category: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_category_id = int(category["id"])
+        existing = self._finance_id_by_legacy(conn, "categories", pg_user_id, legacy_category_id)
+        values = (
+            str(category["name"]),
+            str(category.get("type") or "both"),
+            category.get("color"),
+            category.get("icon"),
+            bool(category.get("is_active", True)),
+        )
+        if existing is not None:
+            conn.execute(
+                """
+                UPDATE finance.categories
+                SET name = %s, type = %s, color = %s, icon = %s, is_active = %s, updated_at = now()
+                WHERE id = %s
+                """,
+                (*values, existing),
+            )
+            return {"status": "updated", "category_id": existing}
+
+        row = conn.execute(
+            """
+            INSERT INTO finance.categories (user_id, legacy_local_id, name, type, color, icon, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (pg_user_id, legacy_category_id, *values),
+        ).fetchone()
+        pg_category_id = int(row["id"])
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "categories",
+            legacy_category_id,
+            "categories",
+            pg_category_id,
+        )
+        return {"status": "inserted", "category_id": pg_category_id}
+
+    def mirror_budget(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        budget: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_budget_id = int(budget["id"])
+        category_id = self._category_id_by_legacy(conn, pg_user_id, budget.get("category_id"))
+        if category_id is None:
+            return {"status": "skipped", "reason": "category_not_mirrored"}
+        amount_minor = to_minor(budget["amount"])
+        period = str(budget.get("period") or "monthly")
+        existing = self._finance_id_by_legacy(conn, "budgets", pg_user_id, legacy_budget_id)
+        if existing is not None:
+            conn.execute(
+                """
+                UPDATE finance.budgets
+                SET category_id = %s, amount_minor = %s, period = %s
+                WHERE id = %s
+                """,
+                (category_id, amount_minor, period, existing),
+            )
+            return {"status": "updated", "budget_id": existing}
+
+        row = conn.execute(
+            """
+            INSERT INTO finance.budgets (user_id, legacy_local_id, category_id, amount_minor, period)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (pg_user_id, legacy_budget_id, category_id, amount_minor, period),
+        ).fetchone()
+        pg_budget_id = int(row["id"])
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "budgets",
+            legacy_budget_id,
+            "budgets",
+            pg_budget_id,
+        )
+        return {"status": "inserted", "budget_id": pg_budget_id}
+
+    def mirror_delete_budget(self, conn, legacy_user_id: int, legacy_budget_id: int) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+        pg_budget_id = self._finance_id_by_legacy(conn, "budgets", pg_user_id, legacy_budget_id)
+        if pg_budget_id is None:
+            return {"status": "missing"}
+        conn.execute("DELETE FROM finance.budgets WHERE id = %s", (pg_budget_id,))
+        return {"status": "deleted", "budget_id": pg_budget_id}
+
+    def mirror_capital_account(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        account: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_account_id = int(account["id"])
+        existing = self._finance_id_by_legacy(conn, "capital_accounts", pg_user_id, legacy_account_id)
+        values = (
+            str(account["name"]),
+            to_minor(account.get("balance") or 0),
+            str(account.get("currency") or "RUB"),
+            account.get("icon"),
+            account.get("color"),
+            bool(account.get("is_default", False)),
+            bool(account.get("is_active", True)),
+        )
+        if existing is not None:
+            conn.execute(
+                """
+                UPDATE finance.capital_accounts
+                SET
+                    name = %s,
+                    balance_minor = %s,
+                    currency = %s,
+                    icon = %s,
+                    color = %s,
+                    is_default = %s,
+                    is_active = %s,
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (*values, existing),
+            )
+            return {"status": "updated", "account_id": existing}
+
+        row = conn.execute(
+            """
+            INSERT INTO finance.capital_accounts (
+                user_id, legacy_local_id, name, balance_minor, currency, icon, color, is_default, is_active
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (pg_user_id, legacy_account_id, *values),
+        ).fetchone()
+        pg_account_id = int(row["id"])
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "capital_accounts",
+            legacy_account_id,
+            "capital_accounts",
+            pg_account_id,
+        )
+        return {"status": "inserted", "account_id": pg_account_id}
+
     def delete_planned_transactions_for_template(
         self,
         conn,

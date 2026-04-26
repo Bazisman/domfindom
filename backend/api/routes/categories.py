@@ -1,7 +1,9 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+import core
+from backend.auth.dependencies import require_user
 from backend.schemas.categories import (
     CategoryCreateRequest,
     CategoryResponse,
@@ -9,6 +11,7 @@ from backend.schemas.categories import (
 )
 from backend.schemas.common import MessageResponse
 from backend.services import category_service
+from backend.storage.shadow_write import mirror_category_shadow_write
 
 
 router = APIRouter()
@@ -43,7 +46,7 @@ def get_category(category_id: int) -> CategoryResponse:
 
 
 @router.post("", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
-def create_category(payload: CategoryCreateRequest) -> CategoryResponse:
+def create_category(payload: CategoryCreateRequest, current_user=Depends(require_user)) -> CategoryResponse:
     category_id = category_service.add_category(
         name=payload.name,
         category_type=payload.type,
@@ -56,11 +59,16 @@ def create_category(payload: CategoryCreateRequest) -> CategoryResponse:
     category = category_service.get_category_by_id(category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория создана, но не найдена")
+    mirror_category_shadow_write(current_user, core.get_category_by_id(category_id))
     return _to_response(category)
 
 
 @router.patch("/{category_id}", response_model=CategoryResponse)
-def update_category(category_id: int, payload: CategoryUpdateRequest) -> CategoryResponse:
+def update_category(
+    category_id: int,
+    payload: CategoryUpdateRequest,
+    current_user=Depends(require_user),
+) -> CategoryResponse:
     category = category_service.get_category_by_id(category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
@@ -75,11 +83,12 @@ def update_category(category_id: int, payload: CategoryUpdateRequest) -> Categor
     refreshed = category_service.get_category_by_id(category_id)
     if not refreshed:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория обновлена, но не найдена")
+    mirror_category_shadow_write(current_user, core.get_category_by_id(category_id))
     return _to_response(refreshed)
 
 
 @router.delete("/{category_id}", response_model=MessageResponse)
-def delete_category(category_id: int) -> MessageResponse:
+def delete_category(category_id: int, current_user=Depends(require_user)) -> MessageResponse:
     category = category_service.get_category_by_id(category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
@@ -87,4 +96,5 @@ def delete_category(category_id: int) -> MessageResponse:
     deleted = category_service.delete_category(category_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить категорию")
+    mirror_category_shadow_write(current_user, core.get_category_by_id(category_id))
     return MessageResponse(message="Категория отключена")

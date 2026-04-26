@@ -17,6 +17,10 @@ from backend.schemas.budgets import (
     BudgetUpdateRequest,
 )
 from backend.services import transaction_service
+from backend.storage.shadow_write import (
+    mirror_budget_shadow_write,
+    mirror_deleted_budget_shadow_write,
+)
 
 
 router = APIRouter()
@@ -174,7 +178,7 @@ def list_budgets() -> List[BudgetResponse]:
 
 
 @router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
-def create_budget(payload: BudgetCreateRequest) -> BudgetResponse:
+def create_budget(payload: BudgetCreateRequest, current_user=Depends(require_user)) -> BudgetResponse:
     category = core.get_category_by_id(payload.category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
@@ -190,12 +194,17 @@ def create_budget(payload: BudgetCreateRequest) -> BudgetResponse:
     budgets = transaction_service.get_budgets()
     for item in budgets:
         if item["category_id"] == payload.category_id:
+            mirror_budget_shadow_write(current_user, item)
             return _budget_response(item)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Бюджет создан, но не найден")
 
 
 @router.patch("/{budget_id}", response_model=BudgetResponse)
-def update_budget(budget_id: int, payload: BudgetUpdateRequest) -> BudgetResponse:
+def update_budget(
+    budget_id: int,
+    payload: BudgetUpdateRequest,
+    current_user=Depends(require_user),
+) -> BudgetResponse:
     budget = _get_budget_or_404(budget_id)
     amount = payload.amount if payload.amount is not None else budget["amount"]
     period = payload.period if payload.period is not None else budget["period"]
@@ -209,6 +218,7 @@ def update_budget(budget_id: int, payload: BudgetUpdateRequest) -> BudgetRespons
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить бюджет")
 
     refreshed = _get_budget_or_404(budget_id)
+    mirror_budget_shadow_write(current_user, refreshed)
     return _budget_response(refreshed)
 
 
@@ -239,9 +249,10 @@ def get_budget(budget_id: int) -> BudgetResponse:
 
 
 @router.delete("/{budget_id}")
-def delete_budget(budget_id: int) -> Dict[str, str]:
+def delete_budget(budget_id: int, current_user=Depends(require_user)) -> Dict[str, str]:
     _get_budget_or_404(budget_id)
     deleted = transaction_service.delete_budget(budget_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить бюджет")
+    mirror_deleted_budget_shadow_write(current_user, budget_id)
     return {"message": "Бюджет удален"}

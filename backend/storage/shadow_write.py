@@ -288,3 +288,126 @@ def mirror_deleted_recurring_template_shadow_write(
             exc,
         )
         return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_category_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_category_row: Any,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+    category = _row_to_dict(sqlite_category_row)
+    if not category:
+        return {"enabled": True, "status": "skipped", "reason": "missing_category"}
+
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_category(
+                conn,
+                legacy_user_id=legacy_user_id,
+                source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                category=category,
+            )
+            conn.commit()
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write category failed for user_id=%s category_id=%s: %s",
+            legacy_user_id,
+            category.get("id"),
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_budget_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_budget_row: Any,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+    budget = _row_to_dict(sqlite_budget_row)
+    if not budget:
+        return {"enabled": True, "status": "skipped", "reason": "missing_budget"}
+
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_budget(
+                conn,
+                legacy_user_id=legacy_user_id,
+                source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                budget=budget,
+            )
+            conn.commit()
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write budget failed for user_id=%s budget_id=%s: %s",
+            legacy_user_id,
+            budget.get("id"),
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_deleted_budget_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    legacy_budget_id: int,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_delete_budget(conn, legacy_user_id, int(legacy_budget_id))
+            conn.commit()
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write budget delete failed for user_id=%s budget_id=%s: %s",
+            legacy_user_id,
+            int(legacy_budget_id),
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_capital_accounts_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_account_rows: List[Any],
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+    accounts = [_row_to_dict(row) for row in sqlite_account_rows]
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            results = [
+                repo.mirror_capital_account(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                    account=account,
+                )
+                for account in accounts
+                if account
+            ]
+            conn.commit()
+        return {"enabled": True, "status": "ok", "result": {"accounts": results}}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write capital accounts failed for user_id=%s: %s",
+            legacy_user_id,
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}

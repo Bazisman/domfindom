@@ -119,6 +119,7 @@ FINANCE_APP_POSTGRES_SHADOW_WRITE=true
 - редактирование личной actual transaction зеркалируется в PostgreSQL как delete+insert текущего SQLite-состояния;
 - личные planned transactions зеркалируются без изменения balances, включая связь с recurring template;
 - create/update/delete recurring templates зеркалируются вместе с актуальным набором связанных planned transactions;
+- create/update/delete личных категорий, бюджетов и счетов капитала зеркалируются в PostgreSQL после SQLite-коммита;
 - семейные автоотчисления пока пропускаются до отдельного family write-path.
 
 ## Что нельзя делать
