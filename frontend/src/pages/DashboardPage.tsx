@@ -446,11 +446,12 @@ export function DashboardPage() {
     }
     balanceSettleStartRef.current = null;
     balanceDragStateRef.current = null;
-    setActiveBalanceSlide(0);
-    setIndicatorBalanceSlide(0);
-    balanceLogicalIndexRef.current = 0;
+    const preferredSlide = useFamilyFeed && showFamilyBalanceSlide ? 1 : 0;
+    setActiveBalanceSlide(preferredSlide);
+    setIndicatorBalanceSlide(preferredSlide);
+    balanceLogicalIndexRef.current = preferredSlide;
     setBalanceDragOffset(0);
-  }, [selectedFamilyId, showFamilyBalanceSlide]);
+  }, [selectedFamilyId, showFamilyBalanceSlide, useFamilyFeed]);
 
   useEffect(() => {
     if (forecastSettleFrameRef.current !== null) {
@@ -459,11 +460,12 @@ export function DashboardPage() {
     }
     forecastSettleStartRef.current = null;
     forecastDragStateRef.current = null;
-    setActiveForecastSlide(0);
-    setIndicatorForecastSlide(0);
-    forecastLogicalIndexRef.current = 0;
+    const preferredSlide = useFamilyFeed && showFamilyForecastSlide ? 1 : 0;
+    setActiveForecastSlide(preferredSlide);
+    setIndicatorForecastSlide(preferredSlide);
+    forecastLogicalIndexRef.current = preferredSlide;
     setForecastDragOffset(0);
-  }, [selectedFamilyId, showFamilyForecastSlide]);
+  }, [selectedFamilyId, showFamilyForecastSlide, useFamilyFeed]);
 
   useEffect(() => {
     return () => {
