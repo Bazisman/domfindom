@@ -381,6 +381,23 @@ export function AccountsPage() {
     },
   });
 
+  const updateFamilyVisibilityMutation = useMutation({
+    mutationFn: ({ accountId, familyVisible }: { accountId: number; familyVisible: boolean }) =>
+      updateAccount(accountId, { family_visible: familyVisible }),
+    onSuccess: async () => {
+      setAccountError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "dashboard", "accounts-page"] }),
+        queryClient.invalidateQueries({ queryKey: ["families", selectedFamilyId, "capital-history"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setAccountError(error.message);
+    },
+  });
+
   const deleteAccountMutation = useMutation({
     mutationFn: deleteAccount,
     onSuccess: async (_, accountId) => {
@@ -689,7 +706,7 @@ export function AccountsPage() {
   }
 
   function getAccountTone(account: Account) {
-    return "Подушка";
+    return account.family_visible ? "В семейной подушке" : "Личная подушка";
   }
 
   function getTransferAccountLabel(account: Account) {
@@ -1130,6 +1147,21 @@ export function AccountsPage() {
                     <strong>{formatMoney(account.balance)}</strong>
                   </div>
                   <div className="category-card-actions">
+                    {selectedFamilyId !== null && (
+                      <button
+                        className="ghost-button"
+                        disabled={updateFamilyVisibilityMutation.isPending}
+                        onClick={() =>
+                          updateFamilyVisibilityMutation.mutate({
+                            accountId: account.id,
+                            familyVisible: !account.family_visible,
+                          })
+                        }
+                        type="button"
+                      >
+                        {account.family_visible ? "Убрать из семьи" : "Добавить в семью"}
+                      </button>
+                    )}
                     <button className="ghost-button" onClick={() => fillAccountForm(account)} type="button">
                       Изменить
                     </button>
