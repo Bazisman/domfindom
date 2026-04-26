@@ -91,6 +91,50 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         after_delete_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
         )
+        planned_legacy_local_id = legacy_local_id + 1000000
+        planned_insert_result = repo.mirror_planned_transaction(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transaction={
+                "id": planned_legacy_local_id,
+                "type": "expense",
+                "category": category,
+                "amount": 3.21,
+                "comment": "postgres planned shadow write rollback probe",
+                "date": "2026-05-26",
+                "money_source": "cashless",
+                "status": "planned",
+                "template_id": None,
+            },
+        )
+        after_planned_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
+        planned_update_result = repo.mirror_update_transaction(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transaction={
+                "id": planned_legacy_local_id,
+                "type": "expense",
+                "category": category,
+                "amount": 4.32,
+                "comment": "postgres planned shadow write rollback probe updated",
+                "date": "2026-05-27",
+                "money_source": "cashless",
+                "status": "planned",
+                "template_id": None,
+            },
+            transfers=[],
+        )
+        after_planned_update_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
+        planned_delete_result = repo.mirror_delete_transaction(conn, legacy_user_id, planned_legacy_local_id)
+        after_planned_delete_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
         conn.rollback()
     return {
         "legacy_user_id": legacy_user_id,
@@ -103,15 +147,27 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
             and after_update_count == before_count + 1
             and delete_result["status"] == "deleted"
             and after_delete_count == before_count
+            and planned_insert_result["status"] == "inserted"
+            and after_planned_count == before_count + 1
+            and planned_update_result["status"] == "updated"
+            and after_planned_update_count == before_count + 1
+            and planned_delete_result["status"] == "deleted"
+            and after_planned_delete_count == before_count
         )
         else "failed",
         "insert_status": result["status"],
         "update_status": update_result["status"],
         "delete_status": delete_result["status"],
+        "planned_insert_status": planned_insert_result["status"],
+        "planned_update_status": planned_update_result["status"],
+        "planned_delete_status": planned_delete_result["status"],
         "before_count": before_count,
         "after_count_inside_transaction": after_count,
         "after_update_count_inside_transaction": after_update_count,
         "after_delete_count_inside_transaction": after_delete_count,
+        "after_planned_count_inside_transaction": after_planned_count,
+        "after_planned_update_count_inside_transaction": after_planned_update_count,
+        "after_planned_delete_count_inside_transaction": after_planned_delete_count,
         "rolled_back": True,
     }
 
@@ -127,10 +183,16 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"Insert status: `{report['insert_status']}`",
             f"Update status: `{report['update_status']}`",
             f"Delete status: `{report['delete_status']}`",
+            f"Planned insert status: `{report['planned_insert_status']}`",
+            f"Planned update status: `{report['planned_update_status']}`",
+            f"Planned delete status: `{report['planned_delete_status']}`",
             f"Before count: `{report['before_count']}`",
             f"After count inside transaction: `{report['after_count_inside_transaction']}`",
             f"After update count inside transaction: `{report['after_update_count_inside_transaction']}`",
             f"After delete count inside transaction: `{report['after_delete_count_inside_transaction']}`",
+            f"After planned count inside transaction: `{report['after_planned_count_inside_transaction']}`",
+            f"After planned update count inside transaction: `{report['after_planned_update_count_inside_transaction']}`",
+            f"After planned delete count inside transaction: `{report['after_planned_delete_count_inside_transaction']}`",
             f"Rolled back: `{report['rolled_back']}`",
         ]
     )

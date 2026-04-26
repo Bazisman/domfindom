@@ -25,10 +25,22 @@ class PostgresShadowWriteTestCase(unittest.TestCase):
                 {"id": 12},
                 _Row(id=1, status="actual"),
                 config=config,
-                skip_reason="planned_transaction",
+                skip_reason="recurring_planned_transaction",
             )
 
-        self.assertEqual(result, {"enabled": False, "status": "skipped", "reason": "planned_transaction"})
+        self.assertEqual(result, {"enabled": False, "status": "skipped", "reason": "recurring_planned_transaction"})
+        repository.assert_not_called()
+
+    def test_shadow_write_skips_planned_transaction_with_template(self):
+        config = SimpleNamespace(postgres_shadow_write_enabled=True, database_url="postgresql://example")
+        with mock.patch.object(shadow_write, "PostgresWriteRepository") as repository:
+            result = shadow_write.mirror_created_transaction_shadow_write(
+                {"id": 12},
+                _Row(id=1, status="planned", template_id=99),
+                config=config,
+            )
+
+        self.assertEqual(result, {"enabled": True, "status": "skipped", "reason": "recurring_template_not_mirrored"})
         repository.assert_not_called()
 
     def test_shadow_write_disabled_does_not_call_repository(self):

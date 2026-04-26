@@ -39,6 +39,12 @@ def _active_transfers_for_transaction(transaction_id: int) -> List[Dict[str, Any
         return [_row_to_dict(row) for row in cursor.fetchall()]
 
 
+def _planned_template_skip_reason(transaction: Dict[str, Any]) -> str:
+    if str(transaction.get("status") or "actual") == "planned" and transaction.get("template_id") is not None:
+        return "recurring_template_not_mirrored"
+    return ""
+
+
 def mirror_created_transaction_shadow_write(
     current_user: Optional[Dict[str, Any]],
     sqlite_transaction_row: Any,
@@ -53,23 +59,35 @@ def mirror_created_transaction_shadow_write(
     transaction = _row_to_dict(sqlite_transaction_row)
     if not transaction:
         return {"enabled": True, "status": "skipped", "reason": "missing_transaction"}
-    if str(transaction.get("status") or "actual") != "actual":
+    status = str(transaction.get("status") or "actual")
+    planned_skip_reason = _planned_template_skip_reason(transaction)
+    if planned_skip_reason:
+        return {"enabled": True, "status": "skipped", "reason": planned_skip_reason}
+    if status not in {"actual", "planned"}:
         return {"enabled": True, "status": "skipped", "reason": "non_actual_transaction"}
 
     legacy_user_id = int(current_user["id"])
     legacy_transaction_id = int(transaction["id"])
     source_db_path = f"data/users/{legacy_user_id}/finance.db"
     try:
-        transfers = _active_transfers_for_transaction(legacy_transaction_id)
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
-            result = repo.mirror_actual_transaction(
-                conn,
-                legacy_user_id=legacy_user_id,
-                source_db_path=source_db_path,
-                transaction=transaction,
-                transfers=transfers,
-            )
+            if status == "planned":
+                result = repo.mirror_planned_transaction(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    source_db_path=source_db_path,
+                    transaction=transaction,
+                )
+            else:
+                transfers = _active_transfers_for_transaction(legacy_transaction_id)
+                result = repo.mirror_actual_transaction(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    source_db_path=source_db_path,
+                    transaction=transaction,
+                    transfers=transfers,
+                )
             conn.commit()
         app_logger.info(
             "PostgreSQL shadow-write mirrored transaction user_id=%s transaction_id=%s status=%s",
@@ -140,14 +158,18 @@ def mirror_updated_transaction_shadow_write(
     transaction = _row_to_dict(sqlite_transaction_row)
     if not transaction:
         return {"enabled": True, "status": "skipped", "reason": "missing_transaction"}
-    if str(transaction.get("status") or "actual") != "actual":
+    status = str(transaction.get("status") or "actual")
+    planned_skip_reason = _planned_template_skip_reason(transaction)
+    if planned_skip_reason:
+        return {"enabled": True, "status": "skipped", "reason": planned_skip_reason}
+    if status not in {"actual", "planned"}:
         return {"enabled": True, "status": "skipped", "reason": "non_actual_transaction"}
 
     legacy_user_id = int(current_user["id"])
     legacy_transaction_id = int(transaction["id"])
     source_db_path = f"data/users/{legacy_user_id}/finance.db"
     try:
-        transfers = _active_transfers_for_transaction(legacy_transaction_id)
+        transfers = [] if status == "planned" else _active_transfers_for_transaction(legacy_transaction_id)
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
             result = repo.mirror_update_transaction(

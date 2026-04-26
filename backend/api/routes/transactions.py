@@ -284,7 +284,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         planned_date = core._adjust_to_workday(payload.date)
 
     if is_future:
-        shadow_write_skip_reason = "planned_transaction"
+        shadow_write_skip_reason = "recurring_planned_transaction" if recurring_payload else ""
         created_id = core.add_planned_transaction(
             payload.type,
             category_name,

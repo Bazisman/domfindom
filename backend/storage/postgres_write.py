@@ -225,6 +225,94 @@ class PostgresWriteRepository(PostgresReadRepository):
             "transfer_ids": mirrored_transfer_ids,
         }
 
+    def mirror_planned_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        transaction: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Mirror a planned SQLite transaction without touching account balances."""
+        status = str(transaction.get("status") or "actual")
+        if status != "planned":
+            raise RuntimeError("mirror_planned_transaction expects a planned transaction")
+        if transaction.get("template_id") is not None:
+            return {"status": "skipped", "reason": "recurring_template_not_mirrored"}
+
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_transaction_id = int(transaction["id"])
+        transaction_type = str(transaction["type"])
+        amount_minor = to_minor(transaction["amount"])
+        money_source = str(transaction.get("money_source") or "cashless")
+        category = str(transaction["category"])
+        category_id = self._category_id_by_name(conn, pg_user_id, category)
+        existing = self._finance_id_by_legacy(conn, "transactions", pg_user_id, legacy_transaction_id)
+
+        if existing is not None:
+            conn.execute(
+                """
+                UPDATE finance.transactions
+                SET
+                    type = %s,
+                    category = %s,
+                    category_id = %s,
+                    amount_minor = %s,
+                    comment = %s,
+                    date = %s,
+                    money_source = %s,
+                    status = 'planned',
+                    template_id = NULL
+                WHERE id = %s
+                """,
+                (
+                    transaction_type,
+                    category,
+                    category_id,
+                    amount_minor,
+                    transaction.get("comment"),
+                    transaction["date"],
+                    money_source,
+                    existing,
+                ),
+            )
+            return {"status": "updated", "transaction_id": existing}
+
+        row = conn.execute(
+            """
+            INSERT INTO finance.transactions (
+                user_id, legacy_local_id, type, category, category_id,
+                amount_minor, comment, date, money_source, status, template_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'planned', NULL)
+            RETURNING id
+            """,
+            (
+                pg_user_id,
+                legacy_transaction_id,
+                transaction_type,
+                category,
+                category_id,
+                amount_minor,
+                transaction.get("comment"),
+                transaction["date"],
+                money_source,
+            ),
+        ).fetchone()
+        pg_transaction_id = int(row["id"])
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "transactions",
+            legacy_transaction_id,
+            "transactions",
+            pg_transaction_id,
+        )
+        return {"status": "inserted", "transaction_id": pg_transaction_id}
+
     def _mirror_transfer(
         self,
         conn,
@@ -357,10 +445,19 @@ class PostgresWriteRepository(PostgresReadRepository):
         ).fetchone()
         if not row:
             return {"status": "missing"}
-        if str(row["status"] or "actual") != "actual":
+        status = str(row["status"] or "actual")
+        pg_transaction_id = int(row["id"])
+        if status == "planned":
+            conn.execute("DELETE FROM finance.transactions WHERE id = %s", (pg_transaction_id,))
+            return {
+                "status": "deleted",
+                "transaction_id": pg_transaction_id,
+                "planned": True,
+                "transfers_deactivated": 0,
+            }
+        if status != "actual":
             return {"status": "skipped", "reason": "non_actual_transaction"}
 
-        pg_transaction_id = int(row["id"])
         amount_minor = int(row["amount_minor"] or 0)
         source_account_id = 2 if str(row["money_source"] or "cashless") == "cash" else 1
         transfer_rows = conn.execute(
@@ -423,6 +520,13 @@ class PostgresWriteRepository(PostgresReadRepository):
         transfers: Iterable[Dict[str, Any]] = (),
     ) -> Dict[str, Any]:
         status = str(transaction.get("status") or "actual")
+        if status == "planned":
+            return self.mirror_planned_transaction(
+                conn,
+                legacy_user_id=legacy_user_id,
+                source_db_path=source_db_path,
+                transaction=transaction,
+            )
         if status != "actual":
             return {"status": "skipped", "reason": "non_actual_transaction"}
 

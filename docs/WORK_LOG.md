@@ -34,6 +34,7 @@
 - Добавлен выключенный по умолчанию runtime shadow-write `FINANCE_APP_POSTGRES_SHADOW_WRITE`: новые личные actual transactions после SQLite-коммита могут зеркалироваться в PostgreSQL без влияния на основной ответ; planned transactions и семейные автоотчисления пока явно пропускаются.
 - Shadow-write расширен на удаление личных actual transactions: PostgreSQL-зеркало откатывает balance effects, деактивирует связанные transfers и удаляет transaction row; семейные отчисления по-прежнему пропускаются до отдельного family write-path.
 - Shadow-write расширен на редактирование личных actual transactions: PostgreSQL-зеркало пересобирает запись по текущему SQLite-состоянию через delete+insert внутри своей транзакции, включая актуальные transfers и balances.
+- Shadow-write расширен на личные planned transactions без recurring template: create/update/delete зеркалируются в PostgreSQL без изменения balances; recurring-template planned rows остаются явным skip до отдельного переноса шаблонов.
 
 ### 2026-04-25
 
