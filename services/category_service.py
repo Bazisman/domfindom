@@ -2,7 +2,7 @@
 import core
 from typing import List, Optional, Callable
 from models import Category
-from services.transaction_service import _mysql_read_repo_for_current_user
+from services.transaction_service import _mysql_read_repo_for_current_user, _mysql_write_repo_for_current_user
 from utils.logger import app_logger
 
 
@@ -86,7 +86,22 @@ class CategoryService:
         """Добавляет новую категорию"""
         try:
             app_logger.info(f"Добавление категории: {name} (тип: {category_type})")
-            category_id = core.add_category(name, category_type, color=color, icon=icon)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    result = repo.create_category(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        name=name,
+                        category_type=category_type,
+                        color=color,
+                        icon=icon,
+                    )
+                    conn.commit()
+                category_id = int(result["legacy_category_id"])
+            else:
+                category_id = core.add_category(name, category_type, color=color, icon=icon)
             if category_id:
                 self.notify_listeners()
                 app_logger.info(f"Категория добавлена: {name}, ID={category_id}")
@@ -99,7 +114,19 @@ class CategoryService:
         """Обновляет категорию"""
         try:
             app_logger.debug(f"Обновление категории ID={category_id}: {kwargs}")
-            result = core.update_category(category_id, **kwargs)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_category(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_category_id=category_id,
+                        **kwargs,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "noop"}
+            else:
+                result = core.update_category(category_id, **kwargs)
             if result:
                 self.notify_listeners()
                 app_logger.info(f"Категория ID={category_id} обновлена")
@@ -112,7 +139,18 @@ class CategoryService:
         """Удаляет категорию (деактивирует)"""
         try:
             app_logger.info(f"Деактивация категории ID={category_id}")
-            result = core.delete_category(category_id)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.delete_category(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_category_id=category_id,
+                    )
+                    conn.commit()
+                result = write_result.get("status") == "updated"
+            else:
+                result = core.delete_category(category_id)
             if result:
                 self.notify_listeners()
                 app_logger.info(f"Категория ID={category_id} деактивирована")

@@ -47,6 +47,28 @@ def _mysql_read_repo_for_current_user():
     return MySqlReadRepository(settings.mysql_database_url), legacy_user_id
 
 
+def _mysql_primary_writes_enabled() -> bool:
+    try:
+        from backend.config import settings
+
+        return bool(settings.storage_backend == "mysql" and settings.mysql_database_url)
+    except Exception:
+        return False
+
+
+def _mysql_write_repo_for_current_user():
+    if not _mysql_primary_writes_enabled():
+        return None, None, ""
+    legacy_user_id = _legacy_user_id_from_current_db()
+    if legacy_user_id is None:
+        return None, None, ""
+    from backend.config import settings
+    from backend.storage.mysql_write import MySqlWriteRepository
+
+    source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    return MySqlWriteRepository(settings.mysql_database_url), legacy_user_id, source_db_path
+
+
 class TransactionService:
     """Сервис для работы с транзакциями"""
     

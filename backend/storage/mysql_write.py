@@ -639,6 +639,96 @@ class MySqlWriteRepository(MySqlReadRepository):
         self._insert_id_map(conn, source_db_path, legacy_user_id, "categories", legacy_category_id, "categories", mysql_category_id)
         return {"status": "inserted", "category_id": mysql_category_id}
 
+    def _next_legacy_id(self, conn, mysql_user_id: int, table: str) -> int:
+        allowed_tables = {
+            "budgets",
+            "capital_accounts",
+            "categories",
+            "reconciliation_sources",
+            "reconciliations",
+            "recurring_templates",
+            "transactions",
+            "transfers",
+        }
+        if table not in allowed_tables:
+            raise ValueError(f"Unsupported MySQL legacy id table: {table}")
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"SELECT COALESCE(MAX(legacy_local_id), 0) + 1 AS next_id FROM finance_{table} WHERE user_id = %s",
+                (int(mysql_user_id),),
+            )
+            row = cursor.fetchone()
+        return int(row["next_id"] or 1)
+
+    def create_category(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        name: str,
+        category_type: str = "both",
+        color: str = "#808080",
+        icon: str = "",
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_category_id = self._next_legacy_id(conn, mysql_user_id, "categories")
+        category = {
+            "id": legacy_category_id,
+            "name": name,
+            "type": category_type,
+            "color": color,
+            "icon": icon,
+            "is_active": True,
+        }
+        result = self.mirror_category(conn, legacy_user_id, source_db_path, category)
+        return {**result, "legacy_category_id": legacy_category_id}
+
+    def update_category(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_category_id: int,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_category_id = self._finance_id_by_legacy(conn, "categories", mysql_user_id, legacy_category_id)
+        if mysql_category_id is None:
+            return {"status": "missing"}
+        allowed = {
+            "name": "name",
+            "type": "type",
+            "color": "color",
+            "icon": "icon",
+            "is_active": "is_active",
+        }
+        assignments = []
+        values = []
+        for key, column in allowed.items():
+            if key in kwargs:
+                assignments.append(f"{column} = %s")
+                values.append(bool(kwargs[key]) if key == "is_active" else kwargs[key])
+        if not assignments:
+            return {"status": "noop", "category_id": mysql_category_id}
+        values.append(mysql_category_id)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE finance_categories SET {', '.join(assignments)} WHERE id = %s",
+                tuple(values),
+            )
+        return {"status": "updated", "category_id": mysql_category_id}
+
+    def delete_category(self, conn, legacy_user_id: int, legacy_category_id: int) -> Dict[str, Any]:
+        return self.update_category(
+            conn,
+            legacy_user_id=legacy_user_id,
+            legacy_category_id=legacy_category_id,
+            is_active=False,
+        )
+
     def mirror_budget(self, conn, legacy_user_id: int, source_db_path: str, budget: Dict[str, Any]) -> Dict[str, Any]:
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:
