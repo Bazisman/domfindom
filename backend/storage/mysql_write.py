@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+import calendar
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, Optional, Set
 
 from backend.storage.mysql_read import MySqlReadRepository
@@ -673,6 +674,63 @@ class MySqlWriteRepository(MySqlReadRepository):
         self._insert_id_map(conn, source_db_path, legacy_user_id, "transactions", legacy_transaction_id, "transactions", mysql_transaction_id)
         return {"status": "inserted", "transaction_id": mysql_transaction_id}
 
+    def create_planned_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        transaction_type: str,
+        category: str,
+        amount: float,
+        comment: str,
+        date: str,
+        template_id: Optional[int] = None,
+        money_source: str = "cashless",
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_transaction_id = self._next_legacy_id(conn, mysql_user_id, "transactions")
+        transaction = {
+            "id": legacy_transaction_id,
+            "type": transaction_type,
+            "category": category,
+            "amount": amount,
+            "comment": comment,
+            "date": date,
+            "status": "planned",
+            "template_id": template_id,
+            "money_source": money_source,
+        }
+        result = self.mirror_planned_transaction(conn, legacy_user_id, source_db_path, transaction)
+        return {**result, "legacy_transaction_id": legacy_transaction_id}
+
+    def assign_template_to_planned_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_transaction_id: int,
+        legacy_template_id: int,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_transaction_id = self._finance_id_by_legacy(conn, "transactions", mysql_user_id, legacy_transaction_id)
+        mysql_template_id = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, legacy_template_id)
+        if mysql_transaction_id is None or mysql_template_id is None:
+            return {"status": "missing"}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE finance_transactions
+                SET template_id = %s
+                WHERE id = %s AND status = 'planned'
+                """,
+                (mysql_template_id, mysql_transaction_id),
+            )
+            updated = int(cursor.rowcount)
+        return {"status": "updated" if updated else "missing", "transaction_id": mysql_transaction_id}
+
     def mirror_recurring_template(
         self,
         conn,
@@ -735,25 +793,174 @@ class MySqlWriteRepository(MySqlReadRepository):
         self._insert_id_map(conn, source_db_path, legacy_user_id, "recurring_templates", legacy_template_id, "recurring_templates", mysql_template_id)
         return {"status": "inserted", "template_id": mysql_template_id}
 
-    def delete_planned_transactions_for_template(self, conn, legacy_user_id: int, legacy_template_id: int) -> Dict[str, Any]:
+    def create_recurring_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        template_type: str,
+        name: str,
+        amount: float,
+        day_of_month: int,
+        category_id: Optional[int] = None,
+        comment_template: Optional[str] = None,
+        months_ahead: int = 12,
+        working_days_only: bool = True,
+        money_source: str = "cashless",
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_template_id = self._next_legacy_id(conn, mysql_user_id, "recurring_templates")
+        template = {
+            "id": legacy_template_id,
+            "type": template_type,
+            "name": name,
+            "amount": amount,
+            "day_of_month": day_of_month,
+            "category_id": category_id,
+            "comment_template": comment_template,
+            "months_ahead": months_ahead,
+            "working_days_only": working_days_only,
+            "money_source": money_source,
+            "is_active": True,
+        }
+        result = self.mirror_recurring_template(conn, legacy_user_id, source_db_path, template)
+        generated = self.generate_planned_transactions_for_template(conn, legacy_user_id, source_db_path, legacy_template_id)
+        return {**result, "legacy_template_id": legacy_template_id, "planned_generated": generated.get("created", 0)}
+
+    def update_recurring_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        legacy_template_id: int,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        rows = self.get_recurring_templates(conn, legacy_user_id)
+        current = next((row for row in rows if int(row["id"]) == int(legacy_template_id)), None)
+        if current is None:
+            return {"status": "missing"}
+        update_data = dict(kwargs)
+        if "template_type" in update_data and "type" not in update_data:
+            update_data["type"] = update_data.pop("template_type")
+        template = {
+            "id": int(legacy_template_id),
+            "type": update_data.get("type", current["type"]),
+            "name": update_data.get("name", current["name"]),
+            "amount": update_data.get("amount", current["amount"]),
+            "day_of_month": update_data.get("day_of_month", current["day_of_month"]),
+            "category_id": update_data.get("category_id", current.get("category_id")),
+            "comment_template": update_data.get("comment_template", current.get("comment_template")),
+            "months_ahead": update_data.get("months_ahead", current.get("months_ahead", 12)),
+            "working_days_only": update_data.get("working_days_only", current.get("working_days_only", False)),
+            "money_source": update_data.get("money_source", current.get("money_source") or "cashless"),
+            "is_active": update_data.get("is_active", current.get("is_active", True)),
+        }
+        result = self.mirror_recurring_template(conn, legacy_user_id, source_db_path, template)
+        if any(
+            field in update_data
+            for field in ("type", "amount", "day_of_month", "category_id", "comment_template", "money_source", "months_ahead", "working_days_only")
+        ):
+            self.delete_planned_transactions_for_template(conn, legacy_user_id, legacy_template_id)
+            generated = self.generate_planned_transactions_for_template(
+                conn,
+                legacy_user_id,
+                source_db_path,
+                legacy_template_id,
+                include_current_due=any(field in update_data for field in ("day_of_month", "working_days_only")),
+            )
+            return {**result, "planned_generated": generated.get("created", 0)}
+        return result
+
+    def delete_planned_transactions_for_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_template_id: int,
+        from_date: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:
             raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
         mysql_template_id = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, legacy_template_id)
         if mysql_template_id is None:
             return {"status": "missing_template", "deleted": 0}
+        filters = ["user_id = %s", "template_id = %s", "status = 'planned'"]
+        params = [mysql_user_id, mysql_template_id]
+        if from_date:
+            filters.append("date >= %s")
+            params.append(from_date)
+        if start_date and end_date:
+            filters.append("date BETWEEN %s AND %s")
+            params.extend([start_date, end_date])
         with conn.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 DELETE FROM finance_transactions
-                WHERE user_id = %s
-                  AND template_id = %s
-                  AND status = 'planned'
+                WHERE {' AND '.join(filters)}
                 """,
-                (mysql_user_id, mysql_template_id),
+                tuple(params),
             )
             deleted = int(cursor.rowcount)
         return {"status": "deleted", "deleted": deleted, "template_id": mysql_template_id}
+
+    def _adjust_to_workday(self, date_str: str) -> str:
+        date_value = datetime.strptime(date_str, "%Y-%m-%d")
+        while date_value.weekday() >= 5:
+            date_value += timedelta(days=1)
+        return date_value.strftime("%Y-%m-%d")
+
+    def generate_planned_transactions_for_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        legacy_template_id: int,
+        months: Optional[int] = None,
+        include_current_due: bool = False,
+    ) -> Dict[str, Any]:
+        rows = self.get_recurring_templates(conn, legacy_user_id)
+        template = next((row for row in rows if int(row["id"]) == int(legacy_template_id)), None)
+        if template is None:
+            return {"status": "missing_template", "created": 0}
+        self.delete_planned_transactions_for_template(conn, legacy_user_id, legacy_template_id)
+        months_value = int(months or template.get("months_ahead") or 12)
+        start_date = datetime.now()
+        end_date = start_date + timedelta(days=months_value * 30)
+        current_date = start_date
+        count = 0
+        while current_date <= end_date:
+            day = min(int(template["day_of_month"]), calendar.monthrange(current_date.year, current_date.month)[1])
+            planned_date = datetime(current_date.year, current_date.month, day).strftime("%Y-%m-%d")
+            if template.get("working_days_only"):
+                planned_date = self._adjust_to_workday(planned_date)
+            scheduled_date = datetime.strptime(planned_date, "%Y-%m-%d").date()
+            is_current_month = current_date.year == start_date.year and current_date.month == start_date.month
+            should_include_current_due = is_current_month and (
+                scheduled_date == start_date.date()
+                or (include_current_due and scheduled_date < start_date.date())
+            )
+            if scheduled_date >= start_date.date() or should_include_current_due:
+                category = template.get("category_name") or template.get("name") or "Без категории"
+                comment = template.get("comment_template") or f"{template['name']} (запланировано)"
+                self.create_planned_transaction(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    source_db_path=source_db_path,
+                    transaction_type=template["type"],
+                    category=category,
+                    amount=float(template["amount"] or 0),
+                    comment=comment,
+                    date=planned_date,
+                    template_id=legacy_template_id,
+                    money_source=template.get("money_source") or "cashless",
+                )
+                count += 1
+            current_date = (current_date + timedelta(days=32)).replace(day=1)
+        return {"status": "generated", "created": count}
 
     def mirror_delete_recurring_template(self, conn, legacy_user_id: int, legacy_template_id: int) -> Dict[str, Any]:
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)

@@ -88,18 +88,19 @@ class MySqlReadRepository:
             cursor.execute(
                 f"""
                 SELECT
-                    legacy_local_id AS id,
-                    DATE_FORMAT(date, '%%Y-%%m-%%d') AS date,
-                    type,
-                    category,
-                    amount_minor,
-                    COALESCE(comment, '') AS comment,
-                    money_source,
-                    status,
-                    template_id
-                FROM finance_transactions
+                    t.legacy_local_id AS id,
+                    DATE_FORMAT(t.date, '%%Y-%%m-%%d') AS date,
+                    t.type,
+                    t.category,
+                    t.amount_minor,
+                    COALESCE(t.comment, '') AS comment,
+                    t.money_source,
+                    t.status,
+                    rt.legacy_local_id AS template_id
+                FROM finance_transactions t
+                LEFT JOIN finance_recurring_templates rt ON rt.id = t.template_id
                 WHERE {' AND '.join(filters)}
-                ORDER BY date DESC, legacy_local_id DESC
+                ORDER BY t.date DESC, t.legacy_local_id DESC
                 LIMIT %s OFFSET %s
                 """,
                 tuple(params),
@@ -115,17 +116,18 @@ class MySqlReadRepository:
             cursor.execute(
                 """
                 SELECT
-                    legacy_local_id AS id,
-                    DATE_FORMAT(date, '%%Y-%%m-%%d') AS date,
-                    type,
-                    category,
-                    amount_minor,
-                    COALESCE(comment, '') AS comment,
-                    money_source,
-                    status,
-                    template_id
-                FROM finance_transactions
-                WHERE user_id = %s AND legacy_local_id = %s
+                    t.legacy_local_id AS id,
+                    DATE_FORMAT(t.date, '%%Y-%%m-%%d') AS date,
+                    t.type,
+                    t.category,
+                    t.amount_minor,
+                    COALESCE(t.comment, '') AS comment,
+                    t.money_source,
+                    t.status,
+                    rt.legacy_local_id AS template_id
+                FROM finance_transactions t
+                LEFT JOIN finance_recurring_templates rt ON rt.id = t.template_id
+                WHERE t.user_id = %s AND t.legacy_local_id = %s
                 LIMIT 1
                 """,
                 (user_id, int(legacy_transaction_id)),
@@ -818,11 +820,10 @@ class MySqlReadRepository:
                     COALESCE(t.comment, '') AS comment,
                     DATE_FORMAT(t.date, '%%Y-%%m-%%d') AS date,
                     t.money_source,
-                    t.template_id,
+                    rt.legacy_local_id AS template_id,
                     rt.name AS template_name
                 FROM finance_transactions t
-                LEFT JOIN finance_recurring_templates rt ON rt.legacy_local_id = t.template_id
-                    AND rt.user_id = t.user_id
+                LEFT JOIN finance_recurring_templates rt ON rt.id = t.template_id
                 WHERE t.user_id = %s
                   AND t.status = 'planned'
                   AND t.date <= CURDATE()

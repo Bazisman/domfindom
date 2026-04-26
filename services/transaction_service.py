@@ -441,6 +441,24 @@ class TransactionService:
     ):
         """Создаёт плановую транзакцию и возвращает ID."""
         try:
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_planned_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        transaction_type=transaction_type,
+                        category=category,
+                        amount=amount,
+                        comment=comment,
+                        date=planned_date,
+                        template_id=template_id,
+                        money_source=money_source,
+                    )
+                    conn.commit()
+                self.notify_listeners()
+                return int(write_result["legacy_transaction_id"])
             result = core.add_planned_transaction(
                 transaction_type,
                 category,
@@ -1139,6 +1157,26 @@ class TransactionService:
                                    money_source: str = "cashless") -> int:
         """Создаёт шаблон регулярного платежа"""
         try:
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_recurring_template(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        template_type=template_type,
+                        name=name,
+                        amount=amount,
+                        day_of_month=day_of_month,
+                        category_id=category_id,
+                        comment_template=comment_template,
+                        months_ahead=months_ahead,
+                        working_days_only=working_days_only,
+                        money_source=money_source,
+                    )
+                    conn.commit()
+                self.notify_listeners()
+                return int(write_result["legacy_template_id"])
             template_id = core.create_recurring_template(
                 template_type, name, amount, day_of_month, category_id,
                 comment_template, months_ahead, working_days_only, money_source
@@ -1160,6 +1198,19 @@ class TransactionService:
     def delete_planned_transactions_in_period(self, template_id: int, start_date: str, end_date: str) -> None:
         """Удаляет плановые транзакции шаблона в указанном периоде."""
         try:
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    repo.delete_planned_transactions_for_template(
+                        conn,
+                        legacy_user_id,
+                        template_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+                    conn.commit()
+                self.notify_listeners()
+                return
             core.delete_planned_transactions_in_period(template_id, start_date, end_date)
             self.notify_listeners()
         except Exception as e:
@@ -1168,6 +1219,13 @@ class TransactionService:
     def assign_template_to_planned_transaction(self, transaction_id: int, template_id: int) -> None:
         """Привязывает плановую транзакцию к регулярному шаблону."""
         try:
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    repo.assign_template_to_planned_transaction(conn, legacy_user_id, transaction_id, template_id)
+                    conn.commit()
+                self.notify_listeners()
+                return
             core.assign_template_to_planned_transaction(transaction_id, template_id)
             self.notify_listeners()
         except Exception as e:
@@ -1180,7 +1238,20 @@ class TransactionService:
         """Обновляет шаблон и перегенерирует плановые транзакции"""
         try:
             schedule_changed = any(field in kwargs for field in ("day_of_month", "working_days_only"))
-            result = core.update_recurring_template(template_id, **kwargs)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_recurring_template(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        legacy_template_id=template_id,
+                        **kwargs,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "inserted", "noop"}
+            else:
+                result = core.update_recurring_template(template_id, **kwargs)
             if result and schedule_changed:
                 executed_count = self.execute_planned_transactions()
                 if executed_count == 0:
@@ -1195,7 +1266,14 @@ class TransactionService:
     def delete_recurring_template(self, template_id: int) -> bool:
         """Удаляет шаблон и связанные транзакции"""
         try:
-            result = core.delete_recurring_template(template_id)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.mirror_delete_recurring_template(conn, legacy_user_id, template_id)
+                    conn.commit()
+                result = write_result.get("status") == "deleted"
+            else:
+                result = core.delete_recurring_template(template_id)
             self.notify_listeners()
             return result
         except Exception as e:
@@ -1217,6 +1295,22 @@ class TransactionService:
     def regenerate_template_transactions(self, template_id: int) -> int:
         """Принудительно перегенерирует плановые транзакции для шаблона"""
         try:
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                template = self.get_recurring_template_by_id(template_id)
+                if not template:
+                    return 0
+                with repo.connect() as conn:
+                    result = repo.generate_planned_transactions_for_template(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        legacy_template_id=template_id,
+                        months=template["months_ahead"],
+                    )
+                    conn.commit()
+                self.notify_listeners()
+                return int(result.get("created", 0))
             # Удаляем старые плановые транзакции
             core.delete_planned_transactions(template_id)
             
