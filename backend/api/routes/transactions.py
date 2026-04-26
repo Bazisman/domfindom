@@ -132,27 +132,14 @@ def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
 
 def _adjust_daily_account(user_id: int, money_source: str, amount_delta: float) -> None:
     def _action():
-        account_id = 2 if money_source == "cash" else 1
-        core.update_account_balance(account_id, amount_delta)
+        transaction_service.adjust_daily_account_balance(money_source, amount_delta)
 
     _run_in_user_db(user_id, _action)
 
 
 def _adjust_capital_account(owner_user_id: int, capital_account_id: int, amount_delta: float) -> bool:
     def _action():
-        with core.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                UPDATE capital_accounts
-                SET balance = balance + ?, updated_at = datetime("now")
-                WHERE id = ? AND is_active = 1
-                """,
-                (amount_delta, capital_account_id),
-            )
-            conn.commit()
-            core._invalidate_cache()
-            return cursor.rowcount > 0
+        return transaction_service.adjust_capital_account_balance(capital_account_id, amount_delta)
 
     return bool(_run_in_user_db(owner_user_id, _action))
 

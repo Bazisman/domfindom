@@ -67,6 +67,7 @@
 - Family forecast продолжил уход от прямого SQLite SQL: агрегаты today's expenses и planned expenses by category теперь идут через `TransactionService`, включая MySQL primary-read pilot.
 - Family category audit snapshot переведен на `TransactionService.get_category_audit_snapshot`; MySQL read adapter теперь умеет отдавать категории, агрегаты транзакций, бюджеты и recurring templates для audit-проверки без прямого SQL в route.
 - Reconciliation route переведен на `TransactionService`: источники реального баланса, история сверок, корректирующая категория и корректирующие транзакции больше не вызывают `core` напрямую из API route.
+- Transactions route убрал прямые balance update SQL для семейного капитала: daily/capital account adjustments теперь проходят через `TransactionService`, оставляя в route только временный SQLite user-context switch.
 
 ### 2026-04-25
 

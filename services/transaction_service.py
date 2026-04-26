@@ -702,6 +702,39 @@ class TransactionService:
             app_logger.error(f"Ошибка получения счетов капитала: {e}", exc_info=True)
             return []
 
+    def adjust_daily_account_balance(self, money_source: str, amount_delta: float) -> None:
+        """Корректирует дневной счёт наличных или безнала."""
+        try:
+            account_id = 2 if money_source == "cash" else 1
+            core.update_account_balance(account_id, amount_delta)
+            self.notify_listeners()
+        except Exception as e:
+            app_logger.error(f"Ошибка корректировки дневного счёта {money_source}: {e}", exc_info=True)
+            raise
+
+    def adjust_capital_account_balance(self, capital_account_id: int, amount_delta: float) -> bool:
+        """Корректирует баланс активного счёта капитала."""
+        try:
+            with core.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE capital_accounts
+                    SET balance = balance + ?, updated_at = datetime("now")
+                    WHERE id = ? AND is_active = 1
+                    """,
+                    (amount_delta, capital_account_id),
+                )
+                conn.commit()
+                core._invalidate_cache()
+                updated = cursor.rowcount > 0
+            if updated:
+                self.notify_listeners()
+            return updated
+        except Exception as e:
+            app_logger.error(f"Ошибка корректировки счёта капитала {capital_account_id}: {e}", exc_info=True)
+            raise
+
     def get_default_capital_account(self):
         """Возвращает основной счёт капитала для автоотчислений."""
         try:
