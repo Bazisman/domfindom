@@ -603,70 +603,18 @@ def _collect_member_category_audit_snapshot(member: Dict[str, object]) -> Dict[s
     user_id = int(member["user_id"])
 
     def _action():
-        with core.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, name, type, color, icon, is_active
-                FROM categories
-                ORDER BY name
-                """
-            )
-            categories = [dict(row) for row in cursor.fetchall()]
-            cursor.execute(
-                """
-                SELECT type, category, COALESCE(status, 'actual') AS status,
-                       COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total
-                FROM transactions
-                GROUP BY type, category, COALESCE(status, 'actual')
-                ORDER BY type, category
-                """
-            )
-            transactions = [dict(row) for row in cursor.fetchall()]
-            cursor.execute(
-                """
-                SELECT b.id, b.category_id, b.amount, b.period,
-                       c.name AS category, c.type AS category_type, c.is_active AS category_is_active
-                FROM budgets b
-                LEFT JOIN categories c ON c.id = b.category_id
-                ORDER BY c.name
-                """
-            )
-            budgets = [dict(row) for row in cursor.fetchall()]
-            cursor.execute(
-                """
-                SELECT name
-                FROM sqlite_master
-                WHERE type = 'table' AND name = 'recurring_templates'
-                LIMIT 1
-                """
-            )
-            recurring_exists = cursor.fetchone() is not None
-            recurring_templates: List[Dict[str, object]] = []
-            if recurring_exists:
-                cursor.execute(
-                    """
-                    SELECT rt.id, rt.type, rt.name, rt.amount, rt.day_of_month,
-                           rt.category_id, rt.is_active,
-                           c.name AS category, c.type AS category_type, c.is_active AS category_is_active
-                    FROM recurring_templates rt
-                    LEFT JOIN categories c ON c.id = rt.category_id
-                    ORDER BY rt.type, rt.name
-                    """
-                )
-                recurring_templates = [dict(row) for row in cursor.fetchall()]
-        return categories, transactions, budgets, recurring_templates
+        return transaction_service.get_category_audit_snapshot()
 
-    categories, transactions, budgets, recurring_templates = _run_in_user_db(user_id, _action)
+    snapshot = _run_in_user_db(user_id, _action)
     return {
         "user_id": user_id,
         "email": str(member.get("email") or ""),
         "display_name": str(member.get("display_name") or ""),
         "owner_name": _display_owner_name(member),
-        "categories": categories,
-        "transactions": transactions,
-        "budgets": budgets,
-        "recurring_templates": recurring_templates,
+        "categories": snapshot["categories"],
+        "transactions": snapshot["transactions"],
+        "budgets": snapshot["budgets"],
+        "recurring_templates": snapshot["recurring_templates"],
     }
 
 

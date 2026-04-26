@@ -161,6 +161,126 @@ class MySqlReadRepository:
             rows = cursor.fetchall()
         return [{"category": row["category"], "total": from_minor_float(row["total_minor"])} for row in rows]
 
+    def get_category_audit_snapshot(self, conn, legacy_user_id: int) -> Dict[str, List[Dict[str, Any]]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return {"categories": [], "transactions": [], "budgets": [], "recurring_templates": []}
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT legacy_local_id AS id, name, type, color, icon, is_active
+                FROM finance_categories
+                WHERE user_id = %s
+                ORDER BY name
+                """,
+                (user_id,),
+            )
+            categories = [
+                {
+                    "id": int(row["id"]),
+                    "name": row["name"],
+                    "type": row["type"],
+                    "color": row["color"],
+                    "icon": row["icon"],
+                    "is_active": bool(row["is_active"]),
+                }
+                for row in cursor.fetchall()
+            ]
+
+            cursor.execute(
+                """
+                SELECT type, category, COALESCE(status, 'actual') AS status,
+                       COUNT(*) AS count, COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transactions
+                WHERE user_id = %s
+                GROUP BY type, category, COALESCE(status, 'actual')
+                ORDER BY type, category
+                """,
+                (user_id,),
+            )
+            transactions = [
+                {
+                    "type": row["type"],
+                    "category": row["category"],
+                    "status": row["status"],
+                    "count": int(row["count"] or 0),
+                    "total": from_minor_float(row["total_minor"]),
+                }
+                for row in cursor.fetchall()
+            ]
+
+            cursor.execute(
+                """
+                SELECT b.legacy_local_id AS id,
+                       c.legacy_local_id AS category_id,
+                       b.amount_minor,
+                       b.period,
+                       c.name AS category,
+                       c.type AS category_type,
+                       c.is_active AS category_is_active
+                FROM finance_budgets b
+                LEFT JOIN finance_categories c ON c.id = b.category_id
+                WHERE b.user_id = %s
+                ORDER BY c.name
+                """,
+                (user_id,),
+            )
+            budgets = [
+                {
+                    "id": int(row["id"]),
+                    "category_id": int(row["category_id"]) if row.get("category_id") is not None else None,
+                    "amount": from_minor_float(row["amount_minor"]),
+                    "period": row["period"],
+                    "category": row.get("category"),
+                    "category_type": row.get("category_type"),
+                    "category_is_active": bool(row.get("category_is_active")),
+                }
+                for row in cursor.fetchall()
+            ]
+
+            cursor.execute(
+                """
+                SELECT rt.legacy_local_id AS id,
+                       rt.type,
+                       rt.name,
+                       rt.amount_minor,
+                       rt.day_of_month,
+                       c.legacy_local_id AS category_id,
+                       rt.is_active,
+                       c.name AS category,
+                       c.type AS category_type,
+                       c.is_active AS category_is_active
+                FROM finance_recurring_templates rt
+                LEFT JOIN finance_categories c ON c.id = rt.category_id
+                WHERE rt.user_id = %s
+                ORDER BY rt.type, rt.name
+                """,
+                (user_id,),
+            )
+            recurring_templates = [
+                {
+                    "id": int(row["id"]),
+                    "type": row["type"],
+                    "name": row["name"],
+                    "amount": from_minor_float(row["amount_minor"]),
+                    "day_of_month": int(row["day_of_month"] or 0),
+                    "category_id": int(row["category_id"]) if row.get("category_id") is not None else None,
+                    "is_active": bool(row["is_active"]),
+                    "category": row.get("category"),
+                    "category_type": row.get("category_type"),
+                    "category_is_active": bool(row.get("category_is_active")),
+                }
+                for row in cursor.fetchall()
+            ]
+
+        return {
+            "categories": categories,
+            "transactions": transactions,
+            "budgets": budgets,
+            "recurring_templates": recurring_templates,
+        }
+
     def get_monthly_stats(self, conn, legacy_user_id: int, year: int, month: int) -> Dict[str, Any]:
         import calendar
 

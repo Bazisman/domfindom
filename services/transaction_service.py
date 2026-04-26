@@ -506,6 +506,75 @@ class TransactionService:
             app_logger.error(f"Ошибка получения плановых расходов по категориям: {e}", exc_info=True)
             return []
 
+    def get_category_audit_snapshot(self) -> dict:
+        """Собирает диагностический снимок категорий и связанных объектов."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_category_audit_snapshot(conn, legacy_user_id)
+
+            with core.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT id, name, type, color, icon, is_active
+                    FROM categories
+                    ORDER BY name
+                    """
+                )
+                categories = [dict(row) for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT type, category, COALESCE(status, 'actual') AS status,
+                           COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total
+                    FROM transactions
+                    GROUP BY type, category, COALESCE(status, 'actual')
+                    ORDER BY type, category
+                    """
+                )
+                transactions = [dict(row) for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT b.id, b.category_id, b.amount, b.period,
+                           c.name AS category, c.type AS category_type, c.is_active AS category_is_active
+                    FROM budgets b
+                    LEFT JOIN categories c ON c.id = b.category_id
+                    ORDER BY c.name
+                    """
+                )
+                budgets = [dict(row) for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table' AND name = 'recurring_templates'
+                    LIMIT 1
+                    """
+                )
+                recurring_templates = []
+                if cursor.fetchone() is not None:
+                    cursor.execute(
+                        """
+                        SELECT rt.id, rt.type, rt.name, rt.amount, rt.day_of_month,
+                               rt.category_id, rt.is_active,
+                               c.name AS category, c.type AS category_type, c.is_active AS category_is_active
+                        FROM recurring_templates rt
+                        LEFT JOIN categories c ON c.id = rt.category_id
+                        ORDER BY rt.type, rt.name
+                        """
+                    )
+                    recurring_templates = [dict(row) for row in cursor.fetchall()]
+            return {
+                "categories": categories,
+                "transactions": transactions,
+                "budgets": budgets,
+                "recurring_templates": recurring_templates,
+            }
+        except Exception as e:
+            app_logger.error(f"Ошибка получения category audit snapshot: {e}", exc_info=True)
+            return {"categories": [], "transactions": [], "budgets": [], "recurring_templates": []}
+
     def get_capital_outflow_for_period(self, start_date=None, end_date=None):
         """Получает сумму переводов в капитал за период."""
         try:

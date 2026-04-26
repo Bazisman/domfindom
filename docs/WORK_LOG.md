@@ -65,6 +65,7 @@
 - Добавлен guarded MySQL primary-read pilot `FINANCE_APP_MYSQL_PRIMARY_READ_PILOT`: уже подготовленные `TransactionService`/category/budget read paths могут читать из MySQL без включения неподготовленного полного write-runtime cutover.
 - Budget report/status reads расширены до MySQL primary-read pilot: личный budget report и семейный budget status используют `TransactionService`/`CategoryService` вместо прямого SQL по SQLite, сохраняя текущий SQLite write runtime.
 - Family forecast продолжил уход от прямого SQLite SQL: агрегаты today's expenses и planned expenses by category теперь идут через `TransactionService`, включая MySQL primary-read pilot.
+- Family category audit snapshot переведен на `TransactionService.get_category_audit_snapshot`; MySQL read adapter теперь умеет отдавать категории, агрегаты транзакций, бюджеты и recurring templates для audit-проверки без прямого SQL в route.
 
 ### 2026-04-25
 
