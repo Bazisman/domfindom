@@ -481,6 +481,31 @@ class TransactionService:
             app_logger.error(f"Ошибка получения доходов: {e}", exc_info=True)
             return []
 
+    def get_planned_expenses_by_category(self, end_date: str):
+        """Получает плановые расходы по категориям до указанной даты включительно."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_planned_expenses_by_category(conn, legacy_user_id, end_date)
+            with core.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT category, COALESCE(SUM(amount), 0) as total
+                    FROM transactions
+                    WHERE type = 'expense'
+                      AND status = 'planned'
+                      AND date <= ?
+                    GROUP BY category
+                    """,
+                    (end_date,),
+                )
+                return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Ошибка получения плановых расходов по категориям: {e}", exc_info=True)
+            return []
+
     def get_capital_outflow_for_period(self, start_date=None, end_date=None):
         """Получает сумму переводов в капитал за период."""
         try:

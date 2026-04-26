@@ -140,6 +140,27 @@ class MySqlReadRepository:
             rows = cursor.fetchall()
         return [{"category": row["category"], "total": from_minor_float(row["total_minor"])} for row in rows]
 
+    def get_planned_expenses_by_category(self, conn, legacy_user_id: int, end_date: str) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT category, COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transactions
+                WHERE user_id = %s
+                  AND type = 'expense'
+                  AND status = 'planned'
+                  AND date <= %s
+                GROUP BY category
+                ORDER BY category
+                """,
+                (user_id, end_date),
+            )
+            rows = cursor.fetchall()
+        return [{"category": row["category"], "total": from_minor_float(row["total_minor"])} for row in rows]
+
     def get_monthly_stats(self, conn, legacy_user_id: int, year: int, month: int) -> Dict[str, Any]:
         import calendar
 

@@ -257,32 +257,8 @@ def _collect_family_forecast(
         def _action():
             expenses = transaction_service.get_expenses_by_category(start_of_month, today)
             budgets = transaction_service.get_budgets()
-            with core.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT category, COALESCE(SUM(amount), 0) as total
-                    FROM transactions
-                    WHERE type = 'expense'
-                      AND date = ?
-                      AND (status = 'actual' OR status IS NULL)
-                    GROUP BY category
-                    """,
-                    (today,),
-                )
-                today_expense_rows = cursor.fetchall()
-                cursor.execute(
-                    """
-                    SELECT category, COALESCE(SUM(amount), 0) as total
-                    FROM transactions
-                    WHERE type = 'expense'
-                      AND status = 'planned'
-                      AND date <= ?
-                    GROUP BY category
-                    """,
-                    (end_date,),
-                )
-                planned_rows = cursor.fetchall()
+            today_expense_rows = transaction_service.get_expenses_by_category(today, today)
+            planned_rows = transaction_service.get_planned_expenses_by_category(end_date)
             return expenses, budgets, today_expense_rows, planned_rows
 
         expenses, budgets, today_expense_rows, planned_rows = _run_in_user_db(user_id, _action)
@@ -298,7 +274,7 @@ def _collect_family_forecast(
         for budget in budgets:
             period = budget["period"] if "period" in budget.keys() else "monthly"
             monthly_amount = float(
-                core._get_budget_monthly_limit(
+                transaction_service.get_budget_monthly_limit(
                     budget["amount"] or 0,
                     period,
                     today,
