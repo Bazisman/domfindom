@@ -86,7 +86,7 @@ def check_schema_tables(database_url: str) -> Dict[str, Any]:
                     WHERE table_schema = DATABASE()
                     """
                 )
-                actual = {str(row["table_name"]) for row in cursor.fetchall()}
+                actual = {str(row.get("table_name") or row.get("TABLE_NAME")) for row in cursor.fetchall()}
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
         return {"status": "ok" if not missing else "blocked", "expected": len(expected), "missing": missing, "extra": extra}
