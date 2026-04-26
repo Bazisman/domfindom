@@ -41,6 +41,28 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
 
         self.assertEqual(check, {"status": "ok", "enabled": True})
 
+    def test_strict_categories_budgets_recurring_requires_shadow_write(self):
+        check = mysql_cutover_check.check_strict_categories_budgets_recurring(
+            {"FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING": "true"},
+            "mysql+pymysql://user:pass@localhost:3306/db",
+        )
+
+        self.assertEqual(check["status"], "blocked")
+        self.assertIn("FINANCE_APP_MYSQL_SHADOW_WRITE", check["reason"])
+
+    def test_strict_categories_budgets_recurring_can_be_enabled(self):
+        check = mysql_cutover_check.check_strict_categories_budgets_recurring(
+            {
+                "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING": "true",
+                "FINANCE_APP_MYSQL_SHADOW_WRITE": "true",
+            },
+            "mysql+pymysql://user:pass@localhost:3306/db",
+        )
+
+        self.assertEqual(check["status"], "ok")
+        self.assertTrue(check["enabled"])
+        self.assertEqual(check["mode"], "strict-dual-write")
+
     def test_build_report_can_be_shadow_ready_but_not_runtime_ready(self):
         with (
             patch.object(mysql_cutover_check, "check_python_dependencies", return_value={"status": "ok"}),
@@ -62,6 +84,7 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertTrue(report["ready_for_shadow_read"])
         self.assertFalse(report["ready_for_runtime_mysql"])
         self.assertEqual(report["blockers"], ["runtime_adapter"])
+        self.assertIn("strict_categories_budgets_recurring", report["checks"])
 
     def test_render_markdown_includes_readiness(self):
         report = {
@@ -100,6 +123,26 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
 
         self.assertIn("missing: auth_and_sessions", rendered)
         self.assertIn("transactions", rendered)
+
+    def test_render_markdown_includes_strict_categories_budgets_recurring(self):
+        report = {
+            "source_root": ".",
+            "ready_for_shadow_read": True,
+            "ready_for_runtime_mysql": False,
+            "blockers": ["runtime_adapter"],
+            "checks": {
+                "strict_categories_budgets_recurring": {
+                    "status": "ok",
+                    "enabled": True,
+                    "mode": "strict-dual-write",
+                }
+            },
+        }
+
+        rendered = mysql_cutover_check.render_markdown(report)
+
+        self.assertIn("`strict_categories_budgets_recurring`", rendered)
+        self.assertIn("mode=strict-dual-write", rendered)
 
 
 if __name__ == "__main__":

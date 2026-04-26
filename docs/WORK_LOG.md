@@ -72,6 +72,7 @@
 - MySQL cutover-check теперь раскрывает `runtime_adapter` по группам недостающего primary-write runtime: auth/sessions, transactions, accounts/capital/transfers, categories/budgets/recurring, reconciliation/settings.
 - Добавлено MySQL shadow-write покрытие тестами для группы categories/budgets/recurring: category upsert, budget upsert/delete, recurring template upsert/delete и planned rows.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING`: category/budget/recurring routes смогут требовать успешную MySQL shadow-write запись перед будущим primary-write cutover этой группы.
+- MySQL cutover-check получил отдельную проверку `strict_categories_budgets_recurring`, которая показывает режим `shadow-write-only`/`strict-dual-write` и блокирует ошибочную конфигурацию без MySQL URL или `FINANCE_APP_MYSQL_SHADOW_WRITE=true`.
 
 ### 2026-04-25
 

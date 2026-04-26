@@ -24,6 +24,10 @@ RUNTIME_WRITE_GROUPS = {
 }
 
 
+def env_bool(env: Dict[str, str], name: str) -> bool:
+    return (env.get(name, "").strip().lower() in {"1", "true", "yes", "on"})
+
+
 def run_step(command: Sequence[str], env: Dict[str, str]) -> Dict[str, Any]:
     completed = subprocess.run(
         list(command),
@@ -130,10 +134,25 @@ def check_runtime_adapter_status(allow_mysql_backend: bool) -> Dict[str, Any]:
 
 
 def check_primary_read_pilot(env: Dict[str, str], database_url: str) -> Dict[str, Any]:
-    enabled = (env.get("FINANCE_APP_MYSQL_PRIMARY_READ_PILOT", "").strip().lower() in {"1", "true", "yes", "on"})
+    enabled = env_bool(env, "FINANCE_APP_MYSQL_PRIMARY_READ_PILOT")
     if enabled and not database_url:
         return {"status": "blocked", "enabled": enabled, "reason": "pilot requires FINANCE_APP_MYSQL_DATABASE_URL"}
     return {"status": "ok", "enabled": enabled}
+
+
+def check_strict_categories_budgets_recurring(env: Dict[str, str], database_url: str) -> Dict[str, Any]:
+    enabled = env_bool(env, "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING")
+    shadow_write_enabled = env_bool(env, "FINANCE_APP_MYSQL_SHADOW_WRITE")
+    if enabled and not database_url:
+        return {"status": "blocked", "enabled": enabled, "reason": "strict write requires FINANCE_APP_MYSQL_DATABASE_URL"}
+    if enabled and not shadow_write_enabled:
+        return {"status": "blocked", "enabled": enabled, "reason": "strict write requires FINANCE_APP_MYSQL_SHADOW_WRITE=true"}
+    return {
+        "status": "ok",
+        "enabled": enabled,
+        "guarded_group": "categories_budgets_recurring",
+        "mode": "strict-dual-write" if enabled else "shadow-write-only",
+    }
 
 
 def run_json_tool(command: Sequence[str], env: Dict[str, str]) -> Dict[str, Any]:
@@ -168,6 +187,7 @@ def build_report(
             allow_mysql_backend=allow_mysql_backend,
         ),
         "primary_read_pilot": check_primary_read_pilot(env, database_url),
+        "strict_categories_budgets_recurring": check_strict_categories_budgets_recurring(env, database_url),
         "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend),
     }
 
@@ -256,6 +276,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
             detail = f"failed={check['report'].get('failed')}"
         elif name == "database_connection":
             detail = f"database={check.get('database')} user={check.get('user')}"
+        elif name == "strict_categories_budgets_recurring":
+            detail = f"enabled={check.get('enabled')} mode={check.get('mode')}"
         lines.append(f"| `{name}` | `{check.get('status')}` | {detail} |")
     return "\n".join(lines)
 
