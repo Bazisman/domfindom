@@ -42,6 +42,18 @@ class PostgresWriteRepositoryTestCase(unittest.TestCase):
             2,
         )
 
+    def test_update_skips_non_actual_transactions(self):
+        repo = PostgresWriteRepository("postgresql://example")
+
+        result = repo.mirror_update_transaction(
+            conn=None,
+            legacy_user_id=12,
+            source_db_path="data/users/12/finance.db",
+            transaction={"id": 1, "status": "planned"},
+        )
+
+        self.assertEqual(result, {"status": "skipped", "reason": "non_actual_transaction"})
+
 
 if __name__ == "__main__":
     unittest.main()

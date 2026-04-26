@@ -68,6 +68,25 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         after_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
         )
+        update_result = repo.mirror_update_transaction(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transaction={
+                "id": legacy_local_id,
+                "type": "expense",
+                "category": category,
+                "amount": 2.34,
+                "comment": "postgres shadow write rollback probe updated",
+                "date": "2026-04-26",
+                "money_source": "cashless",
+                "status": "actual",
+            },
+            transfers=[],
+        )
+        after_update_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
         delete_result = repo.mirror_delete_transaction(conn, legacy_user_id, legacy_local_id)
         after_delete_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
@@ -80,14 +99,18 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         if (
             result["status"] == "inserted"
             and after_count == before_count + 1
+            and update_result["status"] == "updated"
+            and after_update_count == before_count + 1
             and delete_result["status"] == "deleted"
             and after_delete_count == before_count
         )
         else "failed",
         "insert_status": result["status"],
+        "update_status": update_result["status"],
         "delete_status": delete_result["status"],
         "before_count": before_count,
         "after_count_inside_transaction": after_count,
+        "after_update_count_inside_transaction": after_update_count,
         "after_delete_count_inside_transaction": after_delete_count,
         "rolled_back": True,
     }
@@ -102,9 +125,11 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"PostgreSQL user: `{report['postgres_user_id']}`",
             f"Status: `{report['status']}`",
             f"Insert status: `{report['insert_status']}`",
+            f"Update status: `{report['update_status']}`",
             f"Delete status: `{report['delete_status']}`",
             f"Before count: `{report['before_count']}`",
             f"After count inside transaction: `{report['after_count_inside_transaction']}`",
+            f"After update count inside transaction: `{report['after_update_count_inside_transaction']}`",
             f"After delete count inside transaction: `{report['after_delete_count_inside_transaction']}`",
             f"Rolled back: `{report['rolled_back']}`",
         ]

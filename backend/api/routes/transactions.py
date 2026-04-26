@@ -19,6 +19,7 @@ from backend.services import category_service, row_to_transaction_response, tran
 from backend.storage.shadow_write import (
     mirror_created_transaction_shadow_write,
     mirror_deleted_transaction_shadow_write,
+    mirror_updated_transaction_shadow_write,
 )
 from models import Transaction
 
@@ -451,6 +452,11 @@ def update_transaction(
         date=row["date"],
         status=row["status"] if "status" in row.keys() else "actual",
         money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
+    )
+    mirror_updated_transaction_shadow_write(
+        current_user,
+        row,
+        skip_reason="family_capital_contribution" if family_contribution else "",
     )
     transaction_service.notify_listeners()
     return TransactionResponse(**row_to_transaction_response(transaction))

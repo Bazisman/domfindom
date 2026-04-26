@@ -235,9 +235,14 @@ class PostgresWriteRepository(PostgresReadRepository):
         pg_transaction_id: int,
     ) -> int:
         legacy_transfer_id = int(transfer["id"])
-        existing = self._finance_id_by_legacy(conn, "transfers", pg_user_id, legacy_transfer_id)
-        if existing is not None:
-            return existing
+        existing = conn.execute(
+            """
+            SELECT id, is_active
+            FROM finance.transfers
+            WHERE user_id = %s AND legacy_local_id = %s
+            """,
+            (int(pg_user_id), legacy_transfer_id),
+        ).fetchone()
 
         from_legacy = int(transfer["from_account_id"])
         to_legacy = int(transfer["to_account_id"])
@@ -248,6 +253,48 @@ class PostgresWriteRepository(PostgresReadRepository):
         from_capital_id = self._finance_id_by_legacy(conn, "capital_accounts", pg_user_id, from_ref["capital_legacy_id"])
         to_capital_id = self._finance_id_by_legacy(conn, "capital_accounts", pg_user_id, to_ref["capital_legacy_id"])
         amount_minor = to_minor(transfer["amount"])
+
+        if existing is not None:
+            pg_transfer_id = int(existing["id"])
+            if bool(existing["is_active"]):
+                return pg_transfer_id
+            conn.execute(
+                """
+                UPDATE finance.transfers
+                SET
+                    legacy_from_account_id = %s,
+                    legacy_to_account_id = %s,
+                    from_account_kind = %s,
+                    to_account_kind = %s,
+                    from_daily_account_id = %s,
+                    to_daily_account_id = %s,
+                    from_capital_account_id = %s,
+                    to_capital_account_id = %s,
+                    amount_minor = %s,
+                    transaction_id = %s,
+                    date = %s,
+                    comment = %s,
+                    is_active = true
+                WHERE id = %s
+                """,
+                (
+                    from_legacy,
+                    to_legacy,
+                    from_ref["kind"],
+                    to_ref["kind"],
+                    from_daily_id,
+                    to_daily_id,
+                    from_capital_id,
+                    to_capital_id,
+                    amount_minor,
+                    int(pg_transaction_id),
+                    transfer["date"],
+                    transfer.get("comment"),
+                    pg_transfer_id,
+                ),
+            )
+            self._adjust_account_minor(conn, pg_user_id, to_legacy, amount_minor)
+            return pg_transfer_id
 
         row = conn.execute(
             """
@@ -365,4 +412,33 @@ class PostgresWriteRepository(PostgresReadRepository):
             "transaction_id": pg_transaction_id,
             "amount": from_minor_float(amount_minor),
             "transfers_deactivated": len(transfer_rows),
+        }
+
+    def mirror_update_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        transaction: Dict[str, Any],
+        transfers: Iterable[Dict[str, Any]] = (),
+    ) -> Dict[str, Any]:
+        status = str(transaction.get("status") or "actual")
+        if status != "actual":
+            return {"status": "skipped", "reason": "non_actual_transaction"}
+
+        legacy_transaction_id = int(transaction["id"])
+        delete_result = self.mirror_delete_transaction(conn, legacy_user_id, legacy_transaction_id)
+        if delete_result.get("status") == "skipped":
+            return delete_result
+        insert_result = self.mirror_actual_transaction(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transaction=transaction,
+            transfers=transfers,
+        )
+        return {
+            "status": "updated" if delete_result.get("status") == "deleted" else "inserted_missing",
+            "delete": delete_result,
+            "insert": insert_result,
         }

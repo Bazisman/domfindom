@@ -55,6 +55,18 @@ class PostgresShadowWriteTestCase(unittest.TestCase):
         self.assertEqual(result, {"enabled": False, "status": "disabled"})
         repository.assert_not_called()
 
+    def test_shadow_write_update_disabled_does_not_call_repository(self):
+        config = SimpleNamespace(postgres_shadow_write_enabled=False, database_url="")
+        with mock.patch.object(shadow_write, "PostgresWriteRepository") as repository:
+            result = shadow_write.mirror_updated_transaction_shadow_write(
+                {"id": 12},
+                _Row(id=1, status="actual"),
+                config=config,
+            )
+
+        self.assertEqual(result, {"enabled": False, "status": "disabled"})
+        repository.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
