@@ -412,7 +412,7 @@ export function AccountsPage() {
     if (cashlessAccount) {
       places.push({
         key: `daily:${cashlessAccount.id}`,
-        name: cashlessAccount.name || "Для трат",
+        name: cashlessAccount.name || "Карта",
         tone: "Мои деньги на каждый день",
         balance: cashlessAccount.balance,
         color: cashlessAccount.color ?? "#3578e5",

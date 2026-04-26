@@ -121,7 +121,7 @@ def _create_family_capital_transfer(payload: TransferCreateRequest, current_user
             "amount": float(payload.amount),
             "date": transfer_date,
             "comment": payload.comment or "Отложили в семейную подушку",
-            "from_name": "Наличные" if money_source == "cash" else "Для трат",
+            "from_name": "Наличные" if money_source == "cash" else "Карта",
             "to_name": target_name,
             "is_active": True,
         }
@@ -148,7 +148,7 @@ def _family_transfer_rows(user_id: int, account_id: Optional[int], limit: int) -
 
         target_account_name = run_in_user_finance_db(target_owner_user_id, _action)
 
-        source_name = "Наличные" if item.get("source_money_source") == "cash" else "Для трат"
+        source_name = "Наличные" if item.get("source_money_source") == "cash" else "Карта"
         if user_id == target_owner_user_id and user_id != source_user_id:
             source_name = f"Семейное отчисление: {item['source_display_name'] or item['source_email']}"
         to_name = target_account_name or "Семейный счет"

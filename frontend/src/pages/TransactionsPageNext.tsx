@@ -48,7 +48,7 @@ const PERIOD_OPTIONS: Array<{ value: TransactionPeriod; label: string }> = [
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 const MONEY_SOURCE_OPTIONS: Array<{ value: MoneySource; label: string }> = [
-  { value: "cashless", label: "Для трат" },
+  { value: "cashless", label: "Карта" },
   { value: "cash", label: "Наличные" },
 ];
 
@@ -71,7 +71,7 @@ function getToday() {
 }
 
 function moneySourceLabel(source: MoneySource | undefined) {
-  return source === "cash" ? "Наличные" : "Для трат";
+  return source === "cash" ? "Наличные" : "Карта";
 }
 
 function formatReconciliationDate(value: string) {

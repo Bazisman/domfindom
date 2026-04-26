@@ -1904,7 +1904,7 @@ class WebApiTestCase(unittest.TestCase):
             },
         )
         self.assertEqual(manual_transfer.status_code, 201)
-        self.assertEqual(manual_transfer.json()["from_name"], "Для трат")
+        self.assertEqual(manual_transfer.json()["from_name"], "Карта")
         self.assertIn("Подушка супруги", manual_transfer.json()["to_name"])
 
         owner_accounts = self.client.get("/api/v1/accounts")
@@ -1923,7 +1923,7 @@ class WebApiTestCase(unittest.TestCase):
             any(
                 item["to_account_id"] == member_capital_id
                 and item["amount"] == 250.0
-                and item["from_name"] == "Для трат"
+                and item["from_name"] == "Карта"
                 for item in owner_transfers.json()
             )
         )

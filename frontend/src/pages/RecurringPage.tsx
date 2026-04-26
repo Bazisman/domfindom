@@ -15,7 +15,7 @@ import {
 } from "../lib/api";
 
 const MONEY_SOURCE_OPTIONS: Array<{ value: MoneySource; label: string }> = [
-  { value: "cashless", label: "Для трат" },
+  { value: "cashless", label: "Карта" },
   { value: "cash", label: "Наличные" },
 ];
 
@@ -392,7 +392,7 @@ export function RecurringPage() {
               <article className="list-item" key={item.id}>
                 <div>
                   <strong>{item.template_name || item.category}</strong>
-                  <p>{item.comment || "Без комментария"} · {item.money_source === "cash" ? "Наличные" : "Для трат"}</p>
+                  <p>{item.comment || "Без комментария"} · {item.money_source === "cash" ? "Наличные" : "Карта"}</p>
                 </div>
                 <div className={item.type === "income" ? "money plus" : "money minus"}>
                   {formatMoney(item.amount)}
@@ -409,7 +409,7 @@ export function RecurringPage() {
                 <div>
                   <strong>{item.name}</strong>
                   <p>
-                    {item.type === "income" ? "Доход" : "Расход"} {formatMoney(item.amount)} · {item.money_source === "cash" ? "Наличные" : "Для трат"} {item.category_name ? `• ${item.category_name}` : ""}
+                    {item.type === "income" ? "Доход" : "Расход"} {formatMoney(item.amount)} · {item.money_source === "cash" ? "Наличные" : "Карта"} {item.category_name ? `• ${item.category_name}` : ""}
                   </p>
                 </div>
               </div>
