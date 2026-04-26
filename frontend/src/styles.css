@@ -637,11 +637,11 @@ body {
 }
 
 .transactions-layout-stack > .panel-list {
-  order: 2;
+  order: 3;
 }
 
 .transactions-layout-stack > .reconciliation-panel {
-  order: 3;
+  order: 2;
 }
 
 .transactions-page-stack > .panel,
