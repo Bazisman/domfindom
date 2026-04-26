@@ -2,7 +2,6 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import core
 from backend.auth.dependencies import require_user
 from backend.schemas.categories import (
     CategoryCreateRequest,
@@ -26,6 +25,17 @@ def _to_response(category) -> CategoryResponse:
         icon=category.icon,
         is_active=category.is_active,
     )
+
+
+def _to_shadow_row(category) -> dict:
+    return {
+        "id": category.id,
+        "name": category.name,
+        "type": category.type,
+        "color": category.color,
+        "icon": category.icon,
+        "is_active": int(bool(category.is_active)),
+    }
 
 
 @router.get("", response_model=List[CategoryResponse])
@@ -59,7 +69,7 @@ def create_category(payload: CategoryCreateRequest, current_user=Depends(require
     category = category_service.get_category_by_id(category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория создана, но не найдена")
-    mirror_category_shadow_write(current_user, core.get_category_by_id(category_id))
+    mirror_category_shadow_write(current_user, _to_shadow_row(category))
     return _to_response(category)
 
 
@@ -83,7 +93,7 @@ def update_category(
     refreshed = category_service.get_category_by_id(category_id)
     if not refreshed:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Категория обновлена, но не найдена")
-    mirror_category_shadow_write(current_user, core.get_category_by_id(category_id))
+    mirror_category_shadow_write(current_user, _to_shadow_row(refreshed))
     return _to_response(refreshed)
 
 
@@ -96,5 +106,6 @@ def delete_category(category_id: int, current_user=Depends(require_user)) -> Mes
     deleted = category_service.delete_category(category_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить категорию")
-    mirror_category_shadow_write(current_user, core.get_category_by_id(category_id))
+    disabled_category = category_service.get_category_by_id(category_id)
+    mirror_category_shadow_write(current_user, _to_shadow_row(disabled_category or category))
     return MessageResponse(message="Категория отключена")

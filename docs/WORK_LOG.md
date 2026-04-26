@@ -56,6 +56,7 @@
 - Accounts/settings/transactions/family helper reads продолжили перевод на service layer: чтение счетов капитала, default capital account и семейных expense/budget summaries больше не обходят `TransactionService` там, где это безопасно для текущего SQLite runtime.
 - CategoryService/BudgetService получили dormant MySQL read-path для категорий и бюджетов; при текущем SQLite runtime поведение остается прежним, но будущий backend switch меньше зависит от прямого `core`.
 - Dashboard/budget status reads переведены на `TransactionService.get_budget_status`, а создание бюджета валидирует категорию через `CategoryService`, чтобы API routes меньше зависели от прямого SQLite helper layer.
+- Category routes перестали читать `core.get_category_by_id` для shadow-write: данные берутся из `CategoryService`, а MySQL mirror получает совместимый словарь.
 
 ### 2026-04-25
 
