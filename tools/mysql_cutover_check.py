@@ -285,15 +285,17 @@ def build_report(
         guarded_groups.append(strict_reconciliation["guarded_group"])
     if strict_auth.get("status") == "ok" and strict_auth.get("enabled"):
         guarded_groups.append(strict_auth["guarded_group"])
+    storage_backend = env.get("FINANCE_APP_STORAGE_BACKEND", "sqlite").strip().lower() or "sqlite"
     runtime_ready = strict_groups_ready(env, database_url)
+    runtime_allowed = allow_mysql_backend or storage_backend == "mysql"
 
     checks: Dict[str, Any] = {
         "python_dependencies": check_python_dependencies(),
         "database_connection": check_database_connection(database_url),
         "schema_tables": check_schema_tables(database_url),
         "storage_backend": check_storage_backend(
-            env.get("FINANCE_APP_STORAGE_BACKEND", "sqlite").strip().lower() or "sqlite",
-            allow_mysql_backend=allow_mysql_backend,
+            storage_backend,
+            allow_mysql_backend=runtime_allowed,
             runtime_ready=runtime_ready,
         ),
         "primary_read_pilot": check_primary_read_pilot(env, database_url),
@@ -302,7 +304,7 @@ def build_report(
         "strict_reconciliation": strict_reconciliation,
         "strict_categories_budgets_recurring": strict_categories,
         "strict_auth": strict_auth,
-        "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend and runtime_ready, guarded_groups=guarded_groups),
+        "runtime_adapter": check_runtime_adapter_status(runtime_allowed and runtime_ready, guarded_groups=guarded_groups),
     }
 
     if not skip_data_checks:
@@ -363,7 +365,7 @@ def build_report(
         "source_root": str(source_root.resolve()),
         "checks": checks,
         "ready_for_shadow_read": not data_blockers,
-        "ready_for_runtime_mysql": not blockers and allow_mysql_backend,
+        "ready_for_runtime_mysql": not blockers and runtime_allowed,
         "blockers": blockers,
     }
 

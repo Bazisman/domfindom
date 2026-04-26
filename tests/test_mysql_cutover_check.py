@@ -251,6 +251,41 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertEqual(report["checks"]["runtime_adapter"]["status"], "ok")
         self.assertEqual(report["checks"]["storage_backend"]["mode"], "mysql-primary-read-strict-dual-write")
 
+    def test_build_report_is_runtime_ready_without_allow_flag_after_storage_backend_is_mysql(self):
+        with (
+            patch.object(mysql_cutover_check, "check_python_dependencies", return_value={"status": "ok"}),
+            patch.object(mysql_cutover_check, "check_database_connection", return_value={"status": "ok"}),
+            patch.object(mysql_cutover_check, "check_schema_tables", return_value={"status": "ok"}),
+        ):
+            with patch.dict(
+                mysql_cutover_check.os.environ,
+                {
+                    "FINANCE_APP_MYSQL_SHADOW_WRITE": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_AUTH": "true",
+                    "FINANCE_APP_STORAGE_BACKEND": "mysql",
+                },
+                clear=False,
+            ):
+                report = mysql_cutover_check.build_report(
+                    source_root=mysql_cutover_check.PROJECT_ROOT,
+                    database_url="mysql+pymysql://user:pass@localhost:3306/db",
+                    auth_db="auth.db",
+                    root_finance_db="finance.db",
+                    users_dir="data/users",
+                    year=2026,
+                    month=4,
+                    allow_mysql_backend=False,
+                    skip_data_checks=True,
+                )
+
+        self.assertTrue(report["ready_for_runtime_mysql"])
+        self.assertEqual(report["blockers"], [])
+        self.assertEqual(report["checks"]["runtime_adapter"]["status"], "ok")
+
     def test_render_markdown_includes_readiness(self):
         report = {
             "source_root": ".",
