@@ -255,8 +255,8 @@ def _collect_family_forecast(
         user_id = int(member["user_id"])
 
         def _action():
-            expenses = core.get_expenses_by_category(start_of_month, today)
-            budgets = core.get_budgets()
+            expenses = transaction_service.get_expenses_by_category(start_of_month, today)
+            budgets = transaction_service.get_budgets()
             with core.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -393,7 +393,7 @@ def _run_in_user_db(user_id: int, action):
 
 def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
     def _action():
-        for account in core.get_capital_accounts(include_inactive=False):
+        for account in transaction_service.get_capital_accounts(include_inactive=False):
             if int(account["id"]) == capital_account_id:
                 return account
         return None
@@ -410,7 +410,7 @@ def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
         capital_account_id = int(item["capital_account_id"])
 
         def _action():
-            for account in core.get_capital_accounts(include_inactive=False):
+            for account in transaction_service.get_capital_accounts(include_inactive=False):
                 if int(account["id"]) == capital_account_id:
                     return account
             return None

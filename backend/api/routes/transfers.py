@@ -43,7 +43,7 @@ def _family_transfer_rows(user_id: int, account_id: Optional[int], limit: int) -
         db_path = auth_service.ensure_user_finance_db(target_owner_user_id)
         token = core.push_db_name(db_path)
         try:
-            for capital_account in core.get_capital_accounts(include_inactive=True):
+            for capital_account in transaction_service.get_capital_accounts(include_inactive=True):
                 if int(_row_value(capital_account, "id", 0)) == target_capital_account_id:
                     target_account_name = str(_row_value(capital_account, "name", ""))
                     break

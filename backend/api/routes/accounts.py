@@ -2,7 +2,6 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import core
 from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.accounts import AccountCreateRequest, AccountResponse, AccountUpdateRequest
@@ -95,7 +94,7 @@ def _find_account_row(account_id: int, include_inactive: bool = False):
                 return ("daily", account)
         return None
 
-    for account in core.get_capital_accounts(include_inactive=include_inactive):
+    for account in transaction_service.get_capital_accounts(include_inactive=include_inactive):
         if _row_value(account, "id") == account_id:
             return ("capital", account)
     return None
@@ -114,7 +113,7 @@ def list_accounts(
     ]
     capital_accounts = [
         _capital_account_response(account, family_meta.get(int(_row_value(account, "id", 0))))
-        for account in core.get_capital_accounts(include_inactive=include_inactive)
+        for account in transaction_service.get_capital_accounts(include_inactive=include_inactive)
     ]
     return [*daily_accounts, *capital_accounts]
 
@@ -148,7 +147,7 @@ def create_account(payload: AccountCreateRequest, current_user=Depends(require_u
     found = _find_account_row(account_id, include_inactive=True)
     if not found:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет создан, но не найден")
-    mirror_capital_accounts_shadow_write(current_user, core.get_capital_accounts(include_inactive=True))
+    mirror_capital_accounts_shadow_write(current_user, transaction_service.get_capital_accounts(include_inactive=True))
     family_id = _current_family_id(int(current_user["id"]))
     family_meta = _family_meta_map(family_id, int(current_user["id"]))
     return _capital_account_response(found[1], family_meta.get(account_id))
@@ -216,7 +215,7 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
     if not bool(_row_value(refreshed[1], "is_active", 1)):
         _hide_family_capital_account_if_needed(family_id, current_user_id, account_id)
         mirror_family_snapshot_shadow_write(family_id)
-    mirror_capital_accounts_shadow_write(current_user, core.get_capital_accounts(include_inactive=True))
+    mirror_capital_accounts_shadow_write(current_user, transaction_service.get_capital_accounts(include_inactive=True))
     family_meta = _family_meta_map(family_id, current_user_id)
     return _capital_account_response(refreshed[1], family_meta.get(account_id))
 
@@ -240,5 +239,5 @@ def delete_account(account_id: int, current_user=Depends(require_user)) -> Messa
     _hide_family_capital_account_if_needed(_current_family_id(int(current_user["id"])), int(current_user["id"]), account_id)
     family_id = _current_family_id(int(current_user["id"]))
     mirror_family_snapshot_shadow_write(family_id)
-    mirror_capital_accounts_shadow_write(current_user, core.get_capital_accounts(include_inactive=True))
+    mirror_capital_accounts_shadow_write(current_user, transaction_service.get_capital_accounts(include_inactive=True))
     return MessageResponse(message="Счет отключен")

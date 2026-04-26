@@ -10,7 +10,7 @@ router = APIRouter()
 
 def _build_settings_response() -> SettingsResponse:
     enabled, percent = transaction_service.get_auto_capital_settings()
-    default_account = core.get_default_capital_account()
+    default_account = transaction_service.get_default_capital_account()
     return SettingsResponse(
         auto_capital_enabled=enabled,
         auto_capital_percent=percent,

@@ -487,14 +487,14 @@ class TransactionService:
     
     # ========== РњР•РўРћР”Р« Р”Р›РЇ Р РђР‘РћРўР« РЎ РљРђРџРРўРђР›РћРњ ==========
 
-    def get_capital_accounts(self):
+    def get_capital_accounts(self, include_inactive=False):
         """Получает все счета капитала"""
         try:
             repo, legacy_user_id = _mysql_read_repo_for_current_user()
             if repo is not None and legacy_user_id is not None:
                 with repo.connect() as conn:
-                    return repo.get_capital_accounts(conn, legacy_user_id)
-            return core.get_capital_accounts()
+                    return repo.get_capital_accounts(conn, legacy_user_id, include_inactive=include_inactive)
+            return core.get_capital_accounts(include_inactive=include_inactive)
         except Exception as e:
             app_logger.error(f"Ошибка получения счетов капитала: {e}", exc_info=True)
             return []

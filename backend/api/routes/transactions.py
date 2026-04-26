@@ -122,7 +122,7 @@ def _run_in_user_db(user_id: int, action):
 
 def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
     def _action():
-        for account in core.get_capital_accounts(include_inactive=False):
+        for account in transaction_service.get_capital_accounts(include_inactive=False):
             if int(account["id"]) == capital_account_id:
                 return account
         return None
@@ -297,7 +297,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
     else:
         if payload.type == "income":
             settings_enabled, settings_percent = transaction_service.get_auto_capital_settings()
-            default_capital_account = core.get_default_capital_account()
+            default_capital_account = transaction_service.get_default_capital_account()
             auto_capital_percent = payload.auto_capital_percent
             capital_account_id = payload.capital_account_id
 
