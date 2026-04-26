@@ -380,6 +380,15 @@ export function AccountsPage() {
   const visibleEmergencyMoney = familyModeEnabled ? familyCushionBalance : ownCushion;
   const visibleInvestmentMoney = familyModeEnabled ? familyInvestmentBalance : ownInvestments;
   const visibleDailyMoney = familyModeEnabled ? familyDailyBalance : dailyBalance;
+  const personalAccountsPublishedToFamily = useMemo(
+    () =>
+      new Set(
+        familyVisibleAccounts
+          .filter((account) => account.owner_user_id === me.data?.id)
+          .map((account) => account.capital_account_id),
+      ),
+    [familyVisibleAccounts, me.data?.id],
+  );
   const moneyPlaces = useMemo(() => {
     const places: Array<{
       key: string;
@@ -407,7 +416,7 @@ export function AccountsPage() {
       });
     }
     capitalAccounts
-      .filter((account) => account.is_active)
+      .filter((account) => account.is_active && !personalAccountsPublishedToFamily.has(account.id))
       .forEach((account) => {
         places.push({
           key: `personal:${account.id}`,
@@ -428,16 +437,7 @@ export function AccountsPage() {
       });
     });
     return places;
-  }, [capitalAccounts, cashAccount, cashlessAccount, familyVisibleAccounts]);
-  const personalAccountsPublishedToFamily = useMemo(
-    () =>
-      new Set(
-        familyVisibleAccounts
-          .filter((account) => account.owner_user_id === me.data?.id)
-          .map((account) => account.capital_account_id),
-      ),
-    [familyVisibleAccounts, me.data?.id],
-  );
+  }, [capitalAccounts, cashAccount, cashlessAccount, familyVisibleAccounts, personalAccountsPublishedToFamily]);
   const autoCapitalTargetOptions = useMemo(
     () => [
       ...capitalAccounts
