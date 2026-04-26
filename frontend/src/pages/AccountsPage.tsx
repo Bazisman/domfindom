@@ -57,7 +57,7 @@ function isDailyTransferAccount(accountId: number) {
 
 function getCapitalPurposeLabel(purpose: Account["purpose"] | undefined) {
   if (purpose === "personal") {
-    return "Личные деньги";
+    return "Для платежей";
   }
   return purpose === "investment" ? "Инвестиции" : "Подушка";
 }
@@ -93,13 +93,16 @@ function getCapitalPurposePersonalToLabel(purpose: Account["purpose"] | undefine
 function getCapitalPurposeTone(account: Pick<Account, "purpose" | "family_visible" | "counts_as_cushion">) {
   const base = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
   const cushionNote = account.counts_as_cushion && account.purpose === "investment" ? " · входит в подушку" : "";
+  if (account.purpose === "personal") {
+    return account.family_visible ? "Для платежей семьи" : "Личные деньги";
+  }
   if (account.family_visible) {
     return `В семье · ${base}${cushionNote}`;
   }
   if (account.purpose === "investment") {
     return `Личные инвестиции${cushionNote}`;
   }
-  return account.purpose === "personal" ? "Личные деньги" : "Личная подушка";
+  return "Личная подушка";
 }
 
 function getTransferStory(transfer: Transfer, accountById: Map<number, Account>) {
@@ -429,23 +432,26 @@ export function AccountsPage() {
       tone: string;
       balance: number;
       color: string;
+      group: string;
     }> = [];
-    if (cashlessAccount) {
+    if (!familyModeEnabled && cashlessAccount) {
       places.push({
         key: `daily:${cashlessAccount.id}`,
         name: cashlessAccount.name || "Карта",
         tone: "Мои деньги на каждый день",
         balance: cashlessAccount.balance,
         color: cashlessAccount.color ?? "#3578e5",
+        group: "Деньги на жизнь",
       });
     }
-    if (cashAccount) {
+    if (!familyModeEnabled && cashAccount && cashAccount.balance !== 0) {
       places.push({
         key: `daily:${cashAccount.id}`,
         name: cashAccount.name || "Наличные",
         tone: "Деньги на руках",
         balance: cashAccount.balance,
         color: cashAccount.color ?? "#1d8f61",
+        group: "Деньги на жизнь",
       });
     }
     capitalAccounts
@@ -457,6 +463,7 @@ export function AccountsPage() {
           tone: getCapitalPurposeTone(account),
           balance: account.balance,
           color: account.color ?? "#5f6b76",
+          group: account.purpose === "personal" ? "Личные деньги" : account.purpose === "investment" ? "Инвестиции" : "Подушка",
         });
       });
     familyVisibleAccounts.forEach((account) => {
@@ -464,13 +471,26 @@ export function AccountsPage() {
       places.push({
         key: `family:${account.owner_user_id}:${account.capital_account_id}`,
         name: account.name,
-        tone: `${getCapitalPurposeLabel(account.purpose)} семьи${account.counts_as_cushion && account.purpose === "investment" ? " · в подушке" : ""} · ${ownerLabel}`,
+        tone:
+          account.purpose === "personal"
+            ? `Для платежей семьи · ${ownerLabel}`
+            : `${getCapitalPurposeLabel(account.purpose)} семьи${account.counts_as_cushion && account.purpose === "investment" ? " · в подушке" : ""} · ${ownerLabel}`,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
+        group: account.purpose === "personal" ? "Для платежей семьи" : account.purpose === "investment" ? "Инвестиции" : "Подушка",
       });
     });
     return places;
-  }, [capitalAccounts, cashAccount, cashlessAccount, familyVisibleAccounts, personalAccountsPublishedToFamily]);
+  }, [capitalAccounts, cashAccount, cashlessAccount, familyModeEnabled, familyVisibleAccounts, personalAccountsPublishedToFamily]);
+  const moneyPlaceGroups = useMemo(() => {
+    const order = ["Деньги на жизнь", "Для платежей семьи", "Подушка", "Инвестиции", "Личные деньги"];
+    return order
+      .map((group) => ({
+        group,
+        places: moneyPlaces.filter((place) => place.group === group),
+      }))
+      .filter((item) => item.places.length > 0);
+  }, [moneyPlaces]);
   const autoCapitalTargetOptions = useMemo(
     () => [
       ...capitalAccounts
@@ -1350,28 +1370,35 @@ export function AccountsPage() {
             <h2>Где лежат деньги</h2>
           </div>
 
-          <div className="category-card-grid">
-            {moneyPlaces.map((place) => {
-              const isTarget = activeAutoCapitalTarget?.key === place.key;
-              return (
-                <article className={isTarget ? "account-card account-card-main" : "account-card"} key={place.key}>
-                  <div className="category-card-main">
-                    <span
-                      aria-hidden="true"
-                      className="category-dot"
-                      style={{ backgroundColor: place.color }}
-                    />
-                    <div>
-                      <strong>{place.name}</strong>
-                      <p>{isTarget ? `Сюда откладываем · ${place.tone}` : place.tone}</p>
-                    </div>
-                  </div>
-                  <div className="account-balance">
-                    <strong>{formatMoney(place.balance)}</strong>
-                  </div>
-                </article>
-              );
-            })}
+          <div className="money-place-groups">
+            {moneyPlaceGroups.map((section) => (
+              <div className="money-place-section" key={section.group}>
+                <h3>{section.group}</h3>
+                <div className="category-card-grid">
+                  {section.places.map((place) => {
+                    const isTarget = activeAutoCapitalTarget?.key === place.key;
+                    return (
+                      <article className={isTarget ? "account-card account-card-main" : "account-card"} key={place.key}>
+                        <div className="category-card-main">
+                          <span
+                            aria-hidden="true"
+                            className="category-dot"
+                            style={{ backgroundColor: place.color }}
+                          />
+                          <div>
+                            <strong>{place.name}</strong>
+                            <p>{isTarget ? `Сюда откладываем · ${place.tone}` : place.tone}</p>
+                          </div>
+                        </div>
+                        <div className="account-balance">
+                          <strong>{formatMoney(place.balance)}</strong>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
             {accountsError && <p className="form-error">{accountsError}</p>}
 
