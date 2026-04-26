@@ -2,13 +2,13 @@
 import core
 import core_runtime
 from models import Transaction, Balance, Transfer
-from typing import List, Optional, Callable, Any
+from typing import List, Optional, Callable, Any, Dict
 from datetime import datetime, timedelta
 import calendar
 from pathlib import Path
 from utils.logger import app_logger
 
-_AUTH_USER_TO_LEGACY_CACHE: dict[int, Optional[int]] = {}
+_AUTH_USER_TO_LEGACY_CACHE: Dict[int, Optional[int]] = {}
 
 
 def _legacy_user_id_from_current_db() -> Optional[int]:
