@@ -438,12 +438,14 @@ body {
   background: rgba(123, 203, 166, 0.92);
 }
 
+.money-breakdown-list,
 .family-money-list {
   display: grid;
   gap: 8px;
   margin-top: 14px;
 }
 
+.money-breakdown-item,
 .family-money-item {
   display: flex;
   align-items: center;
@@ -455,16 +457,23 @@ body {
   background: rgba(255, 255, 255, 0.45);
 }
 
+.money-breakdown-item span,
 .family-money-item span {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--muted);
 }
 
+.money-breakdown-item strong,
 .family-money-item strong {
   white-space: nowrap;
 }
 
+.money-breakdown-item {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="dark"] .money-breakdown-item,
 [data-theme="dark"] .family-money-item {
   background: rgba(255, 255, 255, 0.04);
 }

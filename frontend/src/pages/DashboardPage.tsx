@@ -192,6 +192,13 @@ export function DashboardPage() {
   const familyForecast = familyDashboardQuery.data?.forecast;
   const familyBalance = familyDashboardQuery.data?.balance;
   const familyMemberMoney = familyDashboardQuery.data?.member_money ?? [];
+  const personalCapitalBalance = useMemo(
+    () =>
+      (accountsQuery.data ?? [])
+        .filter((account) => account.type === "capital" && account.is_active)
+        .reduce((sum, account) => sum + account.balance, 0),
+    [accountsQuery.data],
+  );
   const showFamilyBalanceSlide = showFamilyCards && familyBalance !== undefined;
   const showFamilyForecastSlide = showFamilyCards && familyForecast !== undefined;
   const desktopBalanceSlides = useMemo(
@@ -775,6 +782,16 @@ export function DashboardPage() {
       <article className="balance-slide" key={key}>
         <p className="panel-label">Мои деньги</p>
         <h2>{dashboard.data?.balance.main_balance !== undefined ? formatMoney(dashboard.data.balance.main_balance) : "—"}</h2>
+        <div className="money-breakdown-list" aria-label="Мои деньги по местам">
+          <div className="money-breakdown-item">
+            <span>На руках</span>
+            <strong>{personalBalance ? formatMoney(personalBalance.main_balance) : "—"}</strong>
+          </div>
+          <div className="money-breakdown-item">
+            <span>Моя подушка</span>
+            <strong>{formatMoney(personalCapitalBalance)}</strong>
+          </div>
+        </div>
         <div className="stats-row">
           <div>
             <span>Доход за месяц (получено / план)</span>
@@ -802,6 +819,16 @@ export function DashboardPage() {
       <article className="balance-slide" key={key}>
         <p className="panel-label">Деньги семьи</p>
         <h2>{familyBalance ? formatMoney(familyBalance.main_balance) : "—"}</h2>
+        <div className="money-breakdown-list" aria-label="Деньги семьи по местам">
+          <div className="money-breakdown-item">
+            <span>На руках</span>
+            <strong>{familyBalance ? formatMoney(familyBalance.main_balance) : "—"}</strong>
+          </div>
+          <div className="money-breakdown-item">
+            <span>Подушка семьи</span>
+            <strong>{familyBalance ? formatMoney(familyBalance.capital_balance) : "—"}</strong>
+          </div>
+        </div>
         {!!familyMemberMoney.length && (
           <div className="family-money-list" aria-label="Деньги на руках у участников">
             {familyMemberMoney.map((member) => (
