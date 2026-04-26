@@ -168,6 +168,31 @@ export function AccountsPage() {
     () => (accounts.data ?? []).filter((item) => item.is_active),
     [accounts.data],
   );
+  const selectedTransferFromAccount = useMemo(
+    () => transferAccounts.find((account) => String(account.id) === transferForm.fromAccountId) ?? null,
+    [transferAccounts, transferForm.fromAccountId],
+  );
+  const selectedTransferToAccount = useMemo(
+    () => transferAccounts.find((account) => String(account.id) === transferForm.toAccountId) ?? null,
+    [transferAccounts, transferForm.toAccountId],
+  );
+  const transferMeaning = useMemo(() => {
+    if (!selectedTransferFromAccount || !selectedTransferToAccount) {
+      return null;
+    }
+    const fromIsDaily = selectedTransferFromAccount.type !== "capital";
+    const toIsDaily = selectedTransferToAccount.type !== "capital";
+    if (fromIsDaily && !toIsDaily) {
+      return "Это не расход: деньги уйдут из трат в подушку.";
+    }
+    if (!fromIsDaily && toIsDaily) {
+      return "Деньги вернутся из подушки в траты.";
+    }
+    if (fromIsDaily && toIsDaily) {
+      return "Это просто перенос между деньгами на руках.";
+    }
+    return "Это перенос между подушками.";
+  }, [selectedTransferFromAccount, selectedTransferToAccount]);
 
   const defaultPersonalCapitalAccount = useMemo(
     () =>
@@ -970,6 +995,8 @@ export function AccountsPage() {
                 </select>
               </label>
             </div>
+
+            {transferMeaning && <p className="auto-capital-note">{transferMeaning}</p>}
 
             <div className="field-row">
               <label className="field">
