@@ -190,6 +190,192 @@ class MySqlReadRepository:
             row = cursor.fetchone()
         return from_minor_float(row["total_minor"] if row else 0)
 
+    def get_accounts(self, conn, legacy_user_id: int, include_inactive: bool = False) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        filters = ["user_id = %s"]
+        params: List[Any] = [user_id]
+        if not include_inactive:
+            filters.append("is_active = TRUE")
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT legacy_local_id AS id, name, type, balance_minor, currency, is_active
+                FROM finance_accounts
+                WHERE {' AND '.join(filters)}
+                ORDER BY
+                    CASE legacy_local_id
+                        WHEN 1 THEN 1
+                        WHEN 2 THEN 2
+                        ELSE 3
+                    END,
+                    name
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "type": row["type"],
+                "balance": from_minor_float(row["balance_minor"]),
+                "currency": row["currency"],
+                "is_active": bool(row["is_active"]),
+            }
+            for row in rows
+        ]
+
+    def get_capital_accounts(self, conn, legacy_user_id: int, include_inactive: bool = False) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        filters = ["user_id = %s"]
+        params: List[Any] = [user_id]
+        if not include_inactive:
+            filters.append("is_active = TRUE")
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT legacy_local_id AS id, name, balance_minor, currency, icon, color, is_active, is_default
+                FROM finance_capital_accounts
+                WHERE {' AND '.join(filters)}
+                ORDER BY is_default DESC, name
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "balance": from_minor_float(row["balance_minor"]),
+                "currency": row["currency"],
+                "icon": row["icon"],
+                "color": row["color"],
+                "is_active": bool(row["is_active"]),
+                "is_default": bool(row["is_default"]),
+            }
+            for row in rows
+        ]
+
+    def get_default_capital_account(self, conn, legacy_user_id: int) -> Optional[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return None
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT legacy_local_id AS id, name, balance_minor, icon, color
+                FROM finance_capital_accounts
+                WHERE user_id = %s
+                  AND is_default = TRUE
+                  AND is_active = TRUE
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row["id"]),
+            "name": row["name"],
+            "balance": from_minor_float(row["balance_minor"]),
+            "icon": row["icon"],
+            "color": row["color"],
+        }
+
+    def get_total_capital(self, conn, legacy_user_id: int) -> float:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return 0.0
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(balance_minor), 0) AS total_minor
+                FROM finance_capital_accounts
+                WHERE user_id = %s
+                  AND is_active = TRUE
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        return from_minor_float(row["total_minor"] if row else 0)
+
+    def get_categories(
+        self,
+        conn,
+        legacy_user_id: int,
+        trans_type: Optional[str] = None,
+        include_inactive: bool = False,
+    ) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        filters = ["user_id = %s"]
+        params: List[Any] = [user_id]
+        if not include_inactive:
+            filters.append("is_active = TRUE")
+        if trans_type and trans_type != "both":
+            filters.append("type IN (%s, 'both')")
+            params.append(trans_type)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT legacy_local_id AS id, name, type, color, icon, is_active
+                FROM finance_categories
+                WHERE {' AND '.join(filters)}
+                ORDER BY name
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "type": row["type"],
+                "color": row["color"],
+                "icon": row["icon"],
+                "is_active": bool(row["is_active"]),
+            }
+            for row in rows
+        ]
+
+    def get_budgets(self, conn, legacy_user_id: int) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    b.legacy_local_id AS id,
+                    c.legacy_local_id AS category_id,
+                    c.name AS category,
+                    b.amount_minor,
+                    b.period
+                FROM finance_budgets b
+                JOIN finance_categories c ON b.category_id = c.id
+                WHERE b.user_id = %s
+                ORDER BY c.name
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "category_id": int(row["category_id"]),
+                "category": row["category"],
+                "amount": from_minor_float(row["amount_minor"]),
+                "period": row["period"],
+            }
+            for row in rows
+        ]
+
     def _transaction_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "id": int(row["id"]),

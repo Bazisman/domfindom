@@ -29,6 +29,18 @@ def _mysql_primary_reads_enabled() -> bool:
         return False
 
 
+def _mysql_read_repo_for_current_user():
+    if not _mysql_primary_reads_enabled():
+        return None, None
+    legacy_user_id = _legacy_user_id_from_current_db()
+    if legacy_user_id is None:
+        return None, None
+    from backend.config import settings
+    from backend.storage.mysql_read import MySqlReadRepository
+
+    return MySqlReadRepository(settings.mysql_database_url), legacy_user_id
+
+
 class TransactionService:
     """Сервис для работы с транзакциями"""
     
@@ -123,12 +135,8 @@ class TransactionService:
         """Получает баланс основного счёта"""
         try:
             if _mysql_primary_reads_enabled():
-                legacy_user_id = _legacy_user_id_from_current_db()
-                if legacy_user_id is not None:
-                    from backend.storage.mysql_read import MySqlReadRepository
-                    from backend.config import settings
-
-                    repo = MySqlReadRepository(settings.mysql_database_url)
+                repo, legacy_user_id = _mysql_read_repo_for_current_user()
+                if repo is not None and legacy_user_id is not None:
                     with repo.connect() as conn:
                         data = repo.get_balance(conn, legacy_user_id)
                     return Balance(
@@ -169,12 +177,8 @@ class TransactionService:
                 end = today.replace(month=12, day=31).strftime("%Y-%m-%d")
 
             if _mysql_primary_reads_enabled():
-                legacy_user_id = _legacy_user_id_from_current_db()
-                if legacy_user_id is not None:
-                    from backend.storage.mysql_read import MySqlReadRepository
-                    from backend.config import settings
-
-                    repo = MySqlReadRepository(settings.mysql_database_url)
+                repo, legacy_user_id = _mysql_read_repo_for_current_user()
+                if repo is not None and legacy_user_id is not None:
                     with repo.connect() as conn:
                         raw = repo.get_transactions(conn, legacy_user_id, limit=limit, offset=offset, start_date=start, end_date=end)
                 else:
@@ -333,7 +337,12 @@ class TransactionService:
     def get_categories(self, trans_type: str = None) -> List[str]:
         """Получает список всех категорий"""
         try:
-            categories = core.get_all_categories(trans_type)
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    categories = repo.get_categories(conn, legacy_user_id, trans_type=trans_type)
+            else:
+                categories = core.get_all_categories(trans_type)
             return [cat['name'] for cat in categories]
         except Exception as e:
             app_logger.error(f"Ошибка получения категорий: {e}", exc_info=True)
@@ -359,12 +368,8 @@ class TransactionService:
         """Возвращает статистику за месяц: доходы, расходы, отчисления в капитал"""
         try:
             if _mysql_primary_reads_enabled():
-                legacy_user_id = _legacy_user_id_from_current_db()
-                if legacy_user_id is not None:
-                    from backend.storage.mysql_read import MySqlReadRepository
-                    from backend.config import settings
-
-                    repo = MySqlReadRepository(settings.mysql_database_url)
+                repo, legacy_user_id = _mysql_read_repo_for_current_user()
+                if repo is not None and legacy_user_id is not None:
                     with repo.connect() as conn:
                         return repo.get_monthly_stats(conn, legacy_user_id, year, month)
             # Формируем даты
@@ -418,6 +423,10 @@ class TransactionService:
     def get_all_accounts(self, include_inactive=False):
         """Получает все счета"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_accounts(conn, legacy_user_id, include_inactive=include_inactive)
             return core.get_all_accounts(include_inactive)
         except Exception as e:
             app_logger.error(f"Ошибка получения счетов: {e}", exc_info=True)
@@ -449,6 +458,10 @@ class TransactionService:
     def get_capital_accounts(self):
         """Получает все счета капитала"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_capital_accounts(conn, legacy_user_id)
             return core.get_capital_accounts()
         except Exception as e:
             app_logger.error(f"Ошибка получения счетов капитала: {e}", exc_info=True)
@@ -457,6 +470,10 @@ class TransactionService:
     def get_default_capital_account(self):
         """Возвращает основной счёт капитала для автоотчислений."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_default_capital_account(conn, legacy_user_id)
             return core.get_default_capital_account()
         except Exception as e:
             app_logger.error(f"Ошибка получения основного счёта капитала: {e}", exc_info=True)
@@ -513,6 +530,10 @@ class TransactionService:
     def get_total_capital(self):
         """Получает общую сумму всех счетов капитала"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_total_capital(conn, legacy_user_id)
             return core.get_total_capital()
         except Exception as e:
             app_logger.error(f"Ошибка получения общего капитала: {e}", exc_info=True)
@@ -737,6 +758,10 @@ class TransactionService:
     def get_budgets(self) -> list:
         """Получает все бюджеты"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_budgets(conn, legacy_user_id)
             return core.get_budgets()
         except Exception as e:
             app_logger.error(f"Ошибка получения бюджетов: {e}", exc_info=True)
