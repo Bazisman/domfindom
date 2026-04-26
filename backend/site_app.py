@@ -13,6 +13,17 @@ from backend.auth.service import auth_service
 from backend.api.router import api_router
 from backend.config import settings
 from backend.services import transaction_service
+from utils.logger import app_logger
+
+
+def _guard_unwired_postgres_backend() -> None:
+    if settings.storage_backend == "postgres":
+        raise RuntimeError(
+            "FINANCE_APP_STORAGE_BACKEND=postgres is not enabled yet: "
+            "PostgreSQL migration currently supports ETL, reconciliation and shadow-read only."
+        )
+    if settings.postgres_read_shadow_enabled:
+        app_logger.info("PostgreSQL shadow-read is enabled; primary runtime storage remains SQLite")
 
 
 def _frontend_dist_path() -> Path:
@@ -25,6 +36,7 @@ def _frontend_dist_path() -> Path:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _guard_unwired_postgres_backend()
     auth_service.init_auth_db()
     core.init_db()
     transaction_service.sync_due_planned_transactions()

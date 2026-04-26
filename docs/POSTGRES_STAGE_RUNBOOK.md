@@ -73,7 +73,23 @@ python -B tools\postgres_stage_check.py `
 
 ## Shadow read
 
-После успешного stage-check можно включить теневое чтение для `/dashboard` на stage:
+После успешного stage-check можно проверить готовность cutover/shadow-read:
+
+```powershell
+python -B tools\postgres_cutover_check.py `
+  --source-root <snapshot-or-production-root> `
+  --database-url postgresql+psycopg://<user>:<password>@<host>:5432/<db> `
+  --year 2026 `
+  --month 4
+```
+
+Готовность к `shadow-read` означает:
+- Python PostgreSQL-зависимости установлены;
+- `FINANCE_APP_DATABASE_URL` подключается;
+- Alembic revision совпадает с ожидаемой;
+- family preflight, reconciliation и read-compare проходят без failed checks.
+
+После этого можно включить теневое чтение для `/dashboard` на stage или production:
 
 ```text
 FINANCE_APP_DATABASE_URL=postgresql+psycopg://<user>:<password>@localhost:5432/<stage-db>
@@ -86,6 +102,7 @@ FINANCE_APP_STORAGE_BACKEND=sqlite
 - PostgreSQL читается только для сравнения;
 - при расхождении в лог пишется user id и количество issues, без вывода финансовых значений;
 - production cutover не считается разрешенным только по факту включения shadow-read.
+- `FINANCE_APP_STORAGE_BACKEND=postgres` сейчас намеренно заблокирован startup guard до готовности write-path адаптера.
 
 ## Что нельзя делать
 
