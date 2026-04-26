@@ -40,6 +40,7 @@
 - Shadow-write расширен на ручные личные transfers: PostgreSQL получает transfer row и повторяет изменение балансов счетов, rollback-probe проверяет вставку без сохранения тестовой записи.
 - Shadow-write расширен на семейные auth-метаданные: после изменений семьи, приглашений, ролей, публикации счетов капитала, category bindings и audit resolutions PostgreSQL получает актуальный family snapshot; удаление audit resolution чистит и shadow-строку, и migration mapping.
 - Для практического MySQL-пути создана отдельная production база `u3480024_finance_app`; подключение с сервера проверено через PyMySQL, рабочий SQLite runtime не переключался.
+- Добавлен guarded MySQL schema-tool `tools/mysql_schema.py`; новая MySQL база инициализирована 33 таблицами под auth/finance/family/security/migration без изменения SQLite runtime.
 
 ### 2026-04-25
 
