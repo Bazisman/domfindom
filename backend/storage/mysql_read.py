@@ -688,6 +688,42 @@ class MySqlReadRepository:
             row = cursor.fetchone()
         return from_minor_float(row["total_minor"] if row else 0)
 
+    def get_app_setting(self, conn, legacy_user_id: int, key: str, default: Optional[str] = None) -> Optional[str]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return default
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT value
+                FROM finance_app_settings
+                WHERE user_id = %s AND `key` = %s
+                LIMIT 1
+                """,
+                (user_id, str(key)),
+            )
+            row = cursor.fetchone()
+        return str(row["value"]) if row else default
+
+    def get_auto_capital_settings(self, conn, legacy_user_id: int) -> Dict[str, Any]:
+        enabled_raw = self.get_app_setting(conn, legacy_user_id, "auto_capital_enabled", "1")
+        percent_raw = self.get_app_setting(conn, legacy_user_id, "auto_capital_percent", "10")
+        try:
+            percent = int(percent_raw or 10)
+        except (TypeError, ValueError):
+            percent = 10
+        return {
+            "enabled": str(enabled_raw) == "1",
+            "percent": max(0, min(percent, 100)),
+        }
+
+    def get_default_money_source(self, conn, legacy_user_id: int) -> str:
+        from core_money import MONEY_SOURCE_CASHLESS, normalize_money_source
+
+        return normalize_money_source(
+            self.get_app_setting(conn, legacy_user_id, "default_money_source", MONEY_SOURCE_CASHLESS)
+        )
+
     def get_recurring_templates(self, conn, legacy_user_id: int, template_type: Optional[str] = None) -> List[Dict[str, Any]]:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if user_id is None:

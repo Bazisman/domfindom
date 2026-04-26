@@ -87,10 +87,16 @@ class TransactionService:
     
     def set_auto_capital_settings(self, enabled: bool, percent: int):
         """Устанавливает настройки автоотчислений."""
-        settings = core.set_auto_capital_settings(enabled, percent)
-        self._auto_enabled = settings['enabled']
-        self._auto_percent = settings['percent']
-        app_logger.info(f"Настройки автоотчислений: enabled={enabled}, percent={percent}%")
+        repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+        if repo is not None and legacy_user_id is not None:
+            with repo.connect() as conn:
+                settings = repo.set_auto_capital_settings(conn, legacy_user_id, enabled, percent)
+                conn.commit()
+        else:
+            settings = core.set_auto_capital_settings(enabled, percent)
+        self._auto_enabled = bool(settings['enabled'])
+        self._auto_percent = int(settings['percent'])
+        app_logger.info(f"Настройки автоотчислений: enabled={enabled}, percent={self._auto_percent}%")
     
     def add_listener(self, callback: Callable):
         """Подписка на изменения данных"""
@@ -1108,7 +1114,12 @@ class TransactionService:
     
     def get_auto_capital_settings(self) -> tuple:
         """Возвращает настройки автоотчислений (enabled, percent)"""
-        settings = core.get_auto_capital_settings()
+        repo, legacy_user_id = _mysql_read_repo_for_current_user()
+        if repo is not None and legacy_user_id is not None:
+            with repo.connect() as conn:
+                settings = repo.get_auto_capital_settings(conn, legacy_user_id)
+        else:
+            settings = core.get_auto_capital_settings()
         self._auto_enabled = settings['enabled']
         self._auto_percent = settings['percent']
         return (self._auto_enabled, self._auto_percent)
@@ -1116,6 +1127,10 @@ class TransactionService:
     def get_default_money_source(self) -> str:
         """Получает источник денег по умолчанию."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_default_money_source(conn, legacy_user_id)
             return core.get_default_money_source()
         except Exception as e:
             app_logger.error(f"Ошибка получения источника денег по умолчанию: {e}", exc_info=True)
@@ -1124,7 +1139,14 @@ class TransactionService:
     def set_default_money_source(self, money_source: str) -> str:
         """Устанавливает источник денег по умолчанию."""
         try:
-            result = core.set_default_money_source(money_source)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.set_default_money_source(conn, legacy_user_id, money_source)
+                    conn.commit()
+                result = str(write_result["default_money_source"])
+            else:
+                result = core.set_default_money_source(money_source)
             self.notify_listeners()
             return result
         except Exception as e:

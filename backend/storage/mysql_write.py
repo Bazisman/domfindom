@@ -1043,6 +1043,34 @@ class MySqlWriteRepository(MySqlReadRepository):
             is_active=False,
         )
 
+    def set_app_setting(self, conn, legacy_user_id: int, key: str, value: object) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_app_settings (user_id, `key`, value)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE value = VALUES(value)
+                """,
+                (mysql_user_id, str(key), str(value)),
+            )
+        return {"status": "upserted", "key": str(key)}
+
+    def set_auto_capital_settings(self, conn, legacy_user_id: int, enabled: bool, percent: int) -> Dict[str, Any]:
+        normalized_percent = max(0, min(int(percent), 100))
+        self.set_app_setting(conn, legacy_user_id, "auto_capital_enabled", "1" if enabled else "0")
+        self.set_app_setting(conn, legacy_user_id, "auto_capital_percent", str(normalized_percent))
+        return {"status": "upserted", "enabled": bool(enabled), "percent": normalized_percent}
+
+    def set_default_money_source(self, conn, legacy_user_id: int, money_source: str) -> Dict[str, Any]:
+        from core_money import normalize_money_source
+
+        normalized = normalize_money_source(money_source)
+        self.set_app_setting(conn, legacy_user_id, "default_money_source", normalized)
+        return {"status": "upserted", "default_money_source": normalized}
+
     def mirror_reconciliation(
         self,
         conn,
