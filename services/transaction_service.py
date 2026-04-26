@@ -778,7 +778,14 @@ class TransactionService:
     def set_default_capital_account(self, account_id):
         """Устанавливает основной счёт капитала."""
         try:
-            result = core.set_default_capital_account(account_id)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.set_default_capital_account(conn, legacy_user_id, account_id)
+                    conn.commit()
+                result = write_result.get("status") == "updated"
+            else:
+                result = core.set_default_capital_account(account_id)
             if result:
                 self.notify_listeners()
                 app_logger.info(f"Основной счёт капитала изменён на ID={account_id}")
@@ -790,7 +797,22 @@ class TransactionService:
     def add_capital_account(self, name, balance=0, icon='💰', color='#ff9800'):
         """Добавляет новый счёт капитала."""
         try:
-            result = core.add_capital_account(name, balance, icon, color)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_capital_account(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        name=name,
+                        balance=balance,
+                        icon=icon,
+                        color=color,
+                    )
+                    conn.commit()
+                result = int(write_result["legacy_account_id"])
+            else:
+                result = core.add_capital_account(name, balance, icon, color)
             if result:
                 app_logger.info(f"Добавлен счёт капитала: {name}")
                 self.notify_listeners()
@@ -802,7 +824,19 @@ class TransactionService:
     def update_capital_account(self, account_id, **kwargs):
         """Обновляет счёт капитала"""
         try:
-            result = core.update_capital_account(account_id, **kwargs)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_capital_account(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_account_id=account_id,
+                        **kwargs,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "noop"}
+            else:
+                result = core.update_capital_account(account_id, **kwargs)
             if result:
                 self.notify_listeners()
                 app_logger.debug(f"Обновлён счёт капитала {account_id}: {kwargs}")
@@ -814,7 +848,14 @@ class TransactionService:
     def delete_capital_account(self, account_id):
         """Удаляет счёт капитала (деактивирует)."""
         try:
-            result = core.delete_capital_account(account_id)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.delete_capital_account(conn, legacy_user_id, account_id)
+                    conn.commit()
+                result = write_result.get("status") == "updated"
+            else:
+                result = core.delete_capital_account(account_id)
             if result:
                 self.notify_listeners()
                 app_logger.info(f"Счёт капитала {account_id} деактивирован")

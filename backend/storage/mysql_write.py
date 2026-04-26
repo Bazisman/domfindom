@@ -872,6 +872,165 @@ class MySqlWriteRepository(MySqlReadRepository):
         self._insert_id_map(conn, source_db_path, legacy_user_id, "capital_accounts", legacy_account_id, "capital_accounts", mysql_account_id)
         return {"status": "inserted", "account_id": mysql_account_id}
 
+    def create_capital_account(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        name: str,
+        balance: float = 0,
+        icon: str = "",
+        color: str = "",
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_account_id = max(self._next_legacy_id(conn, mysql_user_id, "capital_accounts"), 100)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS active_count
+                FROM finance_capital_accounts
+                WHERE user_id = %s AND is_active = TRUE
+                """,
+                (mysql_user_id,),
+            )
+            active_count = int(cursor.fetchone()["active_count"] or 0)
+        account = {
+            "id": legacy_account_id,
+            "name": name,
+            "balance": balance,
+            "currency": "RUB",
+            "icon": icon,
+            "color": color,
+            "is_default": active_count == 0,
+            "is_active": True,
+        }
+        result = self.mirror_capital_account(conn, legacy_user_id, source_db_path, account)
+        return {**result, "legacy_account_id": legacy_account_id}
+
+    def update_capital_account(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_account_id: int,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_account_id = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, legacy_account_id)
+        if mysql_account_id is None:
+            return {"status": "missing"}
+        allowed = {
+            "name": "name",
+            "balance": "balance_minor",
+            "icon": "icon",
+            "color": "color",
+            "is_active": "is_active",
+            "is_default": "is_default",
+        }
+        assignments = []
+        values = []
+        for key, column in allowed.items():
+            if key in kwargs:
+                assignments.append(f"{column} = %s")
+                if key == "balance":
+                    values.append(to_minor(kwargs[key]))
+                elif key in {"is_active", "is_default"}:
+                    values.append(bool(kwargs[key]))
+                else:
+                    values.append(kwargs[key])
+        if not assignments:
+            return {"status": "noop", "account_id": mysql_account_id}
+        values.append(mysql_account_id)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE finance_capital_accounts SET {', '.join(assignments)} WHERE id = %s",
+                tuple(values),
+            )
+        return {"status": "updated", "account_id": mysql_account_id}
+
+    def set_default_capital_account(self, conn, legacy_user_id: int, legacy_account_id: int) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_account_id = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, legacy_account_id)
+        if mysql_account_id is None:
+            return {"status": "missing"}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM finance_capital_accounts
+                WHERE id = %s AND user_id = %s AND is_active = TRUE
+                """,
+                (mysql_account_id, mysql_user_id),
+            )
+            if cursor.fetchone() is None:
+                return {"status": "missing", "account_id": mysql_account_id}
+            cursor.execute("UPDATE finance_capital_accounts SET is_default = FALSE WHERE user_id = %s", (mysql_user_id,))
+            cursor.execute(
+                """
+                UPDATE finance_capital_accounts
+                SET is_default = TRUE
+                WHERE id = %s
+                """,
+                (mysql_account_id,),
+            )
+            updated = int(cursor.rowcount)
+        return {"status": "updated" if updated else "missing", "account_id": mysql_account_id}
+
+    def delete_capital_account(self, conn, legacy_user_id: int, legacy_account_id: int) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_account_id = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, legacy_account_id)
+        if mysql_account_id is None:
+            return {"status": "missing"}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE finance_transfers
+                SET is_active = FALSE
+                WHERE user_id = %s
+                  AND (
+                    legacy_from_account_id = %s
+                    OR legacy_to_account_id = %s
+                  )
+                """,
+                (mysql_user_id, int(legacy_account_id), int(legacy_account_id)),
+            )
+            cursor.execute(
+                "SELECT is_default FROM finance_capital_accounts WHERE id = %s",
+                (mysql_account_id,),
+            )
+            row = cursor.fetchone()
+            was_default = bool(row and row["is_default"])
+            cursor.execute(
+                "UPDATE finance_capital_accounts SET is_active = FALSE WHERE id = %s",
+                (mysql_account_id,),
+            )
+            deactivated = int(cursor.rowcount)
+            if was_default:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM finance_capital_accounts
+                    WHERE user_id = %s AND is_active = TRUE AND id != %s
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    (mysql_user_id, mysql_account_id),
+                )
+                new_default = cursor.fetchone()
+                if new_default:
+                    cursor.execute(
+                        "UPDATE finance_capital_accounts SET is_default = TRUE WHERE id = %s",
+                        (int(new_default["id"]),),
+                    )
+        return {"status": "updated" if deactivated else "missing", "account_id": mysql_account_id}
+
     def mirror_standalone_transfer(self, conn, legacy_user_id: int, source_db_path: str, transfer: Dict[str, Any]) -> Dict[str, Any]:
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:
