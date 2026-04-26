@@ -424,6 +424,18 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка удаления транзакции {tid}: {e}", exc_info=True)
             return False
+
+    def rollback_created_transaction(self, tid: int) -> bool:
+        """Удаляет только что созданную транзакцию при откате составной операции."""
+        try:
+            result = core.delete_transaction(tid)
+            if result:
+                self.notify_listeners()
+                app_logger.info(f"Созданная транзакция {tid} удалена при откате")
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка rollback удаления транзакции {tid}: {e}", exc_info=True)
+            return False
     
     def get_categories(self, trans_type: str = None) -> List[str]:
         """Получает список всех категорий"""

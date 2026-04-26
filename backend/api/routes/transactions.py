@@ -219,7 +219,7 @@ def _create_income_with_family_capital(
     except Exception:
         if capital_applied:
             _adjust_capital_account(target_owner_user_id, target_capital_account_id, -contribution_amount)
-        core.delete_transaction(created_id)
+        transaction_service.rollback_created_transaction(created_id)
         raise
 
 
