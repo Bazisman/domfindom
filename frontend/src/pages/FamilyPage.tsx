@@ -6,7 +6,6 @@ import {
   createFamily,
   createFamilyInvite,
   deleteFamilyCategoryAuditResolution,
-  getAccounts,
   getFamilyCategoryAudit,
   getFamilyDashboard,
   getFamilyMembers,
@@ -15,7 +14,6 @@ import {
   previewFamilyCategoryBinding,
   removeFamilyMember,
   resolveFamilyCategoryAuditItem,
-  updateAccount,
   updateFamilyMemberRole,
   type FamilyCategoryAuditResponse,
   type FamilyCategoryBindingPreviewPayload,
@@ -24,7 +22,7 @@ import {
 } from "../lib/api";
 import { categoryTypeLabel } from "../lib/labels";
 
-type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove" | "capital_publish";
+type FamilyBusyAction = "" | "create" | "invite" | "member_update" | "member_remove";
 type CategoryBindingPayloadWithoutFamily = Omit<FamilyCategoryBindingPreviewPayload, "familyId">;
 type CategoryBindingPreviewRequest = FamilyCategoryBindingPreviewPayload & { previewKey?: string };
 type CategoryAuditFinding = FamilyCategoryAuditResponse["findings"][number];
@@ -191,12 +189,6 @@ export function FamilyPage() {
     retry: false,
   });
 
-  const accountsQuery = useQuery({
-    queryKey: ["accounts"],
-    queryFn: getAccounts,
-    retry: false,
-  });
-
   const fallbackFamilyId = familiesQuery.data?.families?.[0]?.id ?? null;
   const familyId = selectedFamilyId ?? fallbackFamilyId;
 
@@ -228,20 +220,6 @@ export function FamilyPage() {
     retry: false,
   });
 
-  const capitalAccounts = useMemo(
-    () => (accountsQuery.data ?? []).filter((item) => item.type === "capital" && item.is_active),
-    [accountsQuery.data],
-  );
-
-  const publishedAccountKeys = useMemo(
-    () =>
-      new Set(
-        (familyDashboardQuery.data?.capital_accounts ?? [])
-          .filter((item) => item.owner_user_id === meQuery.data?.id)
-          .map((item) => `${item.owner_user_id}:${item.capital_account_id}`),
-      ),
-    [familyDashboardQuery.data?.capital_accounts, meQuery.data?.id],
-  );
   const categoryAudit = familyCategoryAuditQuery.data;
   const auditFindings = categoryAudit?.findings ?? [];
   const duplicateCandidateCount = auditFindings.filter((finding) => finding.code === "semantic_duplicate_candidate").length;
@@ -345,29 +323,6 @@ export function FamilyPage() {
     onSettled: () => {
       setBusyAction("");
       setBusyUserId(null);
-    },
-  });
-
-  const publishCapitalMutation = useMutation({
-    mutationFn: ({ accountId, familyVisible, familyDefaultTarget }: { accountId: number; familyVisible: boolean; familyDefaultTarget?: boolean }) =>
-      updateAccount(accountId, {
-        family_visible: familyVisible,
-        family_default_target: familyDefaultTarget,
-    }),
-    onSuccess: async () => {
-      setMessage("Настройки подушки семьи обновлены.");
-      setError("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["accounts"] }),
-        queryClient.invalidateQueries({ queryKey: ["families", familyId, "dashboard"] }),
-      ]);
-    },
-    onError: (mutationError: Error) => {
-      setError(mutationError.message);
-      setMessage("");
-    },
-    onSettled: () => {
-      setBusyAction("");
     },
   });
 
@@ -497,20 +452,6 @@ export function FamilyPage() {
     setBusyAction("member_remove");
     setBusyUserId(memberUserId);
     removeMemberMutation.mutate({ family_id: familyId, user_id: memberUserId });
-  }
-
-  function toggleFamilyCapital(accountId: number, familyVisible: boolean) {
-    setBusyAction("capital_publish");
-    publishCapitalMutation.mutate({
-      accountId,
-      familyVisible,
-      familyDefaultTarget: familyVisible ? undefined : false,
-    });
-  }
-
-  function makeDefaultFamilyCapital(accountId: number) {
-    setBusyAction("capital_publish");
-    publishCapitalMutation.mutate({ accountId, familyVisible: true, familyDefaultTarget: true });
   }
 
   function previewCategoryBinding(payload: CategoryBindingPayloadWithoutFamily, previewKey: string) {
@@ -1077,75 +1018,6 @@ export function FamilyPage() {
               ))}
             </div>
           ) : null}
-        </section>
-      ) : null}
-
-      {familyId !== null ? (
-        <section className="panel panel-wide">
-          <div className="panel-header">
-            <h3>Подушка семьи</h3>
-            <span>Общий резерв на случай проблем</span>
-          </div>
-
-          <div className="transaction-form">
-            <label className="field">
-              <span>Моя подушка для семьи</span>
-              <div className="list">
-                {capitalAccounts.map((account) => {
-                  const accountKey = `${meQuery.data?.id ?? 0}:${account.id}`;
-                  const isPublished = publishedAccountKeys.has(accountKey);
-                  return (
-                    <article className="list-item" key={account.id}>
-                      <div>
-                        <strong>{account.name}</strong>
-                        <p>{formatMoney(account.balance)}</p>
-                      </div>
-                      <div className="family-page-actions">
-                        <button
-                          className="ghost-button"
-                          disabled={busyAction === "capital_publish"}
-                          onClick={() => toggleFamilyCapital(account.id, !isPublished)}
-                          type="button"
-                        >
-                          {isPublished ? "Убрать из семьи" : "Показывать семье"}
-                        </button>
-                        {isPublished && !account.family_default_target ? (
-                          <button
-                            className="ghost-button"
-                            disabled={busyAction === "capital_publish"}
-                            onClick={() => makeDefaultFamilyCapital(account.id)}
-                            type="button"
-                          >
-                            Откладывать сюда
-                          </button>
-                        ) : null}
-                      </div>
-                    </article>
-                  );
-                })}
-                {!capitalAccounts.length ? <p className="muted">У вас пока нет подушек.</p> : null}
-              </div>
-            </label>
-
-          </div>
-
-          <div className="list">
-            {(familyDashboardQuery.data?.capital_accounts ?? []).map((account) => (
-              <article className="list-item" key={`${account.owner_user_id}-${account.capital_account_id}`}>
-                <div>
-                  <strong>{account.name}</strong>
-                  <p>{account.owner_display_name || account.owner_email}</p>
-                </div>
-                <div className="family-page-actions">
-                  {account.is_default_target ? <span className="status-chip">По умолчанию</span> : null}
-                  <strong>{formatMoney(account.balance)}</strong>
-                </div>
-              </article>
-            ))}
-            {!familyDashboardQuery.isLoading && !(familyDashboardQuery.data?.capital_accounts ?? []).length ? (
-              <p className="muted">Подушка семьи пока не настроена.</p>
-            ) : null}
-          </div>
         </section>
       ) : null}
 
