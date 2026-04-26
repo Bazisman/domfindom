@@ -995,7 +995,7 @@ export function AccountsPage() {
             <p className="auto-capital-note">Это не расход: деньги уходят из трат в выбранное место.</p>
 
             <div className="field">
-              <span>Основной способ оплаты</span>
+              <span>Откуда обычно платить</span>
               <div className="toggle-row">
                 <button
                   className={(settings.data?.default_money_source ?? "cashless") === "cashless" ? "toggle active" : "toggle"}
@@ -1003,7 +1003,7 @@ export function AccountsPage() {
                   onClick={() => saveDefaultMoneySource("cashless")}
                   type="button"
                 >
-                  Для трат
+                  С карты
                 </button>
                 <button
                   className={settings.data?.default_money_source === "cash" ? "toggle active" : "toggle"}
@@ -1011,7 +1011,7 @@ export function AccountsPage() {
                   onClick={() => saveDefaultMoneySource("cash")}
                   type="button"
                 >
-                  Наличные
+                  Наличными
                 </button>
               </div>
             </div>
