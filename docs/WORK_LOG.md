@@ -39,6 +39,7 @@
 - Shadow-write расширен на личные категории, бюджеты и счета капитала: изменения справочников и плановых лимитов теперь зеркалируются в PostgreSQL после успешного SQLite-коммита.
 - Shadow-write расширен на ручные личные transfers: PostgreSQL получает transfer row и повторяет изменение балансов счетов, rollback-probe проверяет вставку без сохранения тестовой записи.
 - Shadow-write расширен на семейные auth-метаданные: после изменений семьи, приглашений, ролей, публикации счетов капитала, category bindings и audit resolutions PostgreSQL получает актуальный family snapshot; удаление audit resolution чистит и shadow-строку, и migration mapping.
+- Для практического MySQL-пути создана отдельная production база `u3480024_finance_app`; подключение с сервера проверено через PyMySQL, рабочий SQLite runtime не переключался.
 
 ### 2026-04-25
 

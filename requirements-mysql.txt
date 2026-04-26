@@ -1,0 +1,6 @@
+# Optional dependencies for the MySQL migration track.
+# Keep this file separate from requirements-web.txt until the storage backend
+# is actually wired into runtime.
+
+PyMySQL>=1.1,<1.2
+cryptography>=42,<47
