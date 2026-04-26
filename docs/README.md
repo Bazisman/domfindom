@@ -1,6 +1,6 @@
 # Документация проекта
 
-> Обновлено: 2026-04-25
+> Обновлено: 2026-04-26
 
 Эта папка теперь разделена на две части:
 
@@ -25,6 +25,11 @@
 - `GLOSSARY.md` — единый словарь терминов продукта.
 - `BUSINESS_RULES.md` — формулы, расчетные правила и продуктовые инварианты.
 - `CATEGORY_SYNC_SPEC.md` — ТЗ по смысловым категориям, аудиту, слиянию и семейной синхронизации.
+- `POSTGRES_MIGRATION_PLAN.md` — живой план безопасного перехода с per-user SQLite на PostgreSQL.
+- `POSTGRES_ER_MODEL.md` — черновик целевой PostgreSQL ER-модели перед Alembic/ETL.
+- `POSTGRES_IMPLEMENTATION_PLAN.md` — порядок внедрения Alembic, ETL, сверки и storage-адаптера.
+- `POSTGRES_STAGE_RUNBOOK.md` — безопасный протокол snapshot/stage проверки PostgreSQL migration.
+- `SECURITY_PRIVACY_MODEL.md` — целевая модель приватности, шифрования и временного доступа поддержки.
 - `SCREEN_MAP.md` — карта экранов, навигации и основных пользовательских сценариев.
 - `FEATURES.md` — пользовательские возможности текущей web-версии.
 - `API.md` — API и прикладная семантика текущего web-контура.

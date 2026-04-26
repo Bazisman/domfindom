@@ -1,6 +1,6 @@
 # Журнал работ
 
-> Обновлено: 2026-04-25
+> Обновлено: 2026-04-26
 > Назначение: один общий живой протокол значимых изменений, проверок и выкладок.
 
 ## Правила
@@ -12,8 +12,47 @@
 
 ## Записи
 
+### 2026-04-26
+
+- Добавлен отдельный reconciliation-инструмент для PostgreSQL migration: `tools/postgres_reconciliation.py` сравнивает SQLite source и PostgreSQL target по количествам строк, денежным суммам, месячным агрегатам транзакций, статусам/источникам денег и переводам.
+- Локальная сверка после ETL-загрузки `finance.db` в `finance_app_dev` прошла без расхождений (`failed=0`); старые SQLite-БД без `money_source` сравниваются как `cashless`, как и в ETL.
+- ETL write-target расширен на семейные auth-таблицы: семьи, участники, приглашения, семейный капитал, семейные категории, bindings и audit resolutions переносятся после личных finance-таблиц через сохраненный mapping старых SQLite id.
+- Reconciliation расширен на counts семейных auth-таблиц; локальная проверка проходит без расхождений, но реальная проверка семейных связей еще требует production snapshot/stage данных, потому что локальная `auth.db` пустая.
+- Добавлен read-only preflight для семейных SQLite-связей перед PostgreSQL ETL; production-запуск без записи в БД показал `issues=0` и 8 предупреждений по историческим семейным отчислениям, где исходная транзакция уже удалена.
+- PostgreSQL schema и ETL адаптированы под такие исторические отчисления: новый `legacy_source_transaction_id` сохраняет старую ссылку, а `source_transaction_id` в `family.capital_contributions` стал nullable, чтобы миграция не теряла семейную историю.
+- Добавлен `tools/postgres_stage_check.py`: один guarded-сценарий для stage/snapshot проверки выполняет family preflight, Alembic reset/upgrade, ETL write-target и reconciliation; по умолчанию он работает только с локальным PostgreSQL target и требует явный `--reset-target`.
+- Локальный stage-check на `finance_app_dev` прошел полный цикл без расхождений: `preflight issues=0`, `preflight warnings=0`, `reconciliation failed=0`.
+- Добавлены `tools/sqlite_snapshot_copy.py` и `docs/POSTGRES_STAGE_RUNBOOK.md`: snapshot production-данных теперь описан как отдельный явно разрешаемый шаг в ignored `backups/`, а не как неявное скачивание приватных SQLite-БД в рабочую директорию.
+- После отдельного явного разрешения подготовлен ignored snapshot production SQLite-БД и выполнен полный PostgreSQL stage-check на локальной `finance_app_dev` без записи в production: `preflight issues=0`, `preflight warnings=8`, `reconciliation failed=0`.
+- Stage snapshot загрузил 11 пользователей, 417 транзакций, 107 категорий, 14 семейных отчислений, 15 семейных category bindings и 676 mapping-строк; 8 исторических семейных отчислений корректно сохранены как orphan source transaction через `legacy_source_transaction_id`.
+- Добавлен первый read-only PostgreSQL storage adapter `backend/storage/postgres_read.py` и parity compare `tools/postgres_read_compare.py`: на production snapshot ответы PostgreSQL по balance, transactions, category totals и monthly stats совпали со SQLite для 11 пользователей (`failed=0`).
+- Для read-model категорий с одинаковой суммой закреплен детерминированный порядок `total DESC, category ASC`, чтобы будущий API не зависел от случайного порядка БД.
+- Для перехода на PostgreSQL подготовлен безопасный runtime-шаг без cutover: добавлены конфиги `FINANCE_APP_STORAGE_BACKEND`, `FINANCE_APP_DATABASE_URL`, `FINANCE_APP_RUN_DB_MIGRATIONS`, `FINANCE_APP_POSTGRES_READ_SHADOW`, а `/dashboard` получил выключенный по умолчанию shadow-read, который при явном включении сравнивает SQLite-ответ с PostgreSQL read-model и пишет в лог только факт/количество расхождений.
+
 ### 2026-04-25
 
+- Для будущего перехода на PostgreSQL закреплен живой пошаговый план: сначала read-only инвентаризация текущих SQLite-БД, затем ER-модель, Alembic, ETL dry-run, сверка, stage и только после этого production cutover с rollback.
+- Для пользовательского доверия зафиксирована целевая privacy-модель: application-level encryption как первый уровень, user-held key как режим “разработчик не читает без пользователя”, и временный support grant вместо пересылки ключей по email.
+- В документации отдельно закрепили антиошибку: не совмещать в одном релизе миграцию БД, новую криптографию и изменение семейных расчетов.
+- Read-only инвентаризация SQLite-БД подготовлена и проверена на production: активные пользовательские `finance.db` имеют ожидаемые ключевые таблицы и миграционные колонки, а следующий шаг перенесен на проектирование PostgreSQL ER-модели.
+- Подготовлен черновик PostgreSQL ER-модели: личные finance-таблицы получают `user_id`, семейные связи переносятся через mapping локальных SQLite id, а security-схема заранее учитывает user-held keys и support grants.
+- Для PostgreSQL принято денежное представление в минимальных единицах валюты: суммы и балансы будут храниться как integer-копейки (`*_minor`), а внешний API сможет временно конвертировать их обратно в рубли на границе адаптера.
+- Подготовлен порядок внедрения PostgreSQL без big bang: Alembic initial migration, read-only ETL dry-run, mapping старых SQLite id, сверка агрегатов, stage и постепенный storage-адаптер.
+- Для будущего ETL добавлен чистый helper конвертации денег `tools/money_minor.py`: рубли переводятся в integer-копейки через `Decimal` и `ROUND_HALF_UP`, обратная конвертация возвращает точный `Decimal`.
+- PostgreSQL-зависимости вынесены в отдельный `requirements-postgres.txt`, чтобы не менять production runtime до появления готового storage-слоя.
+- Диапазон `psycopg[binary]` в postgres-зависимостях поднят до `>=3.2,<3.3` для совместимости с локальным Python 3.14; runtime requirements web-приложения не менялись.
+- Alembic scaffold добавлен отдельно от runtime: миграции требуют явный `FINANCE_APP_DATABASE_URL`, Passenger startup не меняется.
+- Initial PostgreSQL migration подготовлена по ER-модели: создаются схемы `auth`, `finance`, `family`, `security`, `migration`, денежные поля используют integer-копейки, а таблицы `security` и `migration` заранее поддерживают будущие ключи и ETL mapping.
+- Первый ETL dry-run scaffold добавлен без записи в PostgreSQL: скрипт читает SQLite-источники read-only, считает строки и проверяет конвертацию денежных колонок в integer-копейки.
+- Для PostgreSQL migration scaffold добавлены статические тесты без внешней БД: они проверяют revision, схемы, денежные `*_minor` поля, daily/capital transfer-модель и отсутствие Alembic auto-run в backend startup.
+- Read-only ETL dry-run выполнен на production через временные tool-файлы: все найденные денежные колонки в SQLite-источниках конвертируются в integer-копейки без invalid values; временные файлы на хосте удалены.
+- ETL dry-run усилен проверкой переносимости переводов: каждая сторона `transfers` должна однозначно разрешаться в daily account или capital account, иначе migration покажет `missing` или `ambiguous` до записи в PostgreSQL.
+- Production summary после усиленного ETL dry-run: проверено 13 SQLite-БД, `invalid_money=0`, `transfer_issues=0`; временные tool-файлы на хосте удалены.
+- Локально установлены PostgreSQL Python-зависимости из отдельного `requirements-postgres.txt`; production runtime requirements не менялись.
+- Initial PostgreSQL migration проверена через Alembic offline SQL generation: DDL для схем `auth`, `finance`, `family`, `security`, `migration` генерируется без подключения к БД, следующий непроверенный шаг - прогон на реальном PostgreSQL server.
+- Локально установлен PostgreSQL 17 server, создана пустая dev-БД `finance_app_dev`, initial migration применена успешно; проверка показала `alembic_version=20260425_0001` и созданные таблицы во всех целевых схемах.
+- ETL scaffold расширен до guarded write-target режима для локального/stage PostgreSQL: загрузка требует явные `--database-url`, `--write-target` и `--wipe-target`, сохраняет mapping старых id в `migration.id_map` и пока переносит auth/users plus личные finance-таблицы без семейных auth-связей.
+- Локальная ETL-загрузка в `finance_app_dev` прошла успешно на legacy `finance.db`: перенесены 184 транзакции, 22 категории, 35 переводов и связанные справочники; у всех транзакций заполнен `category_id`, в `migration.id_map` создано 264 связи.
 - Добавлена модель повседневных денег `Безнал` и `Наличные`: операции, planned-записи и регулярные шаблоны сохраняют `money_source`, баланс считается как сумма двух источников, а переводы между ними работают как перемещение денег без дохода или расхода.
 - В интерфейсе добавлены переключатели `Безнал` / `Наличные`, настройка источника по умолчанию, карточки обоих повседневных счетов и редактирование операции с переносом балансового эффекта между источниками.
 - Изменение подтверждено `python -m unittest discover -s tests`, `npm run build` из `frontend` и проверкой кодировки внутри сборки.

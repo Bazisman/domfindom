@@ -59,6 +59,10 @@ class AppConfig:
     backend_host: str
     backend_port: int
     backend_reload: bool
+    storage_backend: str
+    database_url: str
+    run_db_migrations: bool
+    postgres_read_shadow_enabled: bool
     auth_db_name: str
     users_data_dir: str
     session_cookie_name: str
@@ -101,6 +105,10 @@ settings = AppConfig(
     backend_host=os.getenv("FINANCE_APP_BACKEND_HOST", "127.0.0.1"),
     backend_port=_parse_int(os.getenv("FINANCE_APP_BACKEND_PORT", "8000"), 8000),
     backend_reload=_parse_bool(os.getenv("FINANCE_APP_BACKEND_RELOAD", "true"), default=True),
+    storage_backend=os.getenv("FINANCE_APP_STORAGE_BACKEND", "sqlite").strip().lower() or "sqlite",
+    database_url=os.getenv("FINANCE_APP_DATABASE_URL", "").strip(),
+    run_db_migrations=_parse_bool(os.getenv("FINANCE_APP_RUN_DB_MIGRATIONS", "false")),
+    postgres_read_shadow_enabled=_parse_bool(os.getenv("FINANCE_APP_POSTGRES_READ_SHADOW", "false")),
     auth_db_name=os.getenv("FINANCE_APP_AUTH_DB_NAME", "auth.db"),
     users_data_dir=os.getenv("FINANCE_APP_USERS_DATA_DIR", "data/users"),
     session_cookie_name=os.getenv("FINANCE_APP_SESSION_COOKIE_NAME", "finance_session"),
@@ -178,6 +186,9 @@ settings = AppConfig(
 
 if settings.session_cookie_samesite not in {"lax", "strict", "none"}:
     settings.session_cookie_samesite = "lax"
+
+if settings.storage_backend not in {"sqlite", "postgres"}:
+    settings.storage_backend = "sqlite"
 
 if _is_production() and settings.session_secret == "dev-insecure-change-me":
     if settings.enforce_strict_session_secret and not settings.allow_insecure_session_secret:

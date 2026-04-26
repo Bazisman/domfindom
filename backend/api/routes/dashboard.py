@@ -9,6 +9,7 @@ from backend.schemas.budgets import BudgetStatusItem
 from backend.schemas.forecast import ForecastResponse
 from backend.schemas.transactions import TransactionResponse
 from backend.services import row_to_transaction_response, transaction_service
+from backend.storage.shadow_read import compare_dashboard_shadow_read
 
 
 router = APIRouter()
@@ -58,6 +59,7 @@ def get_dashboard(request: Request) -> DashboardResponse:
         if item.status != "planned"
     ][:10]
     budgets = core.get_budget_status()[:5]
+    compare_dashboard_shadow_read(current_user, balance, current_month_stats, now.year, now.month)
 
     return DashboardResponse(
         balance=BalanceSummary(

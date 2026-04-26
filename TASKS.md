@@ -1,6 +1,6 @@
 # TASKS
 
-> Обновлено: 2026-04-24
+> Обновлено: 2026-04-26
 > Назначение: короткий рабочий список следующего шага и ближайшего фокуса.
 
 ## Сейчас в фокусе
@@ -13,7 +13,8 @@
 
 ## Следующий шаг
 
-- перевести семейные отчеты, forecast и `Статус бюджетов` на использование подтвержденных category bindings там, где связь уже есть, оставив текстовый fallback как временный слой.
+- спроектировать безопасное подключение read-only PostgreSQL adapter к runtime за feature flag без переключения production;
+- затем перевести семейные отчеты, forecast и `Статус бюджетов` на использование подтвержденных category bindings там, где связь уже есть, оставив текстовый fallback как временный слой.
 
 ## В работе
 
@@ -24,7 +25,9 @@
 - [ ] Продумать границы семейного доступа на уровне продукта и данных.
 - [x] Реализовать первый этап смысловых категорий: аудит без изменения данных.
 - [x] Реализовать второй безопасный этап смысловых категорий: preview и подтверждение связей без переписывания истории.
-- [ ] Подготовить безопасный план миграции на PostgreSQL без спешки и без риска для production.
+- [x] Подготовить безопасный план миграции на PostgreSQL без спешки и без риска для production.
+- [x] Зафиксировать целевую privacy-модель с пользовательским ключом и временным доступом поддержки.
+- [x] Сделать read-only инвентаризацию текущих SQLite-БД перед проектированием PostgreSQL-схемы.
 
 ## Высокий приоритет
 
@@ -36,6 +39,31 @@
 ## Бэклог
 
 - [ ] Подготовить пошаговую миграцию с per-user SQLite на PostgreSQL.
+- [x] Спроектировать черновую PostgreSQL ER-модель с учетом текущей production-схемы и будущей metadata шифрования.
+- [x] Согласовать денежный тип PostgreSQL: хранить суммы и балансы как integer-копейки.
+- [x] Спроектировать порядок внедрения PostgreSQL: Alembic, ETL, сверка и storage-адаптер.
+- [x] Добавить чистый money-minor helper и тесты перед ETL.
+- [x] Подготовить Alembic/SQLAlchemy dependency change отдельным безопасным файлом без изменения runtime requirements.
+- [x] Подготовить Alembic scaffold без подключения к production startup.
+- [x] Подготовить initial PostgreSQL migration по `POSTGRES_ER_MODEL.md`.
+- [x] Подготовить read-only ETL dry-run scaffold для SQLite-источников.
+- [x] Добавить статические проверки PostgreSQL migration scaffold без локального PostgreSQL.
+- [x] Прогнать read-only ETL dry-run на production без записи в БД.
+- [x] Добавить dry-run проверку transfer refs для будущего переноса daily/capital переводов.
+- [x] Установить локальные Python-зависимости из `requirements-postgres.txt`.
+- [x] Проверить initial migration через Alembic offline SQL generation без подключения к БД.
+- [x] Установить локальный PostgreSQL 17 server для dev-проверок.
+- [x] Проверить initial migration на локальной PostgreSQL-БД.
+- [x] Расширить ETL до записи в PostgreSQL target в локальном режиме для auth/users и личных finance-таблиц.
+- [x] Добавить формальную сверку агрегатов SQLite/PostgreSQL после ETL-загрузки.
+- [x] Расширить ETL на семейные auth-таблицы.
+- [x] Проверить семейные SQLite-связи на production read-only preflight без записи в production.
+- [x] Подготовить stage-сценарий PostgreSQL migration.
+- [x] Подготовить snapshot-copy утилиту и stage runbook.
+- [x] Прогнать stage-сценарий на копии production-данных без записи в production.
+- [x] Спроектировать первый read-only PostgreSQL storage adapter/repository слой.
+- [x] Сравнить первый PostgreSQL read-model со SQLite/core на production snapshot.
+- [ ] Подготовить feature flag для read-only PostgreSQL adapter без production cutover.
 - [ ] Продумать дополнительные семейные роли или тонкие разрешения, если текущих трех ролей станет мало.
 - [ ] Добавить более формальные e2e-сценарии для семейного режима и account UX.
 - [ ] Подумать над мягкой системой уведомлений кроме семейных приглашений.

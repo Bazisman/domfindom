@@ -1,0 +1,7 @@
+# Optional dependencies for the future PostgreSQL migration track.
+# Keep this file separate from requirements-web.txt until the storage backend
+# is actually wired into runtime.
+
+SQLAlchemy>=2.0,<2.1
+alembic>=1.13,<1.14
+psycopg[binary]>=3.2,<3.3
