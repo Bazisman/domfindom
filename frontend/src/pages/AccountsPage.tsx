@@ -62,6 +62,18 @@ function getCapitalPurposeFromLabel(purpose: Account["purpose"] | undefined) {
   return purpose === "investment" ? "инвестиций" : "подушки";
 }
 
+function getCapitalPurposeToLabel(purpose: Account["purpose"] | undefined) {
+  return purpose === "investment" ? "инвестиции" : "подушку";
+}
+
+function getCapitalPurposeGrowthLabel(purpose: Account["purpose"] | undefined) {
+  return purpose === "investment" ? "инвестиции стали больше" : "подушка стала больше";
+}
+
+function getCapitalPurposePersonalToLabel(purpose: Account["purpose"] | undefined) {
+  return purpose === "investment" ? "личные инвестиции" : "личную подушку";
+}
+
 function getCapitalPurposeTone(account: Pick<Account, "purpose" | "family_visible">) {
   const base = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
   if (account.family_visible) {
@@ -82,17 +94,16 @@ function getTransferStory(transfer: Transfer, accountById: Map<number, Account>)
     transfer.to_name.toLocaleLowerCase("ru-RU").includes("семейн");
 
   if (fromIsDaily && !toIsDaily) {
-    const toPurposeLabel = getCapitalPurposeLabel(toAccount?.purpose).toLocaleLowerCase("ru-RU");
     const toAction = toAccount?.purpose === "investment" ? "В инвестиции" : "В подушку";
     if (toIsFamilyCushion) {
       return {
         label: `${toAction} семьи`,
-        note: `Это не расход: деньги на жизнь уменьшились, ${toPurposeLabel} семьи стали больше.`,
+        note: "Это не расход: денег на жизнь стало меньше, семейные накопления стали больше.",
       };
     }
     return {
       label: `${toAction}`,
-      note: `Деньги на жизнь уменьшились, ${toPurposeLabel} стали больше.`,
+      note: `Денег на жизнь стало меньше, ${getCapitalPurposeGrowthLabel(toAccount?.purpose)}.`,
     };
   }
   if (!fromIsDaily && toIsDaily) {
@@ -115,13 +126,13 @@ function getTransferStory(transfer: Transfer, accountById: Map<number, Account>)
     };
   }
   if (toIsFamilyCushion) {
-    const toPurposeLabel = getCapitalPurposeLabel(toAccount?.purpose).toLocaleLowerCase("ru-RU");
+    const toPurposeLabel = getCapitalPurposeToLabel(toAccount?.purpose);
     return {
       label: `В ${toPurposeLabel} семьи`,
       note: `Деньги перешли в ${toPurposeLabel} семьи.`,
     };
   }
-  const toPurposeLabel = getCapitalPurposeLabel(toAccount?.purpose).toLocaleLowerCase("ru-RU");
+  const toPurposeLabel = getCapitalPurposeToLabel(toAccount?.purpose);
   return {
     label: `В ${toPurposeLabel}`,
     note: `Деньги перешли в ${toPurposeLabel}.`,
@@ -322,31 +333,32 @@ export function AccountsPage() {
     const toIsFamilyCushion = Boolean(selectedTransferToFamilyAccount || selectedTransferToAccount?.family_visible);
     const fromIsFamilyCushion = Boolean(selectedTransferFromAccount.family_visible);
     const toPurpose = selectedTransferToFamilyAccount?.purpose ?? selectedTransferToAccount?.purpose ?? "cushion";
-    const toPurposeLabel = getCapitalPurposeLabel(toPurpose).toLocaleLowerCase("ru-RU");
+    const toPurposeToLabel = getCapitalPurposeToLabel(toPurpose);
+    const toPersonalPurposeLabel = getCapitalPurposePersonalToLabel(toPurpose);
     const fromPurposeLabel = getCapitalPurposeFromLabel(selectedTransferFromAccount.purpose);
     if (fromIsDaily && !toIsDaily) {
       if (toIsFamilyCushion) {
-        return `Это не расход: деньги уйдут из трат в ${toPurposeLabel} семьи.`;
+        return `Это не расход: часть денег на жизнь перейдет в ${toPurposeToLabel} семьи.`;
       }
       if (familyModeEnabled) {
-        return `Для семьи это деньги ушли в личные ${toPurposeLabel}.`;
+        return `Для семьи это деньги ушли из общих денег в ${toPersonalPurposeLabel}.`;
       }
-      return `Это не расход: деньги уйдут из трат в ${toPurposeLabel}.`;
+      return `Это не расход: часть денег на жизнь перейдет в ${toPurposeToLabel}.`;
     }
     if (!fromIsDaily && toIsDaily) {
       if (fromIsFamilyCushion && familyModeEnabled) {
-        return `Деньги вернутся из ${fromPurposeLabel} семьи в траты.`;
+        return `Деньги вернутся из ${fromPurposeLabel} семьи на жизнь.`;
       }
-      return `Деньги вернутся из ${fromPurposeLabel} в траты.`;
+      return `Деньги вернутся из ${fromPurposeLabel} на жизнь.`;
     }
     if (fromIsDaily && toIsDaily) {
       return "Это просто перенос между деньгами на руках.";
     }
     if (toIsFamilyCushion) {
-      return `Деньги перейдут в ${toPurposeLabel} семьи.`;
+      return `Деньги перейдут в ${toPurposeToLabel} семьи.`;
     }
     if (familyModeEnabled) {
-      return `Деньги перейдут в личные ${toPurposeLabel}.`;
+      return `Деньги перейдут в ${toPersonalPurposeLabel}.`;
     }
     return "Это перенос между накоплениями.";
   }, [familyModeEnabled, selectedTransferFromAccount, selectedTransferToAccount, selectedTransferToFamilyAccount]);
@@ -901,7 +913,7 @@ export function AccountsPage() {
       const purposeLabel = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
       return `${account.family_visible ? `Семья · ${purposeLabel}` : getCapitalPurposeLabel(account.purpose)} · ${account.name}`;
     }
-    return account.money_source === "cash" ? "Наличные" : "Для трат";
+    return account.money_source === "cash" ? "Наличные" : "Карта";
   }
 
   function saveDefaultMoneySource(source: "cashless" | "cash") {
@@ -992,7 +1004,7 @@ export function AccountsPage() {
               </select>
             </label>
 
-            <p className="auto-capital-note">Это не расход: деньги уходят из трат в выбранное место.</p>
+            <p className="auto-capital-note">Это не расход: часть денег на жизнь переходит в выбранное место.</p>
 
             <div className="field">
               <span>Откуда обычно платить</span>
@@ -1269,7 +1281,7 @@ export function AccountsPage() {
             <article className="summary-card account-summary-card">
               <p className="panel-label">Мои всего</p>
               <h3>{formatMoney(personalTotalVisibleMoney)}</h3>
-              <p className="muted">Личные деньги на жизнь и моя подушка.</p>
+              <p className="muted">Мои деньги на жизнь, подушка и инвестиции.</p>
             </article>
           </div>
 
@@ -1420,7 +1432,7 @@ export function AccountsPage() {
         {!!familyVisibleAccounts.length && (
           <section className="panel panel-list">
             <div className="panel-header">
-              <h2>История подушки семьи</h2>
+              <h2>История семейных накоплений</h2>
             </div>
 
             <div className="transaction-table">
@@ -1428,9 +1440,9 @@ export function AccountsPage() {
                 <article className="transaction-row" key={item.id}>
                   <div className="transaction-main">
                     <strong>
-                      {(item.source_display_name || item.source_email || "Участник")} → {item.target_account_name || "Подушка семьи"}
+                      {(item.source_display_name || item.source_email || "Участник")} → {item.target_account_name || "Место семьи"}
                     </strong>
-                    <p>{item.comment || "Отложили в подушку семьи"}</p>
+                    <p>{item.comment || "Отложили в семейные накопления"}</p>
                     <p className="muted">
                       Получатель: {item.target_owner_display_name || item.target_owner_email || "Семья"}
                     </p>
@@ -1444,7 +1456,7 @@ export function AccountsPage() {
 
               {!familyCapitalHistory.data?.items?.length && (
                 <p className="empty">
-                  {familyCapitalHistory.isLoading ? "Загружаем историю подушки..." : "Движений подушки пока нет."}
+                  {familyCapitalHistory.isLoading ? "Загружаем историю..." : "Движений пока нет."}
                 </p>
               )}
             </div>
