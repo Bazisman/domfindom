@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import core
@@ -30,6 +31,16 @@ class MySqlPrimaryReadSliceTestCase(unittest.TestCase):
 
         self.assertIsNone(repo)
         self.assertIsNone(legacy_user_id)
+
+    def test_mysql_primary_reads_can_use_pilot_flag(self):
+        settings = SimpleNamespace(
+            storage_backend="sqlite",
+            mysql_database_url="mysql+pymysql://user:pass@localhost:3306/db",
+            mysql_primary_read_pilot_enabled=True,
+        )
+
+        with patch("backend.config.settings", settings):
+            self.assertTrue(transaction_service_module._mysql_primary_reads_enabled())
 
 
 if __name__ == "__main__":

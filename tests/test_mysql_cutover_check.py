@@ -22,6 +22,23 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertEqual(check["status"], "blocked")
         self.assertIn("SQLite", check["reason"])
 
+    def test_primary_read_pilot_requires_database_url(self):
+        check = mysql_cutover_check.check_primary_read_pilot(
+            {"FINANCE_APP_MYSQL_PRIMARY_READ_PILOT": "true"},
+            "",
+        )
+
+        self.assertEqual(check["status"], "blocked")
+        self.assertTrue(check["enabled"])
+
+    def test_primary_read_pilot_can_be_enabled_with_database_url(self):
+        check = mysql_cutover_check.check_primary_read_pilot(
+            {"FINANCE_APP_MYSQL_PRIMARY_READ_PILOT": "true"},
+            "mysql+pymysql://user:pass@localhost:3306/db",
+        )
+
+        self.assertEqual(check, {"status": "ok", "enabled": True})
+
     def test_build_report_can_be_shadow_ready_but_not_runtime_ready(self):
         with (
             patch.object(mysql_cutover_check, "check_python_dependencies", return_value={"status": "ok"}),

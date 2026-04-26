@@ -62,6 +62,7 @@
 - Settings route больше не импортирует `core`: default money source читается и обновляется через `TransactionService`.
 - Transactions route продолжил уход от прямых read helpers: category-by-name, recurring-template-by-id и transaction-row-by-id после create/update теперь идут через service layer; write-heavy `core.add_*` пока оставлен для отдельного adapter шага.
 - Transactions route перевел создание доходов/расходов, planned transactions, recurring-template операции и rollback удаления созданной транзакции на `TransactionService`; SQLite остается текущим runtime, но write helpers теперь проходят через service boundary для будущего MySQL adapter.
+- Добавлен guarded MySQL primary-read pilot `FINANCE_APP_MYSQL_PRIMARY_READ_PILOT`: уже подготовленные `TransactionService`/category/budget read paths могут читать из MySQL без включения неподготовленного полного write-runtime cutover.
 
 ### 2026-04-25
 

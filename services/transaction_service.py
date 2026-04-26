@@ -24,7 +24,13 @@ def _mysql_primary_reads_enabled() -> bool:
     try:
         from backend.config import settings
 
-        return bool(settings.storage_backend == "mysql" and settings.mysql_database_url)
+        return bool(
+            settings.mysql_database_url
+            and (
+                settings.storage_backend == "mysql"
+                or getattr(settings, "mysql_primary_read_pilot_enabled", False)
+            )
+        )
     except Exception:
         return False
 

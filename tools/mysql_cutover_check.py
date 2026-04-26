@@ -115,6 +115,13 @@ def check_runtime_adapter_status(allow_mysql_backend: bool) -> Dict[str, Any]:
     }
 
 
+def check_primary_read_pilot(env: Dict[str, str], database_url: str) -> Dict[str, Any]:
+    enabled = (env.get("FINANCE_APP_MYSQL_PRIMARY_READ_PILOT", "").strip().lower() in {"1", "true", "yes", "on"})
+    if enabled and not database_url:
+        return {"status": "blocked", "enabled": enabled, "reason": "pilot requires FINANCE_APP_MYSQL_DATABASE_URL"}
+    return {"status": "ok", "enabled": enabled}
+
+
 def run_json_tool(command: Sequence[str], env: Dict[str, str]) -> Dict[str, Any]:
     step = run_step(command, env)
     parsed = parse_json_stdout(step)
@@ -146,6 +153,7 @@ def build_report(
             env.get("FINANCE_APP_STORAGE_BACKEND", "sqlite").strip().lower() or "sqlite",
             allow_mysql_backend=allow_mysql_backend,
         ),
+        "primary_read_pilot": check_primary_read_pilot(env, database_url),
         "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend),
     }
 

@@ -67,6 +67,7 @@ class AppConfig:
     mysql_database_url: str
     mysql_read_shadow_enabled: bool
     mysql_shadow_write_enabled: bool
+    mysql_primary_read_pilot_enabled: bool
     auth_db_name: str
     users_data_dir: str
     session_cookie_name: str
@@ -117,6 +118,7 @@ settings = AppConfig(
     mysql_database_url=os.getenv("FINANCE_APP_MYSQL_DATABASE_URL", "").strip(),
     mysql_read_shadow_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_READ_SHADOW", "false")),
     mysql_shadow_write_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_SHADOW_WRITE", "false")),
+    mysql_primary_read_pilot_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_PRIMARY_READ_PILOT", "false")),
     auth_db_name=os.getenv("FINANCE_APP_AUTH_DB_NAME", "auth.db"),
     users_data_dir=os.getenv("FINANCE_APP_USERS_DATA_DIR", "data/users"),
     session_cookie_name=os.getenv("FINANCE_APP_SESSION_COOKIE_NAME", "finance_session"),
