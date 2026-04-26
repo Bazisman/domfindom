@@ -2,12 +2,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import core
 from backend.api.routes.accounts import _find_account_row, _row_value
 from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.accounts import TransferCreateRequest, TransferResponse
-from backend.services import transaction_service
+from backend.services import run_in_user_finance_db, transaction_service
 from backend.storage.shadow_write import mirror_transfer_shadow_write
 
 
@@ -40,15 +39,13 @@ def _family_transfer_rows(user_id: int, account_id: Optional[int], limit: int) -
             continue
 
         target_account_name = ""
-        db_path = auth_service.ensure_user_finance_db(target_owner_user_id)
-        token = core.push_db_name(db_path)
-        try:
+        def _action():
             for capital_account in transaction_service.get_capital_accounts(include_inactive=True):
                 if int(_row_value(capital_account, "id", 0)) == target_capital_account_id:
-                    target_account_name = str(_row_value(capital_account, "name", ""))
-                    break
-        finally:
-            core.pop_db_name(token)
+                    return str(_row_value(capital_account, "name", ""))
+            return ""
+
+        target_account_name = run_in_user_finance_db(target_owner_user_id, _action)
 
         source_name = "Безнал"
         if user_id == target_owner_user_id and user_id != source_user_id:

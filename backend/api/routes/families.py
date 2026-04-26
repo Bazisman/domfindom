@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-import core
 from backend.auth.dependencies import require_user
 from backend.auth.mailer import auth_mailer
 from backend.auth.service import auth_service
@@ -45,7 +44,7 @@ from backend.schemas.families import (
     FamilyTransactionListResponse,
 )
 from backend.schemas.forecast import ForecastResponse
-from backend.services import row_to_transaction_response, transaction_service
+from backend.services import row_to_transaction_response, run_in_user_finance_db, transaction_service
 from backend.storage.shadow_write import mirror_family_snapshot_shadow_write
 
 
@@ -359,12 +358,7 @@ def _require_family_admin_access(family_id: int, user_id: int):
 
 
 def _run_in_user_db(user_id: int, action):
-    user_db_path = auth_service.ensure_user_finance_db(user_id)
-    token = core.push_db_name(user_db_path)
-    try:
-        return action()
-    finally:
-        core.pop_db_name(token)
+    return run_in_user_finance_db(user_id, action)
 
 
 def _get_active_capital_account(owner_user_id: int, capital_account_id: int):

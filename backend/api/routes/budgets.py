@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import core
 from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.budgets import (
@@ -16,7 +15,7 @@ from backend.schemas.budgets import (
     BudgetStatusItem,
     BudgetUpdateRequest,
 )
-from backend.services import category_service, transaction_service
+from backend.services import category_service, run_in_user_finance_db, transaction_service
 from backend.storage.shadow_write import (
     mirror_budget_shadow_write,
     mirror_deleted_budget_shadow_write,
@@ -77,9 +76,7 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
 
     for member in members:
         user_id = int(member["user_id"])
-        user_db_path = auth_service.ensure_user_finance_db(user_id)
-        db_token = core.push_db_name(user_db_path)
-        try:
+        def _action():
             for row in transaction_service.get_expenses_by_category(start_of_month, end_of_month):
                 normalized = _normalize_budget_category_name(row["category"])
                 if normalized:
@@ -116,8 +113,8 @@ def _build_family_budget_status(family_id: int) -> List[BudgetStatusItem]:
                     bucket["daily_amount"] = float(bucket["daily_amount"]) + amount
                 else:
                     bucket["has_non_daily"] = True
-        finally:
-            core.pop_db_name(db_token)
+
+        run_in_user_finance_db(user_id, _action)
 
     result: List[BudgetStatusItem] = []
     for normalized_name, budget_meta in sorted(

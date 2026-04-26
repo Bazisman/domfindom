@@ -2,7 +2,6 @@ from collections import defaultdict
 from datetime import date as date_cls, timedelta
 from typing import Dict, List, Optional, Tuple
 
-import core
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.auth.dependencies import require_user
@@ -11,7 +10,7 @@ from backend.schemas.reports import (
     CategorySummaryItemResponse,
     CategorySummaryResponse,
 )
-from backend.services import category_service, transaction_service
+from backend.services import category_service, run_in_user_finance_db, transaction_service
 
 
 router = APIRouter()
@@ -128,17 +127,15 @@ def _build_family_category_summary(
 
     for member in members:
         user_id = int(member["user_id"])
-        user_db_path = auth_service.ensure_user_finance_db(user_id)
-        db_token = core.push_db_name(user_db_path)
-        try:
+        def _action():
             rows = _load_personal_category_rows(summary_type, start_date, end_date)
             for row in rows:
                 category_name = str(row["category"] or "Без категории")
                 totals[category_name] += float(row["total"] or 0.0)
                 if category_name not in meta_map:
                     meta_map[category_name] = _map_category_meta(category_name)
-        finally:
-            core.pop_db_name(db_token)
+
+        run_in_user_finance_db(user_id, _action)
 
     sorted_rows = [
         {

@@ -4,7 +4,6 @@ from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import core
 from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.common import MessageResponse
@@ -15,7 +14,7 @@ from backend.schemas.transactions import (
     TransactionResponse,
     TransactionUpdateRequest,
 )
-from backend.services import category_service, row_to_transaction_response, transaction_service
+from backend.services import category_service, row_to_transaction_response, run_in_user_finance_db, transaction_service
 from backend.storage.shadow_write import (
     mirror_created_transaction_shadow_write,
     mirror_recurring_template_shadow_write,
@@ -112,12 +111,7 @@ def _primary_family_id(user_id: int) -> int:
 
 
 def _run_in_user_db(user_id: int, action):
-    db_path = auth_service.ensure_user_finance_db(user_id)
-    token = core.push_db_name(db_path)
-    try:
-        return action()
-    finally:
-        core.pop_db_name(token)
+    return run_in_user_finance_db(user_id, action)
 
 
 def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
