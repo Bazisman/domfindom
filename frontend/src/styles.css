@@ -592,6 +592,18 @@ body {
   grid-template-columns: 1fr;
 }
 
+.transactions-layout-stack > .panel-form {
+  order: 1;
+}
+
+.transactions-layout-stack > .panel-list {
+  order: 2;
+}
+
+.transactions-layout-stack > .reconciliation-panel {
+  order: 3;
+}
+
 .transactions-page-stack > .panel,
 .transactions-page-stack > .transactions-layout-stack {
   grid-column: 1 / -1;
