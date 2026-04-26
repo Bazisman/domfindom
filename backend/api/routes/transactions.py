@@ -189,7 +189,7 @@ def _create_income_with_family_capital(
         return None
 
     contribution_amount = payload.amount * (auto_capital_percent / 100)
-    created_id = core.add_income_with_capital(
+    created_id = transaction_service.add_income_with_capital(
         payload.amount,
         category_name,
         payload.comment,
@@ -282,10 +282,10 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
     shadow_write_skip_reason = ""
 
     if is_future and recurring_payload and recurring_payload.working_days_only:
-        planned_date = core._adjust_to_workday(payload.date)
+        planned_date = transaction_service.adjust_to_workday(payload.date)
 
     if is_future:
-        created_id = core.add_planned_transaction(
+        created_id = transaction_service.add_planned_transaction(
             payload.type,
             category_name,
             payload.amount,
@@ -316,7 +316,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
             else:
                 if capital_account_id is None and default_capital_account:
                     capital_account_id = default_capital_account["id"]
-                created_id = core.add_income_with_capital(
+                created_id = transaction_service.add_income_with_capital(
                     payload.amount,
                     category_name,
                     payload.comment,
@@ -326,7 +326,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
                     money_source=payload.money_source,
                 )
         else:
-            created_id = core.add_expense(
+            created_id = transaction_service.add_expense(
                 payload.amount,
                 category_name,
                 payload.comment,
@@ -336,7 +336,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
 
     if recurring_payload:
         template_name = recurring_payload.template_name.strip() or payload.comment.strip() or category_name
-        template_id = core.create_recurring_template(
+        template_id = transaction_service.create_recurring_template(
             template_type=payload.type,
             name=template_name,
             amount=payload.amount,
@@ -348,9 +348,9 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
             money_source=payload.money_source,
         )
         month_start, month_end = _month_range(planned_date if is_future else payload.date)
-        core.delete_planned_transactions_in_period(template_id, month_start, month_end)
+        transaction_service.delete_planned_transactions_in_period(template_id, month_start, month_end)
         if is_future:
-            core.assign_template_to_planned_transaction(created_id, template_id)
+            transaction_service.assign_template_to_planned_transaction(created_id, template_id)
         template_row = transaction_service.get_recurring_template_by_id(template_id)
         if template_row:
             mirror_recurring_template_shadow_write(current_user, template_row)

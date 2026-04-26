@@ -305,6 +305,77 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка добавления транзакции: {e}", exc_info=True)
             return False
+
+    def add_income_with_capital(
+        self,
+        amount: float,
+        category: str,
+        comment: str,
+        date: str,
+        capital_percent: int = 0,
+        capital_account_id: int = None,
+        money_source: str = "cashless",
+    ):
+        """Создаёт доход с возможным отчислением в капитал и возвращает ID."""
+        try:
+            result = core.add_income_with_capital(
+                amount,
+                category,
+                comment,
+                date,
+                capital_percent,
+                capital_account_id,
+                money_source=money_source,
+            )
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка создания дохода: {e}", exc_info=True)
+            return None
+
+    def add_expense(
+        self,
+        amount: float,
+        category: str,
+        comment: str,
+        date: str,
+        money_source: str = "cashless",
+    ):
+        """Создаёт расход и возвращает ID."""
+        try:
+            result = core.add_expense(amount, category, comment, date, money_source=money_source)
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка создания расхода: {e}", exc_info=True)
+            return None
+
+    def add_planned_transaction(
+        self,
+        transaction_type: str,
+        category: str,
+        amount: float,
+        comment: str,
+        planned_date: str,
+        template_id: int = None,
+        money_source: str = "cashless",
+    ):
+        """Создаёт плановую транзакцию и возвращает ID."""
+        try:
+            result = core.add_planned_transaction(
+                transaction_type,
+                category,
+                amount,
+                comment,
+                planned_date,
+                template_id=template_id,
+                money_source=money_source,
+            )
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка создания плановой транзакции: {e}", exc_info=True)
+            return None
     
     def get_main_account(self):
         """Получает основной счёт"""
@@ -744,6 +815,33 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка создания шаблона: {e}", exc_info=True)
             return None
+
+    def adjust_to_workday(self, date: str) -> str:
+        """Сдвигает дату на рабочий день по правилам legacy ядра."""
+        try:
+            return core._adjust_to_workday(date)
+        except Exception as e:
+            app_logger.error(f"Ошибка корректировки даты {date}: {e}", exc_info=True)
+            return date
+
+    def delete_planned_transactions_in_period(self, template_id: int, start_date: str, end_date: str) -> None:
+        """Удаляет плановые транзакции шаблона в указанном периоде."""
+        try:
+            core.delete_planned_transactions_in_period(template_id, start_date, end_date)
+            self.notify_listeners()
+        except Exception as e:
+            app_logger.error(f"Ошибка удаления плановых транзакций шаблона {template_id}: {e}", exc_info=True)
+
+    def assign_template_to_planned_transaction(self, transaction_id: int, template_id: int) -> None:
+        """Привязывает плановую транзакцию к регулярному шаблону."""
+        try:
+            core.assign_template_to_planned_transaction(transaction_id, template_id)
+            self.notify_listeners()
+        except Exception as e:
+            app_logger.error(
+                f"Ошибка привязки плановой транзакции {transaction_id} к шаблону {template_id}: {e}",
+                exc_info=True,
+            )
     
     def update_recurring_template(self, template_id: int, **kwargs) -> bool:
         """Обновляет шаблон и перегенерирует плановые транзакции"""

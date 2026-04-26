@@ -61,6 +61,7 @@
 - Reports category summary читает метаданные категорий через `CategoryService`, оставляя `core` только для переключения пользовательских SQLite DB в family scope.
 - Settings route больше не импортирует `core`: default money source читается и обновляется через `TransactionService`.
 - Transactions route продолжил уход от прямых read helpers: category-by-name, recurring-template-by-id и transaction-row-by-id после create/update теперь идут через service layer; write-heavy `core.add_*` пока оставлен для отдельного adapter шага.
+- Transactions route перевел создание доходов/расходов, planned transactions и recurring-template операции на `TransactionService`; SQLite остается текущим runtime, но write helpers теперь проходят через service boundary для будущего MySQL adapter.
 
 ### 2026-04-25
 
