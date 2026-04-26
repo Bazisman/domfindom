@@ -591,6 +591,76 @@ class PostgresWriteRepository(PostgresReadRepository):
         )
         return {"status": "inserted", "account_id": pg_account_id}
 
+    def mirror_standalone_transfer(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        transfer: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Mirror a manual transfer row and the account balance effect SQLite applied."""
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        legacy_transfer_id = int(transfer["id"])
+        existing = self._finance_id_by_legacy(conn, "transfers", pg_user_id, legacy_transfer_id)
+        if existing is not None:
+            return {"status": "exists", "transfer_id": existing}
+
+        from_legacy = int(transfer["from_account_id"])
+        to_legacy = int(transfer["to_account_id"])
+        from_ref = self._account_ref(from_legacy)
+        to_ref = self._account_ref(to_legacy)
+        from_daily_id = self._finance_id_by_legacy(conn, "accounts", pg_user_id, from_ref["daily_legacy_id"])
+        to_daily_id = self._finance_id_by_legacy(conn, "accounts", pg_user_id, to_ref["daily_legacy_id"])
+        from_capital_id = self._finance_id_by_legacy(conn, "capital_accounts", pg_user_id, from_ref["capital_legacy_id"])
+        to_capital_id = self._finance_id_by_legacy(conn, "capital_accounts", pg_user_id, to_ref["capital_legacy_id"])
+        amount_minor = to_minor(transfer["amount"])
+
+        row = conn.execute(
+            """
+            INSERT INTO finance.transfers (
+                user_id, legacy_local_id, legacy_from_account_id, legacy_to_account_id,
+                from_account_kind, to_account_kind, from_daily_account_id, to_daily_account_id,
+                from_capital_account_id, to_capital_account_id, amount_minor, transaction_id,
+                date, comment, is_active
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                pg_user_id,
+                legacy_transfer_id,
+                from_legacy,
+                to_legacy,
+                from_ref["kind"],
+                to_ref["kind"],
+                from_daily_id,
+                to_daily_id,
+                from_capital_id,
+                to_capital_id,
+                amount_minor,
+                transfer["date"],
+                transfer.get("comment"),
+                bool(transfer.get("is_active", True)),
+            ),
+        ).fetchone()
+        pg_transfer_id = int(row["id"])
+        self._insert_id_map(
+            conn,
+            source_db_path,
+            legacy_user_id,
+            "transfers",
+            legacy_transfer_id,
+            "transfers",
+            pg_transfer_id,
+        )
+        if bool(transfer.get("is_active", True)):
+            self._adjust_account_minor(conn, pg_user_id, from_legacy, -amount_minor)
+            self._adjust_account_minor(conn, pg_user_id, to_legacy, amount_minor)
+        return {"status": "inserted", "transfer_id": pg_transfer_id}
+
     def delete_planned_transactions_for_template(
         self,
         conn,

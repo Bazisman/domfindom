@@ -411,3 +411,36 @@ def mirror_capital_accounts_shadow_write(
             exc,
         )
         return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_transfer_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    sqlite_transfer_row: Any,
+    config=settings,
+) -> Dict[str, Any]:
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+    transfer = _row_to_dict(sqlite_transfer_row)
+    if not transfer:
+        return {"enabled": True, "status": "skipped", "reason": "missing_transfer"}
+
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_standalone_transfer(
+                conn,
+                legacy_user_id=legacy_user_id,
+                source_db_path=f"data/users/{legacy_user_id}/finance.db",
+                transfer=transfer,
+            )
+            conn.commit()
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write transfer failed for user_id=%s transfer_id=%s: %s",
+            legacy_user_id,
+            transfer.get("id"),
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}

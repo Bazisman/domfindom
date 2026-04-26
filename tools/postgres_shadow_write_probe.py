@@ -40,6 +40,19 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         category_legacy_id = category_row["legacy_local_id"] if category_row else None
         if category is None:
             raise RuntimeError("No expense category available for write probe")
+        capital_account_id = scalar(
+            conn,
+            """
+            SELECT legacy_local_id
+            FROM finance.capital_accounts
+            WHERE user_id = %s AND is_active = true
+            ORDER BY id
+            LIMIT 1
+            """,
+            (pg_user_id,),
+        )
+        if capital_account_id is None:
+            raise RuntimeError("No active capital account available for transfer probe")
         income_category_row = conn.execute(
             """
             SELECT name, legacy_local_id
@@ -66,6 +79,9 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         )
         before_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
+        before_transfer_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transfers WHERE user_id = %s", (pg_user_id,))
         )
         result = repo.mirror_actual_transaction(
             conn,
@@ -196,6 +212,24 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         after_template_delete_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
         )
+        transfer_legacy_id = legacy_local_id + 4000000
+        transfer_result = repo.mirror_standalone_transfer(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transfer={
+                "id": transfer_legacy_id,
+                "from_account_id": 1,
+                "to_account_id": int(capital_account_id),
+                "amount": 6.54,
+                "date": "2026-04-26",
+                "comment": "postgres standalone transfer rollback probe",
+                "is_active": True,
+            },
+        )
+        after_transfer_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transfers WHERE user_id = %s", (pg_user_id,))
+        )
         conn.rollback()
     return {
         "legacy_user_id": legacy_user_id,
@@ -219,6 +253,8 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
             and after_templated_planned_count == before_count + 1
             and template_delete_result["status"] == "deleted"
             and after_template_delete_count == before_count
+            and transfer_result["status"] == "inserted"
+            and after_transfer_count == before_transfer_count + 1
         )
         else "failed",
         "insert_status": result["status"],
@@ -230,7 +266,9 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         "template_status": template_result["status"],
         "templated_planned_status": templated_planned_result["status"],
         "template_delete_status": template_delete_result["status"],
+        "transfer_status": transfer_result["status"],
         "before_count": before_count,
+        "before_transfer_count": before_transfer_count,
         "after_count_inside_transaction": after_count,
         "after_update_count_inside_transaction": after_update_count,
         "after_delete_count_inside_transaction": after_delete_count,
@@ -239,6 +277,7 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         "after_planned_delete_count_inside_transaction": after_planned_delete_count,
         "after_templated_planned_count_inside_transaction": after_templated_planned_count,
         "after_template_delete_count_inside_transaction": after_template_delete_count,
+        "after_transfer_count_inside_transaction": after_transfer_count,
         "rolled_back": True,
     }
 
@@ -260,7 +299,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"Template status: `{report['template_status']}`",
             f"Templated planned status: `{report['templated_planned_status']}`",
             f"Template delete status: `{report['template_delete_status']}`",
+            f"Transfer status: `{report['transfer_status']}`",
             f"Before count: `{report['before_count']}`",
+            f"Before transfer count: `{report['before_transfer_count']}`",
             f"After count inside transaction: `{report['after_count_inside_transaction']}`",
             f"After update count inside transaction: `{report['after_update_count_inside_transaction']}`",
             f"After delete count inside transaction: `{report['after_delete_count_inside_transaction']}`",
@@ -269,6 +310,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"After planned delete count inside transaction: `{report['after_planned_delete_count_inside_transaction']}`",
             f"After templated planned count inside transaction: `{report['after_templated_planned_count_inside_transaction']}`",
             f"After template delete count inside transaction: `{report['after_template_delete_count_inside_transaction']}`",
+            f"After transfer count inside transaction: `{report['after_transfer_count_inside_transaction']}`",
             f"Rolled back: `{report['rolled_back']}`",
         ]
     )

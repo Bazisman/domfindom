@@ -8,6 +8,7 @@ from backend.auth.dependencies import require_user
 from backend.auth.service import auth_service
 from backend.schemas.accounts import TransferCreateRequest, TransferResponse
 from backend.services import transaction_service
+from backend.storage.shadow_write import mirror_transfer_shadow_write
 
 
 router = APIRouter()
@@ -91,7 +92,7 @@ def list_transfers(
 
 
 @router.post("", response_model=TransferResponse, status_code=status.HTTP_201_CREATED)
-def create_transfer(payload: TransferCreateRequest) -> TransferResponse:
+def create_transfer(payload: TransferCreateRequest, current_user=Depends(require_user)) -> TransferResponse:
     from_account = _find_account_row(payload.from_account_id, include_inactive=False)
     to_account = _find_account_row(payload.to_account_id, include_inactive=False)
     if not from_account or not to_account:
@@ -122,9 +123,11 @@ def create_transfer(payload: TransferCreateRequest) -> TransferResponse:
             and float(_row_value(item, "amount", 0) or 0) == float(payload.amount)
             and _row_value(item, "comment", "") == payload.comment
         ):
+            mirror_transfer_shadow_write(current_user, item)
             return _transfer_response(item)
 
     fallback = core.get_transfers_history(limit=1, include_inactive=True)
     if not fallback:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Перевод создан, но не найден")
+    mirror_transfer_shadow_write(current_user, fallback[0])
     return _transfer_response(fallback[0])

@@ -37,6 +37,7 @@
 - Shadow-write расширен на личные planned transactions без recurring template: create/update/delete зеркалируются в PostgreSQL без изменения balances; recurring-template planned rows остаются явным skip до отдельного переноса шаблонов.
 - Shadow-write расширен на recurring templates: create/update/delete шаблонов зеркалируются в PostgreSQL, а связанные planned transactions пересинхронизируются по текущему SQLite-состоянию с PostgreSQL `template_id`.
 - Shadow-write расширен на личные категории, бюджеты и счета капитала: изменения справочников и плановых лимитов теперь зеркалируются в PostgreSQL после успешного SQLite-коммита.
+- Shadow-write расширен на ручные личные transfers: PostgreSQL получает transfer row и повторяет изменение балансов счетов, rollback-probe проверяет вставку без сохранения тестовой записи.
 
 ### 2026-04-25
 
