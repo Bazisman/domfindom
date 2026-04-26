@@ -43,6 +43,7 @@
 - Добавлен guarded MySQL schema-tool `tools/mysql_schema.py`; новая MySQL база инициализирована 33 таблицами под auth/finance/family/security/migration без изменения SQLite runtime.
 - Добавлены `tools/sqlite_to_mysql_etl.py` и `tools/mysql_reconciliation.py`; production SQLite fresh-load в MySQL прошел успешно, сверка auth/family/finance counts и денежных сумм показала `failed=0`.
 - Добавлен read-only MySQL adapter и `tools/mysql_read_compare.py`; production read-compare по 11 пользователям совпал со SQLite (`failed=0`) для balance, transactions, category totals и monthly stats.
+- Runtime подготовлен к MySQL shadow-read: добавлены `FINANCE_APP_MYSQL_DATABASE_URL` и `FINANCE_APP_MYSQL_READ_SHADOW`, `/dashboard` может сравнивать SQLite-ответ с MySQL без изменения ответа пользователю.
 
 ### 2026-04-25
 

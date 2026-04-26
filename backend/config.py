@@ -64,6 +64,8 @@ class AppConfig:
     run_db_migrations: bool
     postgres_read_shadow_enabled: bool
     postgres_shadow_write_enabled: bool
+    mysql_database_url: str
+    mysql_read_shadow_enabled: bool
     auth_db_name: str
     users_data_dir: str
     session_cookie_name: str
@@ -111,6 +113,8 @@ settings = AppConfig(
     run_db_migrations=_parse_bool(os.getenv("FINANCE_APP_RUN_DB_MIGRATIONS", "false")),
     postgres_read_shadow_enabled=_parse_bool(os.getenv("FINANCE_APP_POSTGRES_READ_SHADOW", "false")),
     postgres_shadow_write_enabled=_parse_bool(os.getenv("FINANCE_APP_POSTGRES_SHADOW_WRITE", "false")),
+    mysql_database_url=os.getenv("FINANCE_APP_MYSQL_DATABASE_URL", "").strip(),
+    mysql_read_shadow_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_READ_SHADOW", "false")),
     auth_db_name=os.getenv("FINANCE_APP_AUTH_DB_NAME", "auth.db"),
     users_data_dir=os.getenv("FINANCE_APP_USERS_DATA_DIR", "data/users"),
     session_cookie_name=os.getenv("FINANCE_APP_SESSION_COOKIE_NAME", "finance_session"),
@@ -189,7 +193,7 @@ settings = AppConfig(
 if settings.session_cookie_samesite not in {"lax", "strict", "none"}:
     settings.session_cookie_samesite = "lax"
 
-if settings.storage_backend not in {"sqlite", "postgres"}:
+if settings.storage_backend not in {"sqlite", "postgres", "mysql"}:
     settings.storage_backend = "sqlite"
 
 if _is_production() and settings.session_secret == "dev-insecure-change-me":

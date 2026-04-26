@@ -14,15 +14,17 @@ from utils.logger import app_logger
 
 
 def _guard_unwired_postgres_backend() -> None:
-    if settings.storage_backend == "postgres":
+    if settings.storage_backend in {"postgres", "mysql"}:
         raise RuntimeError(
-            "FINANCE_APP_STORAGE_BACKEND=postgres is not enabled yet: "
-            "PostgreSQL migration currently supports ETL, reconciliation and shadow-read only."
+            f"FINANCE_APP_STORAGE_BACKEND={settings.storage_backend} is not enabled yet: "
+            "SQL migration currently supports ETL, reconciliation and shadow-read only."
         )
     if settings.postgres_read_shadow_enabled:
         app_logger.info("PostgreSQL shadow-read is enabled; primary runtime storage remains SQLite")
     if settings.postgres_shadow_write_enabled:
         app_logger.info("PostgreSQL shadow-write is enabled; primary runtime storage remains SQLite")
+    if settings.mysql_read_shadow_enabled:
+        app_logger.info("MySQL shadow-read is enabled; primary runtime storage remains SQLite")
 
 
 @asynccontextmanager

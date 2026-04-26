@@ -87,6 +87,27 @@ class PostgresShadowReadTestCase(unittest.TestCase):
         self.assertEqual(result["issues"][0]["section"], "monthly_stats")
         self.assertEqual(result["issues"][0]["field"], "expense")
 
+    def test_mysql_shadow_read_disabled_without_flag_or_database_url(self):
+        disabled = SimpleNamespace(mysql_read_shadow_enabled=False, mysql_database_url="")
+        enabled_without_url = SimpleNamespace(mysql_read_shadow_enabled=True, mysql_database_url="")
+
+        self.assertFalse(shadow_read.mysql_shadow_read_enabled(disabled))
+        self.assertFalse(shadow_read.mysql_shadow_read_enabled(enabled_without_url))
+
+    def test_mysql_dashboard_compare_reports_match(self):
+        config = SimpleNamespace(mysql_read_shadow_enabled=True, mysql_database_url="mysql://example")
+        with mock.patch.object(shadow_read, "MySqlReadRepository", _Repository):
+            result = shadow_read.compare_dashboard_mysql_shadow_read(
+                {"id": 1},
+                _Balance(),
+                {"income": 10.0, "expense": 5.0, "capital": 2.0},
+                2026,
+                4,
+                config=config,
+            )
+
+        self.assertEqual(result, {"enabled": True, "issues": []})
+
 
 if __name__ == "__main__":
     unittest.main()
