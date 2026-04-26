@@ -275,7 +275,7 @@ def list_transactions_page(
 @router.post("", response_model=TransactionCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_transaction(payload: TransactionCreateRequest, current_user=Depends(require_user)) -> TransactionCreateResponse:
     category_name = _resolve_category_name(payload)
-    category = core.get_category_by_name(category_name)
+    category = category_service.get_category_by_name(category_name)
     is_future = _is_future_date(payload.date)
     recurring_payload = payload.recurring if payload.recurring and payload.recurring.enabled else None
     planned_date = payload.date
@@ -341,7 +341,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
             name=template_name,
             amount=payload.amount,
             day_of_month=recurring_payload.day_of_month,
-            category_id=category["id"] if category else payload.category_id,
+            category_id=category.id if category else payload.category_id,
             comment_template=payload.comment,
             months_ahead=recurring_payload.months_ahead,
             working_days_only=recurring_payload.working_days_only,
@@ -351,11 +351,11 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         core.delete_planned_transactions_in_period(template_id, month_start, month_end)
         if is_future:
             core.assign_template_to_planned_transaction(created_id, template_id)
-        template_row = core.get_recurring_template_by_id(template_id)
+        template_row = transaction_service.get_recurring_template_by_id(template_id)
         if template_row:
             mirror_recurring_template_shadow_write(current_user, template_row)
 
-    row = core.get_transaction_by_id(created_id)
+    row = transaction_service.get_transaction_row_by_id(created_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Транзакция создана, но не найдена")
 
@@ -430,7 +430,7 @@ def update_transaction(
         update_data.pop("category_id", None)
         update_data.pop("category_name", None)
 
-    updated = core.update_transaction_fields(transaction_id, **update_data)
+    updated = transaction_service.update_transaction_fields(transaction_id, **update_data)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
 
@@ -443,7 +443,7 @@ def update_transaction(
         _adjust_daily_account(int(current_user["id"]), existing.money_source, contribution_amount)
         _adjust_daily_account(int(current_user["id"]), payload.money_source, -contribution_amount)
 
-    row = core.get_transaction_by_id(transaction_id)
+    row = transaction_service.get_transaction_row_by_id(transaction_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
     transaction = Transaction(

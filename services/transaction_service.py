@@ -248,6 +248,14 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка получения транзакции {tid}: {e}", exc_info=True)
             return None
+
+    def get_transaction_row_by_id(self, tid: int):
+        """Получает сырую строку транзакции по ID для совместимости с mirror/write слоями."""
+        try:
+            return core.get_transaction_by_id(tid)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения строки транзакции {tid}: {e}", exc_info=True)
+            return None
     
     def add_transaction(self, transaction: Transaction) -> bool:
         """Добавляет новую транзакцию"""
@@ -317,6 +325,18 @@ class TransactionService:
             if result:
                 self.notify_listeners()
                 app_logger.debug(f"Транзакция {tid} обновлена: {field}={value}")
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка обновления транзакции {tid}: {e}", exc_info=True)
+            return False
+
+    def update_transaction_fields(self, tid: int, **kwargs) -> bool:
+        """Обновляет несколько полей транзакции."""
+        try:
+            result = core.update_transaction_fields(tid, **kwargs)
+            if result:
+                self.notify_listeners()
+                app_logger.debug(f"Транзакция {tid} обновлена: {kwargs}")
             return result
         except Exception as e:
             app_logger.error(f"Ошибка обновления транзакции {tid}: {e}", exc_info=True)

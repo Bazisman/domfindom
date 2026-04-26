@@ -60,6 +60,7 @@
 - Recurring routes переведены на `TransactionService`/`CategoryService` для чтения шаблонов и due-плановых операций; MySQL read repository получил SELECT для due planned transactions.
 - Reports category summary читает метаданные категорий через `CategoryService`, оставляя `core` только для переключения пользовательских SQLite DB в family scope.
 - Settings route больше не импортирует `core`: default money source читается и обновляется через `TransactionService`.
+- Transactions route продолжил уход от прямых read helpers: category-by-name, recurring-template-by-id и transaction-row-by-id после create/update теперь идут через service layer; write-heavy `core.add_*` пока оставлен для отдельного adapter шага.
 
 ### 2026-04-25
 
