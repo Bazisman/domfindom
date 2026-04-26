@@ -2,7 +2,19 @@
 import core
 from typing import List, Optional, Callable
 from models import Category
+from services.transaction_service import _mysql_read_repo_for_current_user
 from utils.logger import app_logger
+
+
+def _category_from_row(row) -> Category:
+    return Category(
+        id=row['id'],
+        name=row['name'],
+        type=row['type'],
+        color=row['color'],
+        icon=row['icon'],
+        is_active=bool(row['is_active'])
+    )
 
 
 class CategoryService:
@@ -41,15 +53,18 @@ class CategoryService:
     def get_all_categories(self, trans_type: str = None, include_inactive: bool = False) -> List[Category]:
         """Получает все активные категории"""
         try:
-            rows = core.get_all_categories(trans_type, include_inactive=include_inactive)
-            result = [Category(
-                id=row['id'],
-                name=row['name'],
-                type=row['type'],
-                color=row['color'],
-                icon=row['icon'],
-                is_active=bool(row['is_active'])
-            ) for row in rows]
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    rows = repo.get_categories(
+                        conn,
+                        legacy_user_id,
+                        trans_type=trans_type,
+                        include_inactive=include_inactive,
+                    )
+            else:
+                rows = core.get_all_categories(trans_type, include_inactive=include_inactive)
+            result = [_category_from_row(row) for row in rows]
             app_logger.debug(f"Получено {len(result)} категорий (тип: {trans_type})")
             return result
         except Exception as e:
@@ -109,16 +124,15 @@ class CategoryService:
     def get_category_by_id(self, category_id: int) -> Optional[Category]:
         """Получает категорию по ID"""
         try:
-            row = core.get_category_by_id(category_id)
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    rows = repo.get_categories(conn, legacy_user_id, include_inactive=True)
+                row = next((item for item in rows if int(item["id"]) == int(category_id)), None)
+            else:
+                row = core.get_category_by_id(category_id)
             if row:
-                return Category(
-                    id=row['id'],
-                    name=row['name'],
-                    type=row['type'],
-                    color=row['color'],
-                    icon=row['icon'],
-                    is_active=bool(row['is_active'])
-                )
+                return _category_from_row(row)
             return None
         except Exception as e:
             app_logger.error(f"Ошибка получения категории ID={category_id}: {e}", exc_info=True)
@@ -127,16 +141,15 @@ class CategoryService:
     def get_category_by_name(self, name: str, include_inactive: bool = True) -> Optional[Category]:
         """Получает категорию по имени (включая неактивные)"""
         try:
-            row = core.get_category_by_name(name)
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    rows = repo.get_categories(conn, legacy_user_id, include_inactive=include_inactive)
+                row = next((item for item in rows if item["name"] == name), None)
+            else:
+                row = core.get_category_by_name(name)
             if row:
-                return Category(
-                    id=row['id'],
-                    name=row['name'],
-                    type=row['type'],
-                    color=row['color'],
-                    icon=row['icon'],
-                    is_active=bool(row['is_active'])
-                )
+                return _category_from_row(row)
             return None
         except Exception as e:
             app_logger.error(f"Ошибка получения категории по имени {name}: {e}", exc_info=True)

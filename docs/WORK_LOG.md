@@ -54,6 +54,7 @@
 - MySQL dormant read-path расширен на transfers history, recurring templates и projected balance; forecast/dashboard/family forecast routes переведены на `TransactionService.get_projected_balance`, чтобы будущий backend switch не обходил storage layer через прямой `core`.
 - Reporting/transfers routes продолжили перевод на service layer: category summary, transfers list, dashboard/family capital outflow теперь идут через `TransactionService`, где уже есть dormant MySQL read-path.
 - Accounts/settings/transactions/family helper reads продолжили перевод на service layer: чтение счетов капитала, default capital account и семейных expense/budget summaries больше не обходят `TransactionService` там, где это безопасно для текущего SQLite runtime.
+- CategoryService/BudgetService получили dormant MySQL read-path для категорий и бюджетов; при текущем SQLite runtime поведение остается прежним, но будущий backend switch меньше зависит от прямого `core`.
 
 ### 2026-04-25
 
