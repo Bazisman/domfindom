@@ -197,6 +197,7 @@ export function AccountsPage() {
     [capitalAccounts],
   );
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
+  const familyModeEnabled = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
 
   const transferAccounts = useMemo(
     () => (accounts.data ?? []).filter((item) => item.is_active),
@@ -252,17 +253,34 @@ export function AccountsPage() {
     }
     const fromIsDaily = selectedTransferFromAccount.type !== "capital";
     const toIsDaily = selectedTransferToAccount ? selectedTransferToAccount.type !== "capital" : false;
+    const toIsFamilyCushion = Boolean(selectedTransferToFamilyAccount || selectedTransferToAccount?.family_visible);
+    const fromIsFamilyCushion = Boolean(selectedTransferFromAccount.family_visible);
     if (fromIsDaily && !toIsDaily) {
-      return "Это не расход: деньги уйдут из трат в подушку.";
+      if (toIsFamilyCushion) {
+        return "Это не расход: деньги уйдут из трат в семейную подушку.";
+      }
+      if (familyModeEnabled) {
+        return "Для семьи это деньги ушли в личную подушку.";
+      }
+      return "Это не расход: деньги уйдут из трат в мою подушку.";
     }
     if (!fromIsDaily && toIsDaily) {
+      if (fromIsFamilyCushion && familyModeEnabled) {
+        return "Деньги вернутся из семейной подушки в траты.";
+      }
       return "Деньги вернутся из подушки в траты.";
     }
     if (fromIsDaily && toIsDaily) {
       return "Это просто перенос между деньгами на руках.";
     }
+    if (toIsFamilyCushion) {
+      return "Деньги перейдут в семейную подушку.";
+    }
+    if (familyModeEnabled) {
+      return "Деньги перейдут в личную подушку.";
+    }
     return "Это перенос между подушками.";
-  }, [selectedTransferFromAccount, selectedTransferToAccount, selectedTransferToFamilyAccount]);
+  }, [familyModeEnabled, selectedTransferFromAccount, selectedTransferToAccount, selectedTransferToFamilyAccount]);
 
   const defaultPersonalCapitalAccount = useMemo(
     () =>
@@ -287,7 +305,6 @@ export function AccountsPage() {
   const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
   const familyDailyBalance = familyDashboard.data?.balance.main_balance ?? 0;
   const familyForecastBalance = familyDashboard.data?.forecast.projected_balance ?? null;
-  const familyModeEnabled = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
   const personalCashOnHand = dailyBalance;
   const personalTotalVisibleMoney = dailyBalance + ownCapital;
   const visibleEmergencyMoney = familyModeEnabled ? familyCapitalBalance : ownCapital;
@@ -807,7 +824,7 @@ export function AccountsPage() {
 
   function getTransferAccountLabel(account: Account) {
     if (account.type === "capital") {
-      return `Подушка · ${account.name}`;
+      return `${account.family_visible ? "Семейная подушка" : "Личная подушка"} · ${account.name}`;
     }
     return account.money_source === "cash" ? "Наличные" : "Для трат";
   }
