@@ -80,7 +80,7 @@ def list_transfers(
     include_inactive: bool = Query(default=False),
     current_user=Depends(require_user),
 ) -> List[TransferResponse]:
-    direct_transfers = core.get_transfers_history(
+    direct_transfers = transaction_service.get_transfers_history(
         account_id=account_id,
         limit=limit,
         include_inactive=include_inactive,
@@ -111,7 +111,7 @@ def create_transfer(payload: TransferCreateRequest, current_user=Depends(require
             detail="Не удалось создать перевод. Проверьте балансы и параметры счетов.",
         )
 
-    latest = core.get_transfers_history(
+    latest = transaction_service.get_transfers_history(
         account_id=payload.from_account_id,
         limit=20,
         include_inactive=True,
@@ -126,7 +126,7 @@ def create_transfer(payload: TransferCreateRequest, current_user=Depends(require
             mirror_transfer_shadow_write(current_user, item)
             return _transfer_response(item)
 
-    fallback = core.get_transfers_history(limit=1, include_inactive=True)
+    fallback = transaction_service.get_transfers_history(limit=1, include_inactive=True)
     if not fallback:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Перевод создан, но не найден")
     mirror_transfer_shadow_write(current_user, fallback[0])

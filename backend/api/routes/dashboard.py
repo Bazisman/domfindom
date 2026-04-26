@@ -33,7 +33,7 @@ def get_dashboard(request: Request) -> DashboardResponse:
     today = now.strftime("%Y-%m-%d")
     balance = transaction_service.get_balance()
     current_month_stats = transaction_service.get_monthly_stats(now.year, now.month)
-    direct_capital_outflow = float(core.get_capital_outflow_for_period(start_date, today) or 0.0)
+    direct_capital_outflow = float(transaction_service.get_capital_outflow_for_period(start_date, today) or 0.0)
     family_capital_outflow = 0.0
     current_user = getattr(request.state, "current_user", None)
     if current_user:

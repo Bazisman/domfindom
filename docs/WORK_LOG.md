@@ -52,6 +52,7 @@
 - Начат первый runtime-slice для будущего MySQL primary: `TransactionService` получил dormant read-path для balance, transactions и monthly stats через `MySqlReadRepository`, включая извлечение legacy user id из текущего `data/users/*/finance.db` контекста.
 - MySQL dormant read-path расширен на accounts, capital accounts, default/total capital, categories и budgets; эти методы `TransactionService` смогут читать из MySQL после будущего разрешения primary backend, текущий SQLite runtime не изменен.
 - MySQL dormant read-path расширен на transfers history, recurring templates и projected balance; forecast/dashboard/family forecast routes переведены на `TransactionService.get_projected_balance`, чтобы будущий backend switch не обходил storage layer через прямой `core`.
+- Reporting/transfers routes продолжили перевод на service layer: category summary, transfers list, dashboard/family capital outflow теперь идут через `TransactionService`, где уже есть dormant MySQL read-path.
 
 ### 2026-04-25
 

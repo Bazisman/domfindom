@@ -351,6 +351,10 @@ class TransactionService:
     def get_expenses_by_category(self, start_date=None, end_date=None):
         """Получает расходы по категориям"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_category_totals(conn, legacy_user_id, "expense", start_date, end_date)
             return core.get_expenses_by_category(start_date, end_date)
         except Exception as e:
             app_logger.error(f"Ошибка получения расходов: {e}", exc_info=True)
@@ -359,10 +363,38 @@ class TransactionService:
     def get_income_by_category(self, start_date=None, end_date=None):
         """Получает доходы по категориям"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_category_totals(conn, legacy_user_id, "income", start_date, end_date)
             return core.get_income_by_category(start_date, end_date)
         except Exception as e:
             app_logger.error(f"Ошибка получения доходов: {e}", exc_info=True)
             return []
+
+    def get_capital_outflow_for_period(self, start_date=None, end_date=None):
+        """Получает сумму переводов в капитал за период."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_capital_contributions_total(conn, legacy_user_id, start_date, end_date)
+            return core.get_capital_outflow_for_period(start_date, end_date)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения отчислений в капитал: {e}", exc_info=True)
+            return 0
+
+    def get_capital_contributions_for_period(self, start_date=None, end_date=None):
+        """Получает сумму переводов за период для месячной статистики."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_capital_contributions_total(conn, legacy_user_id, start_date, end_date)
+            return core.get_capital_contributions_for_period(start_date, end_date)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения переводов за период: {e}", exc_info=True)
+            return 0
         
     def get_monthly_stats(self, year: int, month: int) -> dict:
         """Возвращает статистику за месяц: доходы, расходы, отчисления в капитал"""
@@ -380,7 +412,7 @@ class TransactionService:
             # Получаем данные за период
             income = core.get_income_by_category(start_date, end_date)
             expenses = core.get_expenses_by_category(start_date, end_date)
-            capital = core.get_capital_contributions_for_period(start_date, end_date)
+            capital = self.get_capital_contributions_for_period(start_date, end_date)
             
             # Суммируем
             total_income = sum(item['total'] for item in income) if income else 0
@@ -539,14 +571,20 @@ class TransactionService:
             app_logger.error(f"Ошибка получения общего капитала: {e}", exc_info=True)
             return 0
     
-    def get_transfers_history(self, account_id=None, limit=100):
+    def get_transfers_history(self, account_id=None, limit=100, include_inactive=False):
         """Получает историю переводов"""
         try:
             repo, legacy_user_id = _mysql_read_repo_for_current_user()
             if repo is not None and legacy_user_id is not None:
                 with repo.connect() as conn:
-                    return repo.get_transfers_history(conn, legacy_user_id, account_id=account_id, limit=limit)
-            return core.get_transfers_history(account_id, limit)
+                    return repo.get_transfers_history(
+                        conn,
+                        legacy_user_id,
+                        account_id=account_id,
+                        limit=limit,
+                        include_inactive=include_inactive,
+                    )
+            return core.get_transfers_history(account_id, limit, include_inactive=include_inactive)
         except Exception as e:
             app_logger.error(f"Ошибка получения истории переводов: {e}", exc_info=True)
             return []

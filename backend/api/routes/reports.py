@@ -11,6 +11,7 @@ from backend.schemas.reports import (
     CategorySummaryItemResponse,
     CategorySummaryResponse,
 )
+from backend.services import transaction_service
 
 
 router = APIRouter()
@@ -57,8 +58,8 @@ def _load_personal_category_rows(
     end_date: Optional[str],
 ):
     if summary_type == "income":
-        return core.get_income_by_category(start_date, end_date)
-    return core.get_expenses_by_category(start_date, end_date)
+        return transaction_service.get_income_by_category(start_date, end_date)
+    return transaction_service.get_expenses_by_category(start_date, end_date)
 
 
 def _map_category_meta(category_name: str) -> Dict[str, str]:
