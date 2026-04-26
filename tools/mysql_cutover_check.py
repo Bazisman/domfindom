@@ -116,19 +116,22 @@ def check_storage_backend(storage_backend: str, allow_mysql_backend: bool) -> Di
     return {"status": "ok", "storage_backend": storage_backend or "sqlite"}
 
 
-def check_runtime_adapter_status(allow_mysql_backend: bool) -> Dict[str, Any]:
-    groups = list(RUNTIME_WRITE_GROUPS.keys())
+def check_runtime_adapter_status(allow_mysql_backend: bool, guarded_groups: Sequence[str] = ()) -> Dict[str, Any]:
+    guarded = [group for group in guarded_groups if group in RUNTIME_WRITE_GROUPS]
+    groups = [group for group in RUNTIME_WRITE_GROUPS if group not in set(guarded)]
     if allow_mysql_backend:
         return {
             "status": "blocked",
             "reason": "allow flag was set, but primary MySQL write adapters are not complete",
             "missing_groups": groups,
+            "guarded_groups": guarded,
             "details": RUNTIME_WRITE_GROUPS,
         }
     return {
         "status": "blocked",
         "reason": "primary runtime is still SQLite-first; MySQL is ready only for ETL, reconciliation, shadow-read and shadow-write",
         "missing_groups": groups,
+        "guarded_groups": guarded,
         "details": RUNTIME_WRITE_GROUPS,
     }
 
@@ -178,6 +181,13 @@ def build_report(
     if database_url:
         env["FINANCE_APP_MYSQL_DATABASE_URL"] = database_url
 
+    strict_categories = check_strict_categories_budgets_recurring(env, database_url)
+    guarded_groups = (
+        [strict_categories["guarded_group"]]
+        if strict_categories.get("status") == "ok" and strict_categories.get("enabled")
+        else []
+    )
+
     checks: Dict[str, Any] = {
         "python_dependencies": check_python_dependencies(),
         "database_connection": check_database_connection(database_url),
@@ -187,8 +197,8 @@ def build_report(
             allow_mysql_backend=allow_mysql_backend,
         ),
         "primary_read_pilot": check_primary_read_pilot(env, database_url),
-        "strict_categories_budgets_recurring": check_strict_categories_budgets_recurring(env, database_url),
-        "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend),
+        "strict_categories_budgets_recurring": strict_categories,
+        "runtime_adapter": check_runtime_adapter_status(allow_mysql_backend, guarded_groups=guarded_groups),
     }
 
     if not skip_data_checks:
@@ -266,6 +276,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
             detail = "missing: " + ", ".join(check["missing"])
         elif check.get("missing_groups"):
             detail = str(check.get("reason") or "") + "; missing: " + ", ".join(check["missing_groups"])
+            if check.get("guarded_groups"):
+                detail += "; guarded: " + ", ".join(check["guarded_groups"])
         elif check.get("reason"):
             detail = str(check["reason"])
         elif name == "schema_tables":

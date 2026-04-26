@@ -74,6 +74,7 @@
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING`: category/budget/recurring routes смогут требовать успешную MySQL shadow-write запись перед будущим primary-write cutover этой группы.
 - MySQL cutover-check получил отдельную проверку `strict_categories_budgets_recurring`, которая показывает режим `shadow-write-only`/`strict-dual-write` и блокирует ошибочную конфигурацию без MySQL URL или `FINANCE_APP_MYSQL_SHADOW_WRITE=true`.
 - Добавлен rollback-probe `tools/mysql_strict_write_probe.py` для MySQL strict categories/budgets/recurring: проверяет category/budget/template/planned writes и delete paths внутри транзакции с обязательным rollback.
+- Runtime adapter report теперь отделяет `guarded_groups` от `missing_groups`, чтобы включенный strict dual-write по categories/budgets/recurring был виден как защищённый промежуточный этап, а не как полностью нетронутый блокер.
 
 ### 2026-04-25
 

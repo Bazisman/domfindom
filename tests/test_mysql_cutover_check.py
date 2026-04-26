@@ -17,11 +17,16 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertEqual(check, {"status": "ok", "storage_backend": "sqlite"})
 
     def test_runtime_adapter_status_blocks_even_with_allow_flag(self):
-        check = mysql_cutover_check.check_runtime_adapter_status(allow_mysql_backend=True)
+        check = mysql_cutover_check.check_runtime_adapter_status(
+            allow_mysql_backend=True,
+            guarded_groups=["categories_budgets_recurring"],
+        )
 
         self.assertEqual(check["status"], "blocked")
         self.assertIn("primary MySQL write adapters", check["reason"])
         self.assertIn("transactions", check["missing_groups"])
+        self.assertNotIn("categories_budgets_recurring", check["missing_groups"])
+        self.assertIn("categories_budgets_recurring", check["guarded_groups"])
         self.assertIn("auth_and_sessions", check["details"])
 
     def test_primary_read_pilot_requires_database_url(self):
@@ -69,22 +74,31 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
             patch.object(mysql_cutover_check, "check_database_connection", return_value={"status": "ok"}),
             patch.object(mysql_cutover_check, "check_schema_tables", return_value={"status": "ok"}),
         ):
-            report = mysql_cutover_check.build_report(
-                source_root=mysql_cutover_check.PROJECT_ROOT,
-                database_url="mysql+pymysql://user:pass@localhost:3306/db",
-                auth_db="auth.db",
-                root_finance_db="finance.db",
-                users_dir="data/users",
-                year=2026,
-                month=4,
-                allow_mysql_backend=False,
-                skip_data_checks=True,
-            )
+            with patch.dict(
+                mysql_cutover_check.os.environ,
+                {
+                    "FINANCE_APP_MYSQL_SHADOW_WRITE": "true",
+                    "FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING": "true",
+                },
+                clear=False,
+            ):
+                report = mysql_cutover_check.build_report(
+                    source_root=mysql_cutover_check.PROJECT_ROOT,
+                    database_url="mysql+pymysql://user:pass@localhost:3306/db",
+                    auth_db="auth.db",
+                    root_finance_db="finance.db",
+                    users_dir="data/users",
+                    year=2026,
+                    month=4,
+                    allow_mysql_backend=False,
+                    skip_data_checks=True,
+                )
 
         self.assertTrue(report["ready_for_shadow_read"])
         self.assertFalse(report["ready_for_runtime_mysql"])
         self.assertEqual(report["blockers"], ["runtime_adapter"])
         self.assertIn("strict_categories_budgets_recurring", report["checks"])
+        self.assertIn("categories_budgets_recurring", report["checks"]["runtime_adapter"]["guarded_groups"])
 
     def test_render_markdown_includes_readiness(self):
         report = {
@@ -123,6 +137,24 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
 
         self.assertIn("missing: auth_and_sessions", rendered)
         self.assertIn("transactions", rendered)
+
+    def test_render_markdown_includes_runtime_guarded_groups(self):
+        report = {
+            "source_root": ".",
+            "ready_for_shadow_read": True,
+            "ready_for_runtime_mysql": False,
+            "blockers": ["runtime_adapter"],
+            "checks": {
+                "runtime_adapter": mysql_cutover_check.check_runtime_adapter_status(
+                    allow_mysql_backend=False,
+                    guarded_groups=["categories_budgets_recurring"],
+                )
+            },
+        }
+
+        rendered = mysql_cutover_check.render_markdown(report)
+
+        self.assertIn("guarded: categories_budgets_recurring", rendered)
 
     def test_render_markdown_includes_strict_categories_budgets_recurring(self):
         report = {
