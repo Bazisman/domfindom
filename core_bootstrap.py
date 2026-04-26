@@ -94,6 +94,7 @@ def init_db(
                 currency TEXT DEFAULT 'RUB',
                 icon TEXT DEFAULT '💰',
                 color TEXT DEFAULT '#ff9800',
+                purpose TEXT NOT NULL DEFAULT 'cushion',
                 is_default INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT (datetime('now')),
@@ -101,6 +102,13 @@ def init_db(
             )
             """
         )
+        cursor.execute("PRAGMA table_info(capital_accounts)")
+        capital_columns = {row["name"] for row in cursor.fetchall()}
+        if "purpose" not in capital_columns:
+            cursor.execute(
+                "ALTER TABLE capital_accounts ADD COLUMN purpose TEXT NOT NULL DEFAULT 'cushion'"
+            )
+            app_logger.info("Добавлено поле 'purpose' в capital_accounts")
 
         cursor.execute(
             """

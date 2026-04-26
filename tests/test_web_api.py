@@ -3247,22 +3247,26 @@ class WebApiTestCase(unittest.TestCase):
                 "balance": 500.0,
                 "icon": "chart",
                 "color": "#222222",
+                "purpose": "investment",
             },
         )
         self.assertEqual(second.status_code, 201)
         second_id = second.json()["id"]
         self.assertFalse(second.json()["is_default"])
+        self.assertEqual(second.json()["purpose"], "investment")
 
         switched = self.client.patch(
             f"/api/v1/accounts/{second_id}",
             json={
                 "is_default": True,
                 "color": "#333333",
+                "purpose": "cushion",
             },
         )
         self.assertEqual(switched.status_code, 200)
         self.assertTrue(switched.json()["is_default"])
         self.assertEqual(switched.json()["color"], "#333333")
+        self.assertEqual(switched.json()["purpose"], "cushion")
 
         first_refetched = self.client.get(f"/api/v1/accounts/{first_id}")
         self.assertEqual(first_refetched.status_code, 200)
@@ -3285,6 +3289,7 @@ class WebApiTestCase(unittest.TestCase):
                 "balance": 100.0,
                 "icon": "bank",
                 "color": "#111111",
+                "purpose": "cushion",
             },
         )
         self.assertEqual(created.status_code, 201)
@@ -3296,6 +3301,7 @@ class WebApiTestCase(unittest.TestCase):
                 "name": "Editable Updated",
                 "balance": 2500.0,
                 "color": "#abcdef",
+                "purpose": "investment",
             },
         )
         self.assertEqual(updated.status_code, 200)
@@ -3303,12 +3309,14 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["name"], "Editable Updated")
         self.assertEqual(payload["balance"], 2500.0)
         self.assertEqual(payload["color"], "#abcdef")
+        self.assertEqual(payload["purpose"], "investment")
 
         fetched = self.client.get(f"/api/v1/accounts/{account_id}")
         self.assertEqual(fetched.status_code, 200)
         self.assertEqual(fetched.json()["name"], "Editable Updated")
         self.assertEqual(fetched.json()["balance"], 2500.0)
         self.assertEqual(fetched.json()["color"], "#abcdef")
+        self.assertEqual(fetched.json()["purpose"], "investment")
 
     def test_transfer_via_api_updates_account_balances(self):
         income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]

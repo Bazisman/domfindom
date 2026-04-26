@@ -1300,6 +1300,7 @@ class MySqlWriteRepository(MySqlReadRepository):
             str(account.get("currency") or "RUB"),
             account.get("icon"),
             account.get("color"),
+            "investment" if str(account.get("purpose") or "").strip() == "investment" else "cushion",
             bool(account.get("is_default", False)),
             bool(account.get("is_active", True)),
         )
@@ -1313,6 +1314,7 @@ class MySqlWriteRepository(MySqlReadRepository):
                         currency = %s,
                         icon = %s,
                         color = %s,
+                        purpose = %s,
                         is_default = %s,
                         is_active = %s
                     WHERE id = %s
@@ -1324,9 +1326,9 @@ class MySqlWriteRepository(MySqlReadRepository):
             cursor.execute(
                 """
                 INSERT INTO finance_capital_accounts (
-                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, is_default, is_active
+                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, purpose, is_default, is_active
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (mysql_user_id, legacy_account_id, *values),
             )
@@ -1343,7 +1345,9 @@ class MySqlWriteRepository(MySqlReadRepository):
         balance: float = 0,
         icon: str = "",
         color: str = "",
+        purpose: str = "cushion",
     ) -> Dict[str, Any]:
+        purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:
             raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
@@ -1365,6 +1369,7 @@ class MySqlWriteRepository(MySqlReadRepository):
             "currency": "RUB",
             "icon": icon,
             "color": color,
+            "purpose": purpose,
             "is_default": active_count == 0,
             "is_active": True,
         }
@@ -1404,6 +1409,7 @@ class MySqlWriteRepository(MySqlReadRepository):
             "balance": "balance_minor",
             "icon": "icon",
             "color": "color",
+            "purpose": "purpose",
             "is_active": "is_active",
             "is_default": "is_default",
         }

@@ -376,7 +376,7 @@ def _invalidate_capital_cache():
     _capital_invalidate_capital_cache(_cache)
 
 
-def add_capital_account(name, balance=0, icon='💰', color='#ff9800'):
+def add_capital_account(name, balance=0, icon='💰', color='#ff9800', purpose='cushion'):
     return _capital_add_capital_account(
         get_connection,
         app_logger,
@@ -385,6 +385,7 @@ def add_capital_account(name, balance=0, icon='💰', color='#ff9800'):
         balance=balance,
         icon=icon,
         color=color,
+        purpose=purpose,
     )
 
 
@@ -763,4 +764,3 @@ def get_budget_status(category_id: int = None):
 if __name__ == "__main__":
     init_db()
     app_logger.info("База данных инициализирована")
-

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 
 MoneySource = Literal["cashless", "cash"]
 AccountType = Literal["main", "cash", "cashless", "capital"]
+CapitalPurpose = Literal["cushion", "investment"]
 
 
 class AccountResponse(BaseModel):
@@ -20,6 +21,7 @@ class AccountResponse(BaseModel):
     family_visible: bool = False
     family_default_target: bool = False
     money_source: Optional[MoneySource] = None
+    purpose: CapitalPurpose = "cushion"
 
 
 class AccountCreateRequest(BaseModel):
@@ -28,6 +30,7 @@ class AccountCreateRequest(BaseModel):
     balance: float = 0
     icon: str = "💰"
     color: str = "#ff9800"
+    purpose: CapitalPurpose = "cushion"
 
 
 class AccountUpdateRequest(BaseModel):
@@ -39,6 +42,7 @@ class AccountUpdateRequest(BaseModel):
     is_default: Optional[bool] = None
     family_visible: Optional[bool] = None
     family_default_target: Optional[bool] = None
+    purpose: Optional[CapitalPurpose] = None
 
     @model_validator(mode="after")
     def validate_has_changes(self) -> "AccountUpdateRequest":
@@ -53,6 +57,7 @@ class AccountUpdateRequest(BaseModel):
                 self.is_default,
                 self.family_visible,
                 self.family_default_target,
+                self.purpose,
             )
         ):
             raise ValueError("Нужно передать хотя бы одно поле для изменения")

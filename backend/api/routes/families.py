@@ -371,6 +371,10 @@ def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
     return _run_in_user_db(owner_user_id, _action)
 
 
+def _capital_purpose(value) -> str:
+    return "investment" if str(value or "").strip() == "investment" else "cushion"
+
+
 def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
     result: List[Dict[str, object]] = []
     for item in auth_service.list_family_capital_accounts(family_id):
@@ -398,6 +402,7 @@ def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
                 "balance": float(account["balance"] or 0),
                 "color": account["color"] if "color" in account.keys() else None,
                 "icon": account["icon"] if "icon" in account.keys() else None,
+                "purpose": _capital_purpose(account["purpose"] if "purpose" in account.keys() else "cushion"),
                 "is_visible": True,
                 "is_default_target": bool(item.get("is_default_target")),
             }

@@ -46,11 +46,28 @@ function getInitialAccountForm() {
     name: "",
     balance: "",
     color: ACCOUNT_COLORS[0],
+    purpose: "cushion" as "cushion" | "investment",
   };
 }
 
 function isDailyTransferAccount(accountId: number) {
   return accountId === 1 || accountId === 2;
+}
+
+function getCapitalPurposeLabel(purpose: Account["purpose"] | undefined) {
+  return purpose === "investment" ? "Инвестиции" : "Подушка";
+}
+
+function getCapitalPurposeFromLabel(purpose: Account["purpose"] | undefined) {
+  return purpose === "investment" ? "инвестиций" : "подушки";
+}
+
+function getCapitalPurposeTone(account: Pick<Account, "purpose" | "family_visible">) {
+  const base = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
+  if (account.family_visible) {
+    return `В семье · ${base}`;
+  }
+  return account.purpose === "investment" ? "Личные инвестиции" : "Личная подушка";
 }
 
 function getTransferStory(transfer: Transfer, accountById: Map<number, Account>) {
@@ -65,27 +82,30 @@ function getTransferStory(transfer: Transfer, accountById: Map<number, Account>)
     transfer.to_name.toLocaleLowerCase("ru-RU").includes("семейн");
 
   if (fromIsDaily && !toIsDaily) {
+    const toPurposeLabel = getCapitalPurposeLabel(toAccount?.purpose).toLocaleLowerCase("ru-RU");
+    const toAction = toAccount?.purpose === "investment" ? "В инвестиции" : "В подушку";
     if (toIsFamilyCushion) {
       return {
-        label: "В семейную подушку",
-        note: "Это не расход: деньги на жизнь уменьшились, подушка семьи выросла.",
+        label: `${toAction} семьи`,
+        note: `Это не расход: деньги на жизнь уменьшились, ${toPurposeLabel} семьи стали больше.`,
       };
     }
     return {
-      label: "В личную подушку",
-      note: "Деньги на жизнь уменьшились, личная подушка выросла.",
+      label: `${toAction}`,
+      note: `Деньги на жизнь уменьшились, ${toPurposeLabel} стали больше.`,
     };
   }
   if (!fromIsDaily && toIsDaily) {
+    const fromPurposeLabel = getCapitalPurposeFromLabel(fromAccount?.purpose);
     if (fromIsFamilyCushion) {
       return {
-        label: "Из семейной подушки",
-        note: "Подушка семьи уменьшилась, деньги на жизнь выросли.",
+        label: `Из ${fromPurposeLabel} семьи`,
+        note: `Денег в ${fromPurposeLabel} семьи стало меньше, денег на жизнь стало больше.`,
       };
     }
     return {
-      label: "Из личной подушки",
-      note: "Личная подушка уменьшилась, деньги на жизнь выросли.",
+      label: `Из ${fromPurposeLabel}`,
+      note: `Денег в ${fromPurposeLabel} стало меньше, денег на жизнь стало больше.`,
     };
   }
   if (fromIsDaily && toIsDaily) {
@@ -95,14 +115,16 @@ function getTransferStory(transfer: Transfer, accountById: Map<number, Account>)
     };
   }
   if (toIsFamilyCushion) {
+    const toPurposeLabel = getCapitalPurposeLabel(toAccount?.purpose).toLocaleLowerCase("ru-RU");
     return {
-      label: "В семейную подушку",
-      note: "Деньги перешли в подушку семьи.",
+      label: `В ${toPurposeLabel} семьи`,
+      note: `Деньги перешли в ${toPurposeLabel} семьи.`,
     };
   }
+  const toPurposeLabel = getCapitalPurposeLabel(toAccount?.purpose).toLocaleLowerCase("ru-RU");
   return {
-    label: "В личную подушку",
-    note: "Деньги перешли в личную подушку.",
+    label: `В ${toPurposeLabel}`,
+    note: `Деньги перешли в ${toPurposeLabel}.`,
   };
 }
 
@@ -272,7 +294,7 @@ export function AccountsPage() {
         )
         .map((account) => ({
           key: `family:${account.owner_user_id}:${account.capital_account_id}`,
-          label: `Семейная подушка · ${account.name}`,
+          label: `Семья · ${getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU")} · ${account.name}`,
         })),
     ],
     [familyVisibleAccounts, me.data?.id, transferAccounts],
@@ -285,31 +307,34 @@ export function AccountsPage() {
     const toIsDaily = selectedTransferToAccount ? selectedTransferToAccount.type !== "capital" : false;
     const toIsFamilyCushion = Boolean(selectedTransferToFamilyAccount || selectedTransferToAccount?.family_visible);
     const fromIsFamilyCushion = Boolean(selectedTransferFromAccount.family_visible);
+    const toPurpose = selectedTransferToFamilyAccount?.purpose ?? selectedTransferToAccount?.purpose ?? "cushion";
+    const toPurposeLabel = getCapitalPurposeLabel(toPurpose).toLocaleLowerCase("ru-RU");
+    const fromPurposeLabel = getCapitalPurposeFromLabel(selectedTransferFromAccount.purpose);
     if (fromIsDaily && !toIsDaily) {
       if (toIsFamilyCushion) {
-        return "Это не расход: деньги уйдут из трат в семейную подушку.";
+        return `Это не расход: деньги уйдут из трат в ${toPurposeLabel} семьи.`;
       }
       if (familyModeEnabled) {
-        return "Для семьи это деньги ушли в личную подушку.";
+        return `Для семьи это деньги ушли в личные ${toPurposeLabel}.`;
       }
-      return "Это не расход: деньги уйдут из трат в мою подушку.";
+      return `Это не расход: деньги уйдут из трат в ${toPurposeLabel}.`;
     }
     if (!fromIsDaily && toIsDaily) {
       if (fromIsFamilyCushion && familyModeEnabled) {
-        return "Деньги вернутся из семейной подушки в траты.";
+        return `Деньги вернутся из ${fromPurposeLabel} семьи в траты.`;
       }
-      return "Деньги вернутся из подушки в траты.";
+      return `Деньги вернутся из ${fromPurposeLabel} в траты.`;
     }
     if (fromIsDaily && toIsDaily) {
       return "Это просто перенос между деньгами на руках.";
     }
     if (toIsFamilyCushion) {
-      return "Деньги перейдут в семейную подушку.";
+      return `Деньги перейдут в ${toPurposeLabel} семьи.`;
     }
     if (familyModeEnabled) {
-      return "Деньги перейдут в личную подушку.";
+      return `Деньги перейдут в личные ${toPurposeLabel}.`;
     }
-    return "Это перенос между подушками.";
+    return "Это перенос между накоплениями.";
   }, [familyModeEnabled, selectedTransferFromAccount, selectedTransferToAccount, selectedTransferToFamilyAccount]);
 
   const defaultPersonalCapitalAccount = useMemo(
@@ -371,7 +396,7 @@ export function AccountsPage() {
         places.push({
           key: `personal:${account.id}`,
           name: account.name,
-          tone: "Моя подушка",
+          tone: getCapitalPurposeTone(account),
           balance: account.balance,
           color: account.color ?? "#5f6b76",
         });
@@ -381,7 +406,7 @@ export function AccountsPage() {
       places.push({
         key: `family:${account.owner_user_id}:${account.capital_account_id}`,
         name: account.name,
-        tone: `Подушка семьи · ${ownerLabel}`,
+        tone: `${getCapitalPurposeLabel(account.purpose)} семьи · ${ownerLabel}`,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
       });
@@ -404,12 +429,12 @@ export function AccountsPage() {
         .map((account) => ({
           key: `personal:${account.id}`,
           label: account.name,
-          description: "Личная подушка",
+          description: getCapitalPurposeLabel(account.purpose),
         })),
       ...familyVisibleAccounts.map((account) => ({
         key: `family:${account.owner_user_id}:${account.capital_account_id}`,
         label: account.name,
-        description: `Подушка семьи · ${account.owner_display_name || account.owner_email || "Семья"}`,
+        description: `${getCapitalPurposeLabel(account.purpose)} семьи · ${account.owner_display_name || account.owner_email || "Семья"}`,
       })),
     ],
     [capitalAccounts, familyVisibleAccounts, personalAccountsPublishedToFamily],
@@ -443,7 +468,7 @@ export function AccountsPage() {
         name: account.name,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
-        tone: "Личная подушка",
+        tone: getCapitalPurposeTone(account),
       };
     }
     if (effectiveAutoCapitalTargetKey.startsWith("family:")) {
@@ -463,7 +488,7 @@ export function AccountsPage() {
         name: account.name,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
-        tone: `Подушка семьи · ${ownerLabel}`,
+        tone: `${getCapitalPurposeLabel(account.purpose)} семьи · ${ownerLabel}`,
       };
     }
     return null;
@@ -767,9 +792,10 @@ export function AccountsPage() {
     setEditingAccountId(account.id);
     setAccountForm({
       name: account.name,
-      balance: String(account.balance),
-      color: account.color ?? ACCOUNT_COLORS[0],
-    });
+        balance: String(account.balance),
+        color: account.color ?? ACCOUNT_COLORS[0],
+        purpose: account.purpose ?? "cushion",
+      });
     setAccountError(null);
     moveToAccountEditForm();
   }
@@ -797,6 +823,7 @@ export function AccountsPage() {
           name,
           balance,
           color: accountForm.color,
+          purpose: accountForm.purpose,
         },
       });
       return;
@@ -806,6 +833,7 @@ export function AccountsPage() {
       name,
       balance,
       color: accountForm.color,
+      purpose: accountForm.purpose,
     });
   }
 
@@ -849,12 +877,13 @@ export function AccountsPage() {
   }
 
   function getAccountTone(account: Account) {
-    return account.family_visible ? "В семейной подушке" : "Личная подушка";
+    return getCapitalPurposeTone(account);
   }
 
   function getTransferAccountLabel(account: Account) {
     if (account.type === "capital") {
-      return `${account.family_visible ? "Семейная подушка" : "Личная подушка"} · ${account.name}`;
+      const purposeLabel = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
+      return `${account.family_visible ? `Семья · ${purposeLabel}` : getCapitalPurposeLabel(account.purpose)} · ${account.name}`;
     }
     return account.money_source === "cash" ? "Наличные" : "Для трат";
   }
@@ -938,7 +967,7 @@ export function AccountsPage() {
                 }}
                 value={selectedTargetKey}
               >
-                <option value="">Выбери подушку</option>
+                <option value="">Выбери место</option>
                 {autoCapitalTargetOptions.map((option) => (
                   <option key={option.key} value={option.key}>
                     {option.description + " · " + option.label}
@@ -947,7 +976,7 @@ export function AccountsPage() {
               </select>
             </label>
 
-            <p className="auto-capital-note">Это не расход: деньги уходят из трат в подушку.</p>
+            <p className="auto-capital-note">Это не расход: деньги уходят из трат в выбранное место.</p>
 
             <div className="field">
               <span>Основной способ оплаты</span>
@@ -1001,13 +1030,13 @@ export function AccountsPage() {
           ref={accountFormPanelRef}
         >
           <div className="panel-header">
-            <h2>{editingAccountId !== null ? "Редактирование подушки" : "Новая подушка"}</h2>
+          <h2>{editingAccountId !== null ? "Редактирование места" : "Новое место"}</h2>
           </div>
 
           <form className="transaction-form" onSubmit={submitAccountForm}>
             {editingAccountId !== null && (
               <div className="editing-banner" role="status">
-                <strong>Сейчас редактируется:</strong> {accountForm.name || "подушка"}
+                <strong>Сейчас редактируется:</strong> {accountForm.name || "место"}
               </div>
             )}
             <label className="field">
@@ -1019,6 +1048,26 @@ export function AccountsPage() {
                 value={accountForm.name}
               />
             </label>
+
+            <div className="field">
+              <span>Для чего это</span>
+              <div className="toggle-row">
+                <button
+                  className={accountForm.purpose === "cushion" ? "toggle active" : "toggle"}
+                  onClick={() => setAccountForm((current) => ({ ...current, purpose: "cushion" }))}
+                  type="button"
+                >
+                  Подушка
+                </button>
+                <button
+                  className={accountForm.purpose === "investment" ? "toggle active" : "toggle"}
+                  onClick={() => setAccountForm((current) => ({ ...current, purpose: "investment" }))}
+                  type="button"
+                >
+                  Инвестиции
+                </button>
+              </div>
+            </div>
 
             <label className="field">
               <span>{editingAccountId !== null ? "Сколько сейчас" : "Сколько сейчас"}</span>
@@ -1060,7 +1109,7 @@ export function AccountsPage() {
                     : "Сохранить"
                   : createAccountMutation.isPending
                     ? "Создаём..."
-                    : "Добавить подушку"}
+                    : "Добавить"}
               </button>
 
               {editingAccountId !== null && (
@@ -1252,7 +1301,7 @@ export function AccountsPage() {
 
         <section className="panel panel-list">
           <div className="panel-header">
-            <h2>Мои подушки</h2>
+          <h2>Подушки и инвестиции</h2>
           </div>
 
           {activeAutoCapitalTarget ? (
@@ -1282,7 +1331,7 @@ export function AccountsPage() {
 
           <div className="account-section">
             <div className="account-section-header">
-              <h3>Подушки</h3>
+              <h3>Мои места</h3>
             </div>
 
             <div className="category-card-grid">
@@ -1340,7 +1389,7 @@ export function AccountsPage() {
               )}
 
               {!!accounts.data?.length && !capitalAccounts.length && (
-                <p className="empty">Подушек пока нет.</p>
+                <p className="empty">Подушек и инвестиций пока нет.</p>
               )}
             </div>
           </div>

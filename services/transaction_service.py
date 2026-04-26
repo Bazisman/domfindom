@@ -924,8 +924,9 @@ class TransactionService:
             app_logger.error(f"Ошибка установки основного счёта капитала: {e}", exc_info=True)
             return False
 
-    def add_capital_account(self, name, balance=0, icon='💰', color='#ff9800'):
+    def add_capital_account(self, name, balance=0, icon='💰', color='#ff9800', purpose='cushion'):
         """Добавляет новый счёт капитала."""
+        purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
         try:
             repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
             if repo is not None and legacy_user_id is not None:
@@ -938,11 +939,12 @@ class TransactionService:
                         balance=balance,
                         icon=icon,
                         color=color,
+                        purpose=purpose,
                     )
                     conn.commit()
                 result = int(write_result["legacy_account_id"])
             else:
-                result = core.add_capital_account(name, balance, icon, color)
+                result = core.add_capital_account(name, balance, icon, color, purpose)
             if result:
                 app_logger.info(f"Добавлен счёт капитала: {name}")
                 self.notify_listeners()

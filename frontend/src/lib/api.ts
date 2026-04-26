@@ -185,6 +185,7 @@ export type BudgetUpdatePayload = {
 };
 
 export type AccountType = "main" | "cash" | "cashless" | "capital";
+export type CapitalPurpose = "cushion" | "investment";
 
 export type Account = {
   id: number;
@@ -199,6 +200,7 @@ export type Account = {
   family_visible: boolean;
   family_default_target: boolean;
   money_source: MoneySource | null;
+  purpose: CapitalPurpose;
 };
 
 export type AccountCreatePayload = {
@@ -207,6 +209,7 @@ export type AccountCreatePayload = {
   balance?: number;
   icon?: string;
   color?: string;
+  purpose?: CapitalPurpose;
 };
 
 export type AccountUpdatePayload = {
@@ -217,6 +220,7 @@ export type AccountUpdatePayload = {
   is_default?: boolean;
   family_visible?: boolean;
   family_default_target?: boolean;
+  purpose?: CapitalPurpose;
 };
 
 export type Transfer = {
@@ -403,6 +407,7 @@ export type FamilyDashboardResponse = {
     balance: number;
     color: string | null;
     icon: string | null;
+    purpose: CapitalPurpose;
     is_visible: boolean;
     is_default_target: boolean;
   }>;

@@ -9,7 +9,7 @@ def get_capital_accounts(
         with get_connection() as conn:
             cursor = conn.cursor()
             query = """
-                SELECT id, name, balance, currency, icon, color, is_active, is_default
+                SELECT id, name, balance, currency, icon, color, purpose, is_active, is_default
                 FROM capital_accounts
             """
             if not include_inactive:
@@ -27,7 +27,7 @@ def get_default_capital_account(get_connection):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, name, balance, icon, color
+            SELECT id, name, balance, icon, color, purpose
             FROM capital_accounts
             WHERE is_default = 1 AND is_active = 1
             LIMIT 1
@@ -67,7 +67,9 @@ def add_capital_account(
     balance=0,
     icon="💰",
     color="#ff9800",
+    purpose="cushion",
 ):
+    purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
     app_logger.info(f"Добавление счёта капитала: {name}")
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -76,10 +78,10 @@ def add_capital_account(
         is_default = 1 if count == 0 else 0
         cursor.execute(
             """
-            INSERT INTO capital_accounts (name, balance, icon, color, is_default, created_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO capital_accounts (name, balance, icon, color, purpose, is_default, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
             """,
-            (name, balance, icon, color, is_default),
+            (name, balance, icon, color, purpose, is_default),
         )
         conn.commit()
         new_id = cursor.lastrowid
@@ -97,7 +99,7 @@ def update_capital_account(
     account_id,
     **kwargs,
 ):
-    allowed_fields = ["name", "balance", "icon", "color", "is_active"]
+    allowed_fields = ["name", "balance", "icon", "color", "purpose", "is_active"]
     with get_connection() as conn:
         cursor = conn.cursor()
         applied_updates = False

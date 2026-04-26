@@ -28,6 +28,10 @@ def _row_value(row, key: str, default=None):
         return getattr(row, key, default)
 
 
+def _capital_purpose(value) -> str:
+    return "investment" if str(value or "").strip() == "investment" else "cushion"
+
+
 def _current_family_id(user_id: int) -> int:
     family = auth_service.get_primary_family(user_id)
     return int(family["id"]) if family else 0
@@ -70,6 +74,7 @@ def _daily_account_response(row) -> AccountResponse:
         family_visible=False,
         family_default_target=False,
         money_source=money_source,
+        purpose="cushion",
     )
 
 
@@ -88,6 +93,7 @@ def _capital_account_response(row, family_meta=None) -> AccountResponse:
         family_visible=bool(family_meta.get("is_visible", False)),
         family_default_target=bool(family_meta.get("is_default_target", False)),
         money_source=None,
+        purpose=_capital_purpose(_row_value(row, "purpose", "cushion")),
     )
 
 
@@ -144,6 +150,7 @@ def create_account(payload: AccountCreateRequest, current_user=Depends(require_u
         balance=payload.balance,
         icon=payload.icon,
         color=payload.color,
+        purpose=payload.purpose,
     )
     if not account_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать счет")

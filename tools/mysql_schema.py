@@ -303,6 +303,7 @@ DDL = [
         currency VARCHAR(8) NOT NULL DEFAULT 'RUB',
         icon VARCHAR(80) NULL,
         color VARCHAR(80) NULL,
+        purpose VARCHAR(40) NOT NULL DEFAULT 'cushion',
         is_default BOOLEAN NOT NULL DEFAULT FALSE,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -584,6 +585,14 @@ DDL = [
     """,
 ]
 
+MYSQL_MIGRATIONS = [
+    (
+        "finance_capital_accounts",
+        "purpose",
+        "ALTER TABLE finance_capital_accounts ADD COLUMN purpose VARCHAR(40) NOT NULL DEFAULT 'cushion' AFTER color",
+    ),
+]
+
 
 def mysql_connect(database_url: str):
     import pymysql
@@ -614,6 +623,19 @@ def apply_schema(database_url: str, reset_target: bool) -> dict:
                 cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
             for statement in DDL:
                 cursor.execute(statement)
+            for table, column, statement in MYSQL_MIGRATIONS:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS count
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = %s
+                      AND COLUMN_NAME = %s
+                    """,
+                    (table, column),
+                )
+                if int(cursor.fetchone()["count"] or 0) == 0:
+                    cursor.execute(statement)
             cursor.execute("SHOW TABLES")
             tables = [next(iter(row.values())) for row in cursor.fetchall()]
         conn.commit()
