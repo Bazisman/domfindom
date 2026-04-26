@@ -1148,7 +1148,21 @@ class TransactionService:
     def set_budget(self, category_id: int, amount: float, period: str = 'monthly') -> bool:
         """Устанавливает бюджет для категории"""
         try:
-            result = core.set_budget(category_id, amount, period)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.set_budget(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        legacy_category_id=category_id,
+                        amount=amount,
+                        period=period,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"inserted", "updated"}
+            else:
+                result = core.set_budget(category_id, amount, period)
             self.notify_listeners()
             return result
         except Exception as e:
@@ -1158,7 +1172,18 @@ class TransactionService:
     def delete_budget(self, category_id: int) -> bool:
         """Удаляет бюджет для категории"""
         try:
-            result = core.delete_budget(category_id)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.delete_budget(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_budget_id=category_id,
+                    )
+                    conn.commit()
+                result = write_result.get("status") == "deleted"
+            else:
+                result = core.delete_budget(category_id)
             self.notify_listeners()
             return result
         except Exception as e:

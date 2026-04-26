@@ -766,6 +766,66 @@ class MySqlWriteRepository(MySqlReadRepository):
             cursor.execute("DELETE FROM finance_budgets WHERE id = %s", (mysql_budget_id,))
         return {"status": "deleted", "budget_id": mysql_budget_id}
 
+    def set_budget(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        legacy_category_id: int,
+        amount: float,
+        period: str = "monthly",
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_category_id = self._finance_id_by_legacy(conn, "categories", mysql_user_id, legacy_category_id)
+        if mysql_category_id is None:
+            raise RuntimeError(f"MySQL category legacy_local_id={legacy_category_id} was not found")
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, legacy_local_id
+                FROM finance_budgets
+                WHERE user_id = %s AND category_id = %s
+                LIMIT 1
+                """,
+                (mysql_user_id, mysql_category_id),
+            )
+            existing = cursor.fetchone()
+        amount_minor = to_minor(amount)
+        normalized_period = str(period or "monthly")
+        if existing:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE finance_budgets
+                    SET amount_minor = %s, period = %s
+                    WHERE id = %s
+                    """,
+                    (amount_minor, normalized_period, int(existing["id"])),
+                )
+            return {
+                "status": "updated",
+                "budget_id": int(existing["id"]),
+                "legacy_budget_id": int(existing["legacy_local_id"]),
+            }
+
+        legacy_budget_id = self._next_legacy_id(conn, mysql_user_id, "budgets")
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO finance_budgets (user_id, legacy_local_id, category_id, amount_minor, period)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (mysql_user_id, legacy_budget_id, mysql_category_id, amount_minor, normalized_period),
+            )
+            mysql_budget_id = int(cursor.lastrowid)
+        self._insert_id_map(conn, source_db_path, legacy_user_id, "budgets", legacy_budget_id, "budgets", mysql_budget_id)
+        return {"status": "inserted", "budget_id": mysql_budget_id, "legacy_budget_id": legacy_budget_id}
+
+    def delete_budget(self, conn, legacy_user_id: int, legacy_budget_id: int) -> Dict[str, Any]:
+        return self.mirror_delete_budget(conn, legacy_user_id, legacy_budget_id)
+
     def mirror_capital_account(self, conn, legacy_user_id: int, source_db_path: str, account: Dict[str, Any]) -> Dict[str, Any]:
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:
