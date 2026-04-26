@@ -63,6 +63,7 @@ class AppConfig:
     database_url: str
     run_db_migrations: bool
     postgres_read_shadow_enabled: bool
+    postgres_shadow_write_enabled: bool
     auth_db_name: str
     users_data_dir: str
     session_cookie_name: str
@@ -109,6 +110,7 @@ settings = AppConfig(
     database_url=os.getenv("FINANCE_APP_DATABASE_URL", "").strip(),
     run_db_migrations=_parse_bool(os.getenv("FINANCE_APP_RUN_DB_MIGRATIONS", "false")),
     postgres_read_shadow_enabled=_parse_bool(os.getenv("FINANCE_APP_POSTGRES_READ_SHADOW", "false")),
+    postgres_shadow_write_enabled=_parse_bool(os.getenv("FINANCE_APP_POSTGRES_SHADOW_WRITE", "false")),
     auth_db_name=os.getenv("FINANCE_APP_AUTH_DB_NAME", "auth.db"),
     users_data_dir=os.getenv("FINANCE_APP_USERS_DATA_DIR", "data/users"),
     session_cookie_name=os.getenv("FINANCE_APP_SESSION_COOKIE_NAME", "finance_session"),

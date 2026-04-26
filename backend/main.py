@@ -21,6 +21,8 @@ def _guard_unwired_postgres_backend() -> None:
         )
     if settings.postgres_read_shadow_enabled:
         app_logger.info("PostgreSQL shadow-read is enabled; primary runtime storage remains SQLite")
+    if settings.postgres_shadow_write_enabled:
+        app_logger.info("PostgreSQL shadow-write is enabled; primary runtime storage remains SQLite")
 
 
 @asynccontextmanager

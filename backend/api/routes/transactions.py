@@ -16,6 +16,7 @@ from backend.schemas.transactions import (
     TransactionUpdateRequest,
 )
 from backend.services import category_service, row_to_transaction_response, transaction_service
+from backend.storage.shadow_write import mirror_created_transaction_shadow_write
 from models import Transaction
 
 
@@ -273,11 +274,13 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
     is_future = _is_future_date(payload.date)
     recurring_payload = payload.recurring if payload.recurring and payload.recurring.enabled else None
     planned_date = payload.date
+    shadow_write_skip_reason = ""
 
     if is_future and recurring_payload and recurring_payload.working_days_only:
         planned_date = core._adjust_to_workday(payload.date)
 
     if is_future:
+        shadow_write_skip_reason = "planned_transaction"
         created_id = core.add_planned_transaction(
             payload.type,
             category_name,
@@ -305,6 +308,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
             )
             if family_created_id is not None:
                 created_id = family_created_id
+                shadow_write_skip_reason = "family_capital_contribution"
             else:
                 if capital_account_id is None and default_capital_account:
                     capital_account_id = default_capital_account["id"]
@@ -358,6 +362,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
         status=row["status"] if "status" in row.keys() else "actual",
         money_source=row["money_source"] if "money_source" in row.keys() else "cashless",
     )
+    mirror_created_transaction_shadow_write(current_user, row, skip_reason=shadow_write_skip_reason)
     return TransactionCreateResponse(
         id=created_id,
         message="Транзакция создана",

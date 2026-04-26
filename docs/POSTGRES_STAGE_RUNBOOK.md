@@ -94,6 +94,7 @@ python -B tools\postgres_cutover_check.py `
 ```text
 FINANCE_APP_DATABASE_URL=postgresql+psycopg://<user>:<password>@localhost:5432/<stage-db>
 FINANCE_APP_POSTGRES_READ_SHADOW=true
+FINANCE_APP_POSTGRES_SHADOW_WRITE=false
 FINANCE_APP_STORAGE_BACKEND=sqlite
 ```
 
@@ -103,6 +104,18 @@ FINANCE_APP_STORAGE_BACKEND=sqlite
 - при расхождении в лог пишется user id и количество issues, без вывода финансовых значений;
 - production cutover не считается разрешенным только по факту включения shadow-read.
 - `FINANCE_APP_STORAGE_BACKEND=postgres` сейчас намеренно заблокирован startup guard до готовности write-path адаптера.
+
+После отдельной проверки write target можно включать shadow-write:
+
+```text
+FINANCE_APP_POSTGRES_SHADOW_WRITE=true
+```
+
+Правило:
+- SQLite остается primary write;
+- PostgreSQL получает зеркальную запись только после успешного SQLite-коммита;
+- ошибки PostgreSQL пишутся в лог и не ломают пользовательский запрос;
+- planned transactions и семейные автоотчисления пока пропускаются.
 
 ## Что нельзя делать
 
