@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import core
 from backend.config import settings
+from backend.storage.mysql_write import MySqlWriteRepository
 from backend.storage.postgres_write import PostgresWriteRepository
 from utils.logger import app_logger
 
@@ -12,6 +13,13 @@ def postgres_shadow_write_enabled(config=settings) -> bool:
     return bool(
         getattr(config, "postgres_shadow_write_enabled", False)
         and getattr(config, "database_url", "")
+    )
+
+
+def mysql_shadow_write_enabled(config=settings) -> bool:
+    return bool(
+        getattr(config, "mysql_shadow_write_enabled", False)
+        and getattr(config, "mysql_database_url", "")
     )
 
 
@@ -51,7 +59,7 @@ def mirror_created_transaction_shadow_write(
 ) -> Dict[str, Any]:
     if skip_reason:
         return {"enabled": False, "status": "skipped", "reason": skip_reason}
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
 
     transaction = _row_to_dict(sqlite_transaction_row)
@@ -64,6 +72,41 @@ def mirror_created_transaction_shadow_write(
     legacy_user_id = int(current_user["id"])
     legacy_transaction_id = int(transaction["id"])
     source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            if status != "actual":
+                results["mysql"] = {"enabled": True, "status": "skipped", "reason": "non_actual_transaction"}
+            else:
+                transfers = _active_transfers_for_transaction(legacy_transaction_id)
+                repo = MySqlWriteRepository(config.mysql_database_url)
+                with repo.connect() as conn:
+                    result = repo.mirror_actual_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        transaction=transaction,
+                        transfers=transfers,
+                    )
+                    conn.commit()
+                app_logger.info(
+                    "MySQL shadow-write mirrored transaction user_id=%s transaction_id=%s status=%s",
+                    legacy_user_id,
+                    legacy_transaction_id,
+                    result.get("status"),
+                )
+                results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write failed for user_id=%s transaction_id=%s: %s",
+                legacy_user_id,
+                legacy_transaction_id,
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
+
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
@@ -90,7 +133,8 @@ def mirror_created_transaction_shadow_write(
             legacy_transaction_id,
             result.get("status"),
         )
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write failed for user_id=%s transaction_id=%s: %s",
@@ -98,7 +142,8 @@ def mirror_created_transaction_shadow_write(
             legacy_transaction_id,
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_deleted_transaction_shadow_write(
@@ -109,10 +154,38 @@ def mirror_deleted_transaction_shadow_write(
 ) -> Dict[str, Any]:
     if skip_reason:
         return {"enabled": False, "status": "skipped", "reason": skip_reason}
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
 
     legacy_user_id = int(current_user["id"])
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            repo = MySqlWriteRepository(config.mysql_database_url)
+            with repo.connect() as conn:
+                result = repo.mirror_delete_transaction(
+                    conn,
+                    legacy_user_id=legacy_user_id,
+                    legacy_transaction_id=int(legacy_transaction_id),
+                )
+                conn.commit()
+            app_logger.info(
+                "MySQL shadow-write mirrored delete user_id=%s transaction_id=%s status=%s",
+                legacy_user_id,
+                int(legacy_transaction_id),
+                result.get("status"),
+            )
+            results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write delete failed for user_id=%s transaction_id=%s: %s",
+                legacy_user_id,
+                int(legacy_transaction_id),
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         repo = PostgresWriteRepository(config.database_url)
         with repo.connect() as conn:
@@ -128,7 +201,8 @@ def mirror_deleted_transaction_shadow_write(
             int(legacy_transaction_id),
             result.get("status"),
         )
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write delete failed for user_id=%s transaction_id=%s: %s",
@@ -136,7 +210,8 @@ def mirror_deleted_transaction_shadow_write(
             int(legacy_transaction_id),
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_updated_transaction_shadow_write(
@@ -147,7 +222,7 @@ def mirror_updated_transaction_shadow_write(
 ) -> Dict[str, Any]:
     if skip_reason:
         return {"enabled": False, "status": "skipped", "reason": skip_reason}
-    if not current_user or not postgres_shadow_write_enabled(config):
+    if not current_user or not (postgres_shadow_write_enabled(config) or mysql_shadow_write_enabled(config)):
         return {"enabled": False, "status": "disabled"}
 
     transaction = _row_to_dict(sqlite_transaction_row)
@@ -160,6 +235,40 @@ def mirror_updated_transaction_shadow_write(
     legacy_user_id = int(current_user["id"])
     legacy_transaction_id = int(transaction["id"])
     source_db_path = f"data/users/{legacy_user_id}/finance.db"
+    results: Dict[str, Any] = {}
+    if mysql_shadow_write_enabled(config):
+        try:
+            if status != "actual":
+                results["mysql"] = {"enabled": True, "status": "skipped", "reason": "non_actual_transaction"}
+            else:
+                transfers = _active_transfers_for_transaction(legacy_transaction_id)
+                repo = MySqlWriteRepository(config.mysql_database_url)
+                with repo.connect() as conn:
+                    result = repo.mirror_update_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        transaction=transaction,
+                        transfers=transfers,
+                    )
+                    conn.commit()
+                app_logger.info(
+                    "MySQL shadow-write mirrored update user_id=%s transaction_id=%s status=%s",
+                    legacy_user_id,
+                    legacy_transaction_id,
+                    result.get("status"),
+                )
+                results["mysql"] = {"enabled": True, "status": "ok", "result": result}
+        except Exception as exc:
+            app_logger.warning(
+                "MySQL shadow-write update failed for user_id=%s transaction_id=%s: %s",
+                legacy_user_id,
+                legacy_transaction_id,
+                exc,
+            )
+            results["mysql"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     try:
         transfers = [] if status == "planned" else _active_transfers_for_transaction(legacy_transaction_id)
         repo = PostgresWriteRepository(config.database_url)
@@ -178,7 +287,8 @@ def mirror_updated_transaction_shadow_write(
             legacy_transaction_id,
             result.get("status"),
         )
-        return {"enabled": True, "status": "ok", "result": result}
+        results["postgres"] = {"enabled": True, "status": "ok", "result": result}
+        return {"enabled": True, "status": "ok" if all(item.get("status") != "failed" for item in results.values()) else "failed", "results": results}
     except Exception as exc:
         app_logger.warning(
             "PostgreSQL shadow-write update failed for user_id=%s transaction_id=%s: %s",
@@ -186,7 +296,8 @@ def mirror_updated_transaction_shadow_write(
             legacy_transaction_id,
             exc,
         )
-        return {"enabled": True, "status": "failed", "reason": str(exc)}
+        results["postgres"] = {"enabled": True, "status": "failed", "reason": str(exc)}
+        return {"enabled": True, "status": "failed", "results": results}
 
 
 def mirror_recurring_template_shadow_write(

@@ -28,6 +28,8 @@ def _guard_unwired_postgres_backend() -> None:
         app_logger.info("PostgreSQL shadow-write is enabled; primary runtime storage remains SQLite")
     if settings.mysql_read_shadow_enabled:
         app_logger.info("MySQL shadow-read is enabled; primary runtime storage remains SQLite")
+    if settings.mysql_shadow_write_enabled:
+        app_logger.info("MySQL shadow-write is enabled; primary runtime storage remains SQLite")
 
 
 def _frontend_dist_path() -> Path:
