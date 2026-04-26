@@ -1,6 +1,6 @@
 # Локальный запуск и окружение
 
-> Обновлено: 2026-04-18
+> Обновлено: 2026-04-26
 
 ## Основной контур разработки
 
@@ -33,6 +33,8 @@ npm install
 
 ## Локальный запуск backend
 
+По умолчанию локальный backend может работать в legacy SQLite-режиме:
+
 ```bash
 python run_web_backend.py
 ```
@@ -42,6 +44,23 @@ python run_web_backend.py
 ```bash
 python -m uvicorn backend.main:app --reload
 ```
+
+Для проверки MySQL runtime локально нужны переменные:
+
+```env
+FINANCE_APP_STORAGE_BACKEND=mysql
+FINANCE_APP_MYSQL_DATABASE_URL=mysql+pymysql://...
+FINANCE_APP_MYSQL_READ_SHADOW=true
+FINANCE_APP_MYSQL_SHADOW_WRITE=true
+FINANCE_APP_MYSQL_PRIMARY_READ_PILOT=true
+FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING=true
+FINANCE_APP_MYSQL_STRICT_WRITE_TRANSACTIONS=true
+FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL=true
+FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION=true
+FINANCE_APP_MYSQL_STRICT_WRITE_AUTH=true
+```
+
+Production работает именно в MySQL runtime. SQLite в локальном запуске остается удобным fallback для старых тестов и legacy desktop-слоя.
 
 ## Локальный запуск frontend
 

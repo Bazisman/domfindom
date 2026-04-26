@@ -1,6 +1,6 @@
 # Руководство по выкладке
 
-> Обновлено: 2026-04-25
+> Обновлено: 2026-04-26
 > Production: `domfindom.ru`
 
 ## Текущая схема production
@@ -10,6 +10,7 @@
 Схема:
 - backend-репозиторий расположен в `~/finance-app`;
 - backend запускается через `Passenger` и `passenger_wsgi.py`;
+- production storage — MySQL primary runtime;
 - frontend собирается локально;
 - содержимое `frontend/dist` выкладывается в `/var/www/u3480024/data/www/domfindom.ru`.
 
@@ -50,13 +51,13 @@ source .venv/bin/activate
 python -m pip install -r requirements-web.txt
 ```
 
-Если релиз меняет схему пользовательских SQLite-БД:
-- миграция должна быть идемпотентной и выполняться для уже существующих `data/users/*/finance.db`, а не только для новых баз;
-- `auth_service.ensure_user_finance_db()` обязан прогонять `core.init_db()` при первом доступе к базе в процессе;
-- перед завершением выкладки нужно проверить хотя бы наличие новых колонок/таблиц во всех production `finance.db`;
-- после schema-релиза вручную проверить живой сценарий, который пишет в измененную таблицу, а не ограничиваться только `health`.
+Если релиз меняет MySQL-схему:
+- миграция должна быть идемпотентной;
+- `tools/mysql_schema.py` и/или отдельная миграция должны быть проверены до deploy;
+- после deploy нужно выполнить `tools/mysql_cutover_check.py`;
+- вручную проверить сценарий, который пишет в измененную таблицу.
 
-Production-инцидент 2026-04-25 показал риск: `health` оставался зеленым, но создание транзакций падало, потому что старые пользовательские БД не имели новой колонки `transactions.money_source`.
+SQLite schema-релизы теперь относятся только к legacy/fallback/desktop режиму. Для production web-runtime источником истины является MySQL.
 
 ## Выкладка frontend
 
@@ -85,13 +86,31 @@ curl -L https://domfindom.ru/api/v1/health
 Ожидаемый ответ:
 
 ```json
-{"status":"ok"}
+{"status":"ok","storage_backend":"mysql","runtime_mode":"mysql-primary-read-strict-dual-write"}
 ```
+
+Проверка MySQL runtime:
+
+```bash
+cd /var/www/u3480024/data/finance-app
+set -a && . ./.env && set +a
+.venv/bin/python tools/mysql_cutover_check.py \
+  --database-url "$FINANCE_APP_MYSQL_DATABASE_URL" \
+  --year 2026 \
+  --month 4 \
+  --skip-data-checks \
+  --format markdown
+```
+
+Ожидаемо:
+- `Ready for runtime mysql: True`
+- `Blockers: 0`
+- `runtime_adapter: mysql-primary-read-strict-dual-write`
 
 После этого вручную проверить минимум:
 - вход в аккаунт;
 - экран, который менялся;
-- если менялась схема БД — создание/редактирование записи на измененном экране;
+- создание/редактирование записи на измененном экране;
 - если менялись письма — соответствующий email-flow.
 
 ## Правило протокола

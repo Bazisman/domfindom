@@ -11,24 +11,26 @@
 
 1. `TASKS.md`
 2. `docs/PROJECT_STATE.md`
-3. `docs/DECISIONS.md`
-4. `docs/WORKING_MEMORY.md`
-5. `docs/WORK_LOG.md`
-6. `docs/PROJECT_HISTORY.md`
+3. `docs/MYSQL_RUNTIME_RUNBOOK.md`
+4. `docs/DECISIONS.md`
+5. `docs/WORKING_MEMORY.md`
+6. `docs/WORK_LOG.md`
+7. `docs/PROJECT_HISTORY.md`
 
 ## Живые документы
 
 - `PROJECT_STATE.md` — текущее состояние продукта, архитектуры и production.
+- `MYSQL_RUNTIME_RUNBOOK.md` — актуальный MySQL primary runtime, production-переменные, проверки и rollback-правила.
 - `PROJECT_HISTORY.md` — краткая история развития проекта по этапам.
 - `DECISIONS.md` — принятые продуктовые и технические договоренности.
 - `FUNCTIONAL_SPEC.md` — единое описание пользовательского функционала, экранов и правил расчета.
 - `GLOSSARY.md` — единый словарь терминов продукта.
 - `BUSINESS_RULES.md` — формулы, расчетные правила и продуктовые инварианты.
 - `CATEGORY_SYNC_SPEC.md` — ТЗ по смысловым категориям, аудиту, слиянию и семейной синхронизации.
-- `POSTGRES_MIGRATION_PLAN.md` — живой план безопасного перехода с per-user SQLite на PostgreSQL.
-- `POSTGRES_ER_MODEL.md` — черновик целевой PostgreSQL ER-модели перед Alembic/ETL.
-- `POSTGRES_IMPLEMENTATION_PLAN.md` — порядок внедрения Alembic, ETL, сверки и storage-адаптера.
-- `POSTGRES_STAGE_RUNBOOK.md` — безопасный протокол snapshot/stage проверки PostgreSQL migration.
+- `POSTGRES_MIGRATION_PLAN.md` — исторический план миграции на PostgreSQL; не является текущим production runtime.
+- `POSTGRES_ER_MODEL.md` — историческая PostgreSQL ER-модель.
+- `POSTGRES_IMPLEMENTATION_PLAN.md` — исторический порядок PostgreSQL-внедрения.
+- `POSTGRES_STAGE_RUNBOOK.md` — исторический протокол PostgreSQL stage-проверки.
 - `SECURITY_PRIVACY_MODEL.md` — целевая модель приватности, шифрования и временного доступа поддержки.
 - `SCREEN_MAP.md` — карта экранов, навигации и основных пользовательских сценариев.
 - `FEATURES.md` — пользовательские возможности текущей web-версии.
