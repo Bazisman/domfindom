@@ -208,6 +208,7 @@ tools/postgres_reconciliation.py
 - adapter умеет зеркалировать уже созданную SQLite-транзакцию в PostgreSQL один раз, обновляя daily/capital balances и связанные transfers;
 - добавлен rollback-probe `tools/postgres_shadow_write_probe.py`, который проверяет write adapter на stage PostgreSQL без сохранения тестовой записи.
 - добавлен выключенный по умолчанию runtime `FINANCE_APP_POSTGRES_SHADOW_WRITE`; при включении новые личные actual transactions после SQLite-коммита зеркалируются в PostgreSQL, а ошибки пишутся в лог и не ломают основной SQLite-ответ;
+- shadow-write расширен на удаление личных actual transactions: PostgreSQL-зеркало откатывает balance effects, деактивирует связанные transfers и удаляет transaction row;
 - planned transactions и семейные автоотчисления пока явно пропускаются shadow-write слоем до отдельной поддержки семейного write-path.
 
 ## 10. Stage и cutover

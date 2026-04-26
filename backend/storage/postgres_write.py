@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from backend.storage.postgres_read import PostgresReadRepository
 from tools.money_minor import to_minor
+from tools.money_minor import from_minor_float
 
 
 DAILY_ACCOUNT_IDS = {1, 2}
@@ -90,6 +91,22 @@ class PostgresWriteRepository(PostgresReadRepository):
             ).fetchone()
         if not row:
             raise RuntimeError(f"PostgreSQL account legacy_local_id={legacy_account_id} was not found")
+
+    def _legacy_account_id_from_transfer_row(self, row: Dict[str, Any], prefix: str) -> int:
+        kind = str(row[f"{prefix}_account_kind"])
+        if kind == "daily":
+            lookup_table = "accounts"
+            lookup_id = row[f"{prefix}_daily_account_id"]
+        else:
+            lookup_table = "capital_accounts"
+            lookup_id = row[f"{prefix}_capital_account_id"]
+        legacy_row = row.get(f"legacy_{prefix}_account_id")
+        if legacy_row is not None:
+            return int(legacy_row)
+        resolved = row.get(f"{prefix}_legacy_local_id")
+        if resolved is not None:
+            return int(resolved)
+        raise RuntimeError(f"Cannot resolve legacy {prefix} account id for finance.{lookup_table} id={lookup_id}")
 
     def _insert_id_map(
         self,
@@ -272,3 +289,80 @@ class PostgresWriteRepository(PostgresReadRepository):
         )
         self._adjust_account_minor(conn, pg_user_id, to_legacy, amount_minor)
         return pg_transfer_id
+
+    def mirror_delete_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_transaction_id: int,
+    ) -> Dict[str, Any]:
+        pg_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if pg_user_id is None:
+            raise RuntimeError(f"PostgreSQL user for legacy user {legacy_user_id} was not found")
+
+        row = conn.execute(
+            """
+            SELECT id, type, amount_minor, money_source, status
+            FROM finance.transactions
+            WHERE user_id = %s AND legacy_local_id = %s
+            """,
+            (int(pg_user_id), int(legacy_transaction_id)),
+        ).fetchone()
+        if not row:
+            return {"status": "missing"}
+        if str(row["status"] or "actual") != "actual":
+            return {"status": "skipped", "reason": "non_actual_transaction"}
+
+        pg_transaction_id = int(row["id"])
+        amount_minor = int(row["amount_minor"] or 0)
+        source_account_id = 2 if str(row["money_source"] or "cashless") == "cash" else 1
+        transfer_rows = conn.execute(
+            """
+            SELECT
+                t.id,
+                t.amount_minor,
+                t.legacy_from_account_id,
+                t.legacy_to_account_id,
+                t.from_account_kind,
+                t.to_account_kind,
+                t.from_daily_account_id,
+                t.to_daily_account_id,
+                t.from_capital_account_id,
+                t.to_capital_account_id,
+                from_daily.legacy_local_id AS from_daily_legacy_local_id,
+                to_daily.legacy_local_id AS to_daily_legacy_local_id,
+                from_capital.legacy_local_id AS from_capital_legacy_local_id,
+                to_capital.legacy_local_id AS to_capital_legacy_local_id
+            FROM finance.transfers t
+            LEFT JOIN finance.accounts from_daily ON from_daily.id = t.from_daily_account_id
+            LEFT JOIN finance.accounts to_daily ON to_daily.id = t.to_daily_account_id
+            LEFT JOIN finance.capital_accounts from_capital ON from_capital.id = t.from_capital_account_id
+            LEFT JOIN finance.capital_accounts to_capital ON to_capital.id = t.to_capital_account_id
+            WHERE t.user_id = %s
+              AND t.transaction_id = %s
+              AND t.is_active = true
+            ORDER BY t.id
+            """,
+            (int(pg_user_id), pg_transaction_id),
+        ).fetchall()
+
+        transfer_minor = 0
+        for transfer in transfer_rows:
+            transfer_amount_minor = int(transfer["amount_minor"] or 0)
+            transfer_minor += transfer_amount_minor
+            to_legacy = self._legacy_account_id_from_transfer_row(transfer, "to")
+            self._adjust_account_minor(conn, pg_user_id, to_legacy, -transfer_amount_minor)
+            conn.execute("UPDATE finance.transfers SET is_active = false WHERE id = %s", (int(transfer["id"]),))
+
+        if str(row["type"]) == "income":
+            self._adjust_account_minor(conn, pg_user_id, source_account_id, -(amount_minor - transfer_minor))
+        else:
+            self._adjust_account_minor(conn, pg_user_id, source_account_id, amount_minor)
+
+        conn.execute("DELETE FROM finance.transactions WHERE id = %s", (pg_transaction_id,))
+        return {
+            "status": "deleted",
+            "transaction_id": pg_transaction_id,
+            "amount": from_minor_float(amount_minor),
+            "transfers_deactivated": len(transfer_rows),
+        }

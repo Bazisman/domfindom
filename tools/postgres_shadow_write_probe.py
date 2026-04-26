@@ -68,14 +68,27 @@ def build_probe(database_url: str, legacy_user_id: int, source_db_path: str) -> 
         after_count = int(
             scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
         )
+        delete_result = repo.mirror_delete_transaction(conn, legacy_user_id, legacy_local_id)
+        after_delete_count = int(
+            scalar(conn, "SELECT COUNT(*) FROM finance.transactions WHERE user_id = %s", (pg_user_id,))
+        )
         conn.rollback()
     return {
         "legacy_user_id": legacy_user_id,
         "postgres_user_id": pg_user_id,
-        "status": "ok" if result["status"] == "inserted" and after_count == before_count + 1 else "failed",
+        "status": "ok"
+        if (
+            result["status"] == "inserted"
+            and after_count == before_count + 1
+            and delete_result["status"] == "deleted"
+            and after_delete_count == before_count
+        )
+        else "failed",
         "insert_status": result["status"],
+        "delete_status": delete_result["status"],
         "before_count": before_count,
         "after_count_inside_transaction": after_count,
+        "after_delete_count_inside_transaction": after_delete_count,
         "rolled_back": True,
     }
 
@@ -89,8 +102,10 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"PostgreSQL user: `{report['postgres_user_id']}`",
             f"Status: `{report['status']}`",
             f"Insert status: `{report['insert_status']}`",
+            f"Delete status: `{report['delete_status']}`",
             f"Before count: `{report['before_count']}`",
             f"After count inside transaction: `{report['after_count_inside_transaction']}`",
+            f"After delete count inside transaction: `{report['after_delete_count_inside_transaction']}`",
             f"Rolled back: `{report['rolled_back']}`",
         ]
     )

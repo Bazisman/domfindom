@@ -115,6 +115,7 @@ FINANCE_APP_POSTGRES_SHADOW_WRITE=true
 - SQLite остается primary write;
 - PostgreSQL получает зеркальную запись только после успешного SQLite-коммита;
 - ошибки PostgreSQL пишутся в лог и не ломают пользовательский запрос;
+- удаление личной actual transaction зеркалируется в PostgreSQL с откатом balance effects;
 - planned transactions и семейные автоотчисления пока пропускаются.
 
 ## Что нельзя делать

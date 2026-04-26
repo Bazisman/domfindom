@@ -16,7 +16,10 @@ from backend.schemas.transactions import (
     TransactionUpdateRequest,
 )
 from backend.services import category_service, row_to_transaction_response, transaction_service
-from backend.storage.shadow_write import mirror_created_transaction_shadow_write
+from backend.storage.shadow_write import (
+    mirror_created_transaction_shadow_write,
+    mirror_deleted_transaction_shadow_write,
+)
 from models import Transaction
 
 
@@ -373,6 +376,7 @@ def create_transaction(payload: TransactionCreateRequest, current_user=Depends(r
 @router.delete("/{transaction_id}", response_model=MessageResponse)
 def delete_transaction(transaction_id: int, current_user=Depends(require_user)) -> MessageResponse:
     existing = transaction_service.get_transaction_by_id(transaction_id)
+    family_contribution = auth_service.get_family_capital_contribution(int(current_user["id"]), transaction_id)
     deleted = transaction_service.delete_transaction(transaction_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
@@ -380,6 +384,11 @@ def delete_transaction(transaction_id: int, current_user=Depends(require_user)) 
         int(current_user["id"]),
         transaction_id,
         existing.money_source if existing else "cashless",
+    )
+    mirror_deleted_transaction_shadow_write(
+        current_user,
+        transaction_id,
+        skip_reason="family_capital_contribution" if family_contribution else "",
     )
     return MessageResponse(message="Транзакция удалена")
 

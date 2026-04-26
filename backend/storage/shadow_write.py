@@ -86,3 +86,41 @@ def mirror_created_transaction_shadow_write(
             exc,
         )
         return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def mirror_deleted_transaction_shadow_write(
+    current_user: Optional[Dict[str, Any]],
+    legacy_transaction_id: int,
+    config=settings,
+    skip_reason: str = "",
+) -> Dict[str, Any]:
+    if skip_reason:
+        return {"enabled": False, "status": "skipped", "reason": skip_reason}
+    if not current_user or not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+
+    legacy_user_id = int(current_user["id"])
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_delete_transaction(
+                conn,
+                legacy_user_id=legacy_user_id,
+                legacy_transaction_id=int(legacy_transaction_id),
+            )
+            conn.commit()
+        app_logger.info(
+            "PostgreSQL shadow-write mirrored delete user_id=%s transaction_id=%s status=%s",
+            legacy_user_id,
+            int(legacy_transaction_id),
+            result.get("status"),
+        )
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write delete failed for user_id=%s transaction_id=%s: %s",
+            legacy_user_id,
+            int(legacy_transaction_id),
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}
