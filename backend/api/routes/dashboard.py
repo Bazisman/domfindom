@@ -2,7 +2,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request
 
-import core
 from backend.auth.service import auth_service
 from backend.schemas.dashboard import BalanceSummary, DashboardResponse
 from backend.schemas.budgets import BudgetStatusItem
@@ -58,7 +57,7 @@ def get_dashboard(request: Request) -> DashboardResponse:
         for item in transaction_service.get_transactions(limit=100, period="all", offset=0)
         if item.status != "planned"
     ][:10]
-    budgets = core.get_budget_status()[:5]
+    budgets = transaction_service.get_budget_status()[:5]
     compare_dashboard_shadow_read(current_user, balance, current_month_stats, now.year, now.month)
     compare_dashboard_mysql_shadow_read(current_user, balance, current_month_stats, now.year, now.month)
 

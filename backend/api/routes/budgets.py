@@ -16,7 +16,7 @@ from backend.schemas.budgets import (
     BudgetStatusItem,
     BudgetUpdateRequest,
 )
-from backend.services import transaction_service
+from backend.services import category_service, transaction_service
 from backend.storage.shadow_write import (
     mirror_budget_shadow_write,
     mirror_deleted_budget_shadow_write,
@@ -179,7 +179,7 @@ def list_budgets() -> List[BudgetResponse]:
 
 @router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
 def create_budget(payload: BudgetCreateRequest, current_user=Depends(require_user)) -> BudgetResponse:
-    category = core.get_category_by_id(payload.category_id)
+    category = category_service.get_category_by_id(payload.category_id)
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
 
@@ -239,7 +239,7 @@ def budget_status(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Семья не найдена или доступ запрещен.")
         return _build_family_budget_status(family_id)
 
-    status_items = core.get_budget_status()
+    status_items = transaction_service.get_budget_status()
     return [BudgetStatusItem(**item) for item in status_items]
 
 

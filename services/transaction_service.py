@@ -837,10 +837,12 @@ class TransactionService:
             app_logger.error(f"Ошибка удаления бюджета: {e}", exc_info=True)
             return False
     
-    def get_budget_status(self, category_id: int) -> dict:
+    def get_budget_status(self, category_id: int = None):
         """Получает статус бюджета для категории"""
         try:
             return core.get_budget_status(category_id)
         except Exception as e:
             app_logger.error(f"Ошибка получения статуса бюджета: {e}", exc_info=True)
+            if category_id is None:
+                return []
             return {'spent': 0, 'budget': 0, 'remaining': 0, 'percent': 0}
