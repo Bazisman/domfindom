@@ -63,13 +63,30 @@ class MySqlReadRepository:
             "expense": from_minor_float(row["expense_minor"]),
         }
 
-    def get_transactions(self, conn, legacy_user_id: int, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_transactions(
+        self,
+        conn,
+        legacy_user_id: int,
+        limit: int = 100,
+        offset: int = 0,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if user_id is None:
             return []
+        filters = ["user_id = %s"]
+        params: List[Any] = [user_id]
+        if start_date:
+            filters.append("date >= %s")
+            params.append(start_date)
+        if end_date:
+            filters.append("date <= %s")
+            params.append(end_date)
+        params.extend([int(limit), int(offset)])
         with conn.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT
                     legacy_local_id AS id,
                     DATE_FORMAT(date, '%%Y-%%m-%%d') AS date,
@@ -81,11 +98,11 @@ class MySqlReadRepository:
                     status,
                     template_id
                 FROM finance_transactions
-                WHERE user_id = %s
+                WHERE {' AND '.join(filters)}
                 ORDER BY date DESC, legacy_local_id DESC
                 LIMIT %s OFFSET %s
                 """,
-                (user_id, int(limit), int(offset)),
+                tuple(params),
             )
             rows = cursor.fetchall()
         return [self._transaction_row(row) for row in rows]

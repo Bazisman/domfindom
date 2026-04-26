@@ -49,6 +49,7 @@
 - MySQL shadow-write расширен на личные категории, бюджеты, счета капитала и ручные transfers; rollback-probe проверяет новые методы в транзакции с откатом, основной SQLite runtime не переключается.
 - MySQL shadow-write расширен на семейный auth snapshot: семьи, memberships, invites, публикации капитала, family category bindings и audit resolutions зеркалируются в MySQL единым снимком после изменений в SQLite.
 - Добавлен `tools/mysql_cutover_check.py`: он проверяет MySQL dependencies/schema/reconciliation/read-compare и явно показывает, что shadow-read готов, а runtime cutover пока заблокирован SQLite-first auth/core adapter.
+- Начат первый runtime-slice для будущего MySQL primary: `TransactionService` получил dormant read-path для balance, transactions и monthly stats через `MySqlReadRepository`, включая извлечение legacy user id из текущего `data/users/*/finance.db` контекста.
 
 ### 2026-04-25
 

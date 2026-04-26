@@ -1,10 +1,32 @@
 # services/transaction_service.py
 import core
+import core_runtime
 from models import Transaction, Balance, Transfer
 from typing import List, Optional, Callable, Any
 from datetime import datetime, timedelta
 import calendar
+from pathlib import Path
 from utils.logger import app_logger
+
+
+def _legacy_user_id_from_current_db() -> Optional[int]:
+    parts = Path(core_runtime._current_db_name()).parts
+    for index, part in enumerate(parts):
+        if part == "users" and index + 1 < len(parts):
+            try:
+                return int(parts[index + 1])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _mysql_primary_reads_enabled() -> bool:
+    try:
+        from backend.config import settings
+
+        return bool(settings.storage_backend == "mysql" and settings.mysql_database_url)
+    except Exception:
+        return False
 
 
 class TransactionService:
@@ -100,6 +122,20 @@ class TransactionService:
     def get_balance(self, force_update: bool = False) -> Balance:
         """Получает баланс основного счёта"""
         try:
+            if _mysql_primary_reads_enabled():
+                legacy_user_id = _legacy_user_id_from_current_db()
+                if legacy_user_id is not None:
+                    from backend.storage.mysql_read import MySqlReadRepository
+                    from backend.config import settings
+
+                    repo = MySqlReadRepository(settings.mysql_database_url)
+                    with repo.connect() as conn:
+                        data = repo.get_balance(conn, legacy_user_id)
+                    return Balance(
+                        main_balance=data.get("main_balance") or 0.0,
+                        income=data.get("income") or 0.0,
+                        expense=data.get("expense") or 0.0,
+                    )
             main_balance, income, expense = core.get_balance(force_update=force_update)
             return Balance(main_balance=main_balance or 0.0, income=income or 0.0, expense=expense or 0.0)
         except Exception as e:
@@ -113,11 +149,12 @@ class TransactionService:
             limit = min(limit, 500)
             
             today = datetime.now()
+            start = None
+            end = None
             
             if period == "month":
                 start = today.replace(day=1).strftime("%Y-%m-%d")
                 end = today.replace(day=calendar.monthrange(today.year, today.month)[1]).strftime("%Y-%m-%d")
-                raw = core.get_transactions_by_period(start, end, limit, offset)
             elif period == "last_month":
                 if today.month == 1:
                     start = today.replace(year=today.year-1, month=12, day=1)
@@ -125,17 +162,26 @@ class TransactionService:
                 else:
                     start = today.replace(month=today.month-1, day=1)
                     end = today.replace(day=1) - timedelta(days=1)
-                raw = core.get_transactions_by_period(
-                    start.strftime("%Y-%m-%d"), 
-                    end.strftime("%Y-%m-%d"),
-                    limit,
-                    offset,
-                )
+                start = start.strftime("%Y-%m-%d")
+                end = end.strftime("%Y-%m-%d")
             elif period == "year":
                 start = today.replace(month=1, day=1).strftime("%Y-%m-%d")
                 end = today.replace(month=12, day=31).strftime("%Y-%m-%d")
+
+            if _mysql_primary_reads_enabled():
+                legacy_user_id = _legacy_user_id_from_current_db()
+                if legacy_user_id is not None:
+                    from backend.storage.mysql_read import MySqlReadRepository
+                    from backend.config import settings
+
+                    repo = MySqlReadRepository(settings.mysql_database_url)
+                    with repo.connect() as conn:
+                        raw = repo.get_transactions(conn, legacy_user_id, limit=limit, offset=offset, start_date=start, end_date=end)
+                else:
+                    raw = []
+            elif start and end:
                 raw = core.get_transactions_by_period(start, end, limit, offset)
-            else:  # all
+            else:
                 raw = core.get_last_transactions(limit, offset)
             
             result = []
@@ -312,6 +358,15 @@ class TransactionService:
     def get_monthly_stats(self, year: int, month: int) -> dict:
         """Возвращает статистику за месяц: доходы, расходы, отчисления в капитал"""
         try:
+            if _mysql_primary_reads_enabled():
+                legacy_user_id = _legacy_user_id_from_current_db()
+                if legacy_user_id is not None:
+                    from backend.storage.mysql_read import MySqlReadRepository
+                    from backend.config import settings
+
+                    repo = MySqlReadRepository(settings.mysql_database_url)
+                    with repo.connect() as conn:
+                        return repo.get_monthly_stats(conn, legacy_user_id, year, month)
             # Формируем даты
             start_date = f"{year}-{month:02d}-01"
             last_day = calendar.monthrange(year, month)[1]
