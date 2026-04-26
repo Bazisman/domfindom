@@ -223,6 +223,7 @@ export function AccountsPage() {
   );
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
   const familyModeEnabled = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
+  const familyMemberMoney = familyDashboard.data?.member_money ?? [];
 
   const transferAccounts = useMemo(
     () => (accounts.data ?? []).filter((item) => item.is_active),
@@ -1200,6 +1201,17 @@ export function AccountsPage() {
               <p className="muted">Личные деньги на жизнь и моя подушка.</p>
             </article>
           </div>
+
+          {familyModeEnabled && !!familyMemberMoney.length && (
+            <div className="family-money-list money-overview-members" aria-label="Деньги на руках у участников">
+              {familyMemberMoney.map((member) => (
+                <div className="family-money-item" key={member.user_id}>
+                  <span>{member.display_name || member.email}</span>
+                  <strong>{formatMoney(member.main_balance)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="panel panel-list">

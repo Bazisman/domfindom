@@ -1067,6 +1067,10 @@ body {
   background: inherit;
 }
 
+.money-overview-members {
+  margin-top: 16px;
+}
+
 .account-section {
   margin-top: 22px;
 }
