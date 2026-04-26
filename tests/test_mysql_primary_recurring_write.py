@@ -130,6 +130,36 @@ class MySqlPrimaryRecurringWriteTestCase(unittest.TestCase):
         core_delete.assert_not_called()
         repo.mirror_delete_recurring_template.assert_called_once_with(conn, 12, 7)
 
+    def test_execute_planned_transactions_uses_mysql_primary_write_repo(self):
+        service = TransactionService()
+        conn = _Connection()
+        repo = mock.MagicMock()
+        repo.connect.return_value.__enter__.return_value = conn
+        repo.execute_due_planned_transactions.return_value = {"status": "executed", "count": 2}
+
+        with (
+            mock.patch(
+                "services.transaction_service._mysql_write_repo_for_current_user",
+                return_value=(repo, 12, "data/users/12/finance.db"),
+            ),
+            mock.patch.object(service, "get_default_capital_account", return_value={"id": 101}),
+            mock.patch.object(service, "notify_listeners") as notify,
+            mock.patch("services.transaction_service.core.execute_all_planned_transactions") as core_execute,
+        ):
+            result = service.execute_planned_transactions()
+
+        self.assertEqual(result, 2)
+        self.assertTrue(conn.committed)
+        notify.assert_called_once_with(update_all=True)
+        core_execute.assert_not_called()
+        repo.execute_due_planned_transactions.assert_called_once_with(
+            conn,
+            legacy_user_id=12,
+            source_db_path="data/users/12/finance.db",
+            auto_percent=10,
+            capital_account_id=101,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -962,6 +962,97 @@ class MySqlWriteRepository(MySqlReadRepository):
             current_date = (current_date + timedelta(days=32)).replace(day=1)
         return {"status": "generated", "created": count}
 
+    def execute_planned_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        legacy_transaction_id: int,
+        auto_percent: int = 0,
+        capital_account_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_transaction_id = self._finance_id_by_legacy(conn, "transactions", mysql_user_id, legacy_transaction_id)
+        if mysql_transaction_id is None:
+            return {"status": "missing"}
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT legacy_local_id, type, category, amount_minor, COALESCE(comment, '') AS comment,
+                       DATE_FORMAT(date, '%%Y-%%m-%%d') AS date, money_source, status
+                FROM finance_transactions
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (mysql_transaction_id,),
+            )
+            planned = cursor.fetchone()
+        if not planned or str(planned["status"]) != "planned":
+            return {"status": "missing"}
+
+        amount_minor = int(planned["amount_minor"] or 0)
+        source_account_id = 2 if str(planned["money_source"] or "cashless") == "cash" else 1
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE finance_transactions
+                SET status = 'actual', executed_at = NOW()
+                WHERE id = %s
+                """,
+                (mysql_transaction_id,),
+            )
+
+        if str(planned["type"]) == "income":
+            transfer_minor = 0
+            apply_auto_capital = (
+                int(auto_percent or 0) > 0
+                and capital_account_id is not None
+                and str(planned["category"]) != "Остаток"
+                and self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, int(capital_account_id)) is not None
+            )
+            if apply_auto_capital:
+                transfer_amount = from_minor_float(amount_minor) * (int(auto_percent) / 100)
+                transfer_minor = to_minor(transfer_amount)
+                transfer = {
+                    "id": self._next_legacy_id(conn, mysql_user_id, "transfers"),
+                    "from_account_id": source_account_id,
+                    "to_account_id": int(capital_account_id),
+                    "amount": transfer_amount,
+                    "date": str(planned["date"]),
+                    "comment": f"Автоотчисление {int(auto_percent)}% от планового дохода: {planned['comment']}",
+                    "is_active": True,
+                }
+                self._mirror_transfer(conn, mysql_user_id, legacy_user_id, source_db_path, transfer, mysql_transaction_id)
+            self._adjust_account_minor(conn, mysql_user_id, source_account_id, amount_minor - transfer_minor)
+        else:
+            self._adjust_account_minor(conn, mysql_user_id, source_account_id, -amount_minor)
+        return {"status": "executed", "transaction_id": mysql_transaction_id}
+
+    def execute_due_planned_transactions(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        auto_percent: int = 0,
+        capital_account_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        due = self.get_planned_transactions_due(conn, legacy_user_id)
+        count = 0
+        for transaction in due:
+            result = self.execute_planned_transaction(
+                conn,
+                legacy_user_id=legacy_user_id,
+                source_db_path=source_db_path,
+                legacy_transaction_id=int(transaction["id"]),
+                auto_percent=auto_percent,
+                capital_account_id=capital_account_id,
+            )
+            if result.get("status") == "executed":
+                count += 1
+        return {"status": "executed", "count": count}
+
     def mirror_delete_recurring_template(self, conn, legacy_user_id: int, legacy_template_id: int) -> Dict[str, Any]:
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:

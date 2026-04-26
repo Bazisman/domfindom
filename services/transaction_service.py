@@ -1336,7 +1336,20 @@ class TransactionService:
             capital_account_id = capital_account['id'] if capital_account else None
             
             # Исполняем
-            count = core.execute_all_planned_transactions(auto_percent, capital_account_id)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    result = repo.execute_due_planned_transactions(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        auto_percent=auto_percent,
+                        capital_account_id=capital_account_id,
+                    )
+                    conn.commit()
+                count = int(result.get("count", 0))
+            else:
+                count = core.execute_all_planned_transactions(auto_percent, capital_account_id)
             
             if count > 0:
                 self.notify_listeners(update_all=True)
