@@ -163,6 +163,7 @@ export function AccountsPage() {
     () => capitalAccounts.filter((item) => item.is_active).reduce((sum, account) => sum + account.balance, 0),
     [capitalAccounts],
   );
+  const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
 
   const transferAccounts = useMemo(
     () => (accounts.data ?? []).filter((item) => item.is_active),
@@ -176,12 +177,48 @@ export function AccountsPage() {
     () => transferAccounts.find((account) => String(account.id) === transferForm.toAccountId) ?? null,
     [transferAccounts, transferForm.toAccountId],
   );
+  const selectedTransferToFamilyAccount = useMemo(() => {
+    if (!transferForm.toAccountId.startsWith("family:")) {
+      return null;
+    }
+    const [, ownerRaw, accountRaw] = transferForm.toAccountId.split(":");
+    const ownerUserId = Number(ownerRaw);
+    const capitalAccountId = Number(accountRaw);
+    return (
+      familyVisibleAccounts.find(
+        (account) => account.owner_user_id === ownerUserId && account.capital_account_id === capitalAccountId,
+      ) ?? null
+    );
+  }, [familyVisibleAccounts, transferForm.toAccountId]);
+  const transferTargetOptions = useMemo(
+    () => [
+      ...transferAccounts.map((account) => ({
+        key: String(account.id),
+        label: getTransferAccountLabel(account),
+      })),
+      ...familyVisibleAccounts
+        .filter(
+          (account) =>
+            !transferAccounts.some(
+              (ownAccount) =>
+                ownAccount.type === "capital" &&
+                ownAccount.id === account.capital_account_id &&
+                account.owner_user_id === me.data?.id,
+            ),
+        )
+        .map((account) => ({
+          key: `family:${account.owner_user_id}:${account.capital_account_id}`,
+          label: `Семейная подушка · ${account.name}`,
+        })),
+    ],
+    [familyVisibleAccounts, me.data?.id, transferAccounts],
+  );
   const transferMeaning = useMemo(() => {
-    if (!selectedTransferFromAccount || !selectedTransferToAccount) {
+    if (!selectedTransferFromAccount || (!selectedTransferToAccount && !selectedTransferToFamilyAccount)) {
       return null;
     }
     const fromIsDaily = selectedTransferFromAccount.type !== "capital";
-    const toIsDaily = selectedTransferToAccount.type !== "capital";
+    const toIsDaily = selectedTransferToAccount ? selectedTransferToAccount.type !== "capital" : false;
     if (fromIsDaily && !toIsDaily) {
       return "Это не расход: деньги уйдут из трат в подушку.";
     }
@@ -192,7 +229,7 @@ export function AccountsPage() {
       return "Это просто перенос между деньгами на руках.";
     }
     return "Это перенос между подушками.";
-  }, [selectedTransferFromAccount, selectedTransferToAccount]);
+  }, [selectedTransferFromAccount, selectedTransferToAccount, selectedTransferToFamilyAccount]);
 
   const defaultPersonalCapitalAccount = useMemo(
     () =>
@@ -214,7 +251,6 @@ export function AccountsPage() {
       ) ?? null
     );
   }, [familyDashboard.data]);
-  const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
   const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
   const familyDailyBalance = familyDashboard.data?.balance.main_balance ?? 0;
   const familyForecastBalance = familyDashboard.data?.forecast.projected_balance ?? null;
@@ -711,9 +747,11 @@ export function AccountsPage() {
       return;
     }
 
+    const familyTargetMatch = transferForm.toAccountId.match(/^family:(\d+):(\d+)$/);
     createTransferMutation.mutate({
       from_account_id: Number(transferForm.fromAccountId),
-      to_account_id: Number(transferForm.toAccountId),
+      to_account_id: familyTargetMatch ? Number(familyTargetMatch[2]) : Number(transferForm.toAccountId),
+      target_owner_user_id: familyTargetMatch ? Number(familyTargetMatch[1]) : undefined,
       amount,
       date: transferForm.date,
       comment: transferForm.comment,
@@ -987,9 +1025,9 @@ export function AccountsPage() {
                   value={transferForm.toAccountId}
                 >
                   <option value="">Выбери место</option>
-                  {transferAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {getTransferAccountLabel(account)}
+                  {transferTargetOptions.map((account) => (
+                    <option key={account.key} value={account.key}>
+                      {account.label}
                     </option>
                   ))}
                 </select>

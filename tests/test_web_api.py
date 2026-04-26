@@ -1797,6 +1797,104 @@ class WebApiTestCase(unittest.TestCase):
         self.assertTrue(any(item["to_account_id"] == capital_id and item["amount"] == 100.0 for item in owner_transfers))
         member_client.close()
 
+    def test_manual_transfer_to_family_capital_updates_both_users_and_history(self):
+        member_email = f"family-manual-{uuid4().hex[:8]}@example.com"
+        member_client = TestClient(app)
+        register_member = member_client.post(
+            "/api/v1/auth/register",
+            json={"email": member_email, "password": "MemberPass123"},
+        )
+        self.assertEqual(register_member.status_code, 201)
+        member_id = int(register_member.json()["user"]["id"])
+
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья ручная подушка"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+        invite = self.client.post(
+            f"/api/v1/families/{family_id}/invites",
+            json={"email": member_email},
+        )
+        self.assertEqual(invite.status_code, 200)
+        accept = member_client.post(
+            "/api/v1/families/invites/accept",
+            json={"token": invite.json()["invite_token"]},
+        )
+        self.assertEqual(accept.status_code, 200)
+
+        member_capital = member_client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Подушка супруги", "balance": 0.0, "color": "#2255aa"},
+        )
+        self.assertEqual(member_capital.status_code, 201)
+        member_capital_id = int(member_capital.json()["id"])
+        publish_member_capital = member_client.patch(
+            f"/api/v1/accounts/{member_capital_id}",
+            json={"family_visible": True},
+        )
+        self.assertEqual(publish_member_capital.status_code, 200)
+
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        owner_income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 1000.0,
+                "comment": "Доход для ручного перевода",
+                "date": "2026-04-18",
+                "auto_capital_percent": 0,
+            },
+        )
+        self.assertEqual(owner_income.status_code, 201)
+
+        manual_transfer = self.client.post(
+            "/api/v1/transfers",
+            json={
+                "from_account_id": 1,
+                "to_account_id": member_capital_id,
+                "target_owner_user_id": member_id,
+                "amount": 250.0,
+                "date": "2026-04-19",
+                "comment": "В семейную подушку",
+            },
+        )
+        self.assertEqual(manual_transfer.status_code, 201)
+        self.assertEqual(manual_transfer.json()["from_name"], "Для трат")
+        self.assertIn("Подушка супруги", manual_transfer.json()["to_name"])
+
+        owner_accounts = self.client.get("/api/v1/accounts")
+        self.assertEqual(owner_accounts.status_code, 200)
+        owner_main = next(item for item in owner_accounts.json() if item["id"] == 1)
+        self.assertEqual(owner_main["balance"], 750.0)
+
+        member_accounts = member_client.get("/api/v1/accounts")
+        self.assertEqual(member_accounts.status_code, 200)
+        member_capital_after = next(item for item in member_accounts.json() if item["id"] == member_capital_id)
+        self.assertEqual(member_capital_after["balance"], 250.0)
+
+        owner_transfers = self.client.get("/api/v1/transfers")
+        self.assertEqual(owner_transfers.status_code, 200)
+        self.assertTrue(
+            any(
+                item["to_account_id"] == member_capital_id
+                and item["amount"] == 250.0
+                and item["from_name"] == "Для трат"
+                for item in owner_transfers.json()
+            )
+        )
+
+        member_history = member_client.get(f"/api/v1/families/{family_id}/capital-history")
+        self.assertEqual(member_history.status_code, 200)
+        self.assertTrue(
+            any(
+                item["target_capital_account_id"] == member_capital_id
+                and item["amount"] == 250.0
+                and item["source_transaction_id"] < 0
+                for item in member_history.json()["items"]
+            )
+        )
+        member_client.close()
+
     def test_family_capital_target_can_use_another_members_account_and_history_is_shared(self):
         member_email = f"family-shared-{uuid4().hex[:8]}@example.com"
         member_client = TestClient(app)

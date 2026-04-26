@@ -234,6 +234,7 @@ export type Transfer = {
 export type TransferCreatePayload = {
   from_account_id: number;
   to_account_id: number;
+  target_owner_user_id?: number;
   amount: number;
   date?: string;
   comment?: string;

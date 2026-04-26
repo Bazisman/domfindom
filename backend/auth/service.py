@@ -374,6 +374,15 @@ class AuthService:
                 )
                 """
             )
+            cursor.execute("PRAGMA table_info(family_capital_contributions)")
+            contribution_columns = {str(row["name"]) for row in cursor.fetchall()}
+            if "source_money_source" not in contribution_columns:
+                cursor.execute(
+                    """
+                    ALTER TABLE family_capital_contributions
+                    ADD COLUMN source_money_source TEXT NOT NULL DEFAULT 'cashless'
+                    """
+                )
             cursor.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_family_capital_contributions_family
@@ -1838,11 +1847,20 @@ class AuthService:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT family_id, owner_user_id, capital_account_id, is_visible, is_default_target, updated_at
-                FROM family_capital_accounts
-                WHERE family_id = ?
-                  AND owner_user_id = ?
-                  AND capital_account_id = ?
+                SELECT fca.family_id,
+                       fca.owner_user_id,
+                       fca.capital_account_id,
+                       fca.is_visible,
+                       fca.is_default_target,
+                       fca.updated_at,
+                       u.email,
+                       COALESCE(up.display_name, '') AS display_name
+                FROM family_capital_accounts fca
+                JOIN users u ON u.id = fca.owner_user_id
+                LEFT JOIN user_preferences up ON up.user_id = fca.owner_user_id
+                WHERE fca.family_id = ?
+                  AND fca.owner_user_id = ?
+                  AND fca.capital_account_id = ?
                 LIMIT 1
                 """,
                 (family_id, owner_user_id, capital_account_id),
@@ -1857,6 +1875,8 @@ class AuthService:
             "is_visible": bool(row["is_visible"]),
             "is_default_target": bool(row["is_default_target"]),
             "updated_at": str(row["updated_at"] or ""),
+            "owner_email": str(row["email"] or ""),
+            "owner_display_name": str(row["display_name"] or "").strip(),
         }
 
     def upsert_family_capital_account(
@@ -2066,7 +2086,9 @@ class AuthService:
         amount: float,
         date: str,
         comment: str = "",
+        source_money_source: str = "cashless",
     ) -> Dict[str, object]:
+        normalized_source = "cash" if source_money_source == "cash" else "cashless"
         with self._auth_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -2077,12 +2099,13 @@ class AuthService:
                     source_transaction_id,
                     target_owner_user_id,
                     target_capital_account_id,
+                    source_money_source,
                     amount,
                     date,
                     comment,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     family_id,
@@ -2090,6 +2113,7 @@ class AuthService:
                     source_transaction_id,
                     target_owner_user_id,
                     target_capital_account_id,
+                    normalized_source,
                     amount,
                     date,
                     comment,
@@ -2104,6 +2128,75 @@ class AuthService:
             "source_transaction_id": source_transaction_id,
             "target_owner_user_id": target_owner_user_id,
             "target_capital_account_id": target_capital_account_id,
+            "source_money_source": normalized_source,
+            "amount": amount,
+            "date": date,
+            "comment": comment,
+        }
+
+    def create_manual_family_capital_contribution(
+        self,
+        family_id: int,
+        source_user_id: int,
+        target_owner_user_id: int,
+        target_capital_account_id: int,
+        amount: float,
+        date: str,
+        comment: str = "",
+        source_money_source: str = "cashless",
+    ) -> Dict[str, object]:
+        normalized_source = "cash" if source_money_source == "cash" else "cashless"
+        with self._auth_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COALESCE(MIN(source_transaction_id), 0) - 1 AS next_id
+                FROM family_capital_contributions
+                WHERE source_user_id = ?
+                  AND source_transaction_id < 0
+                """,
+                (source_user_id,),
+            )
+            row = cursor.fetchone()
+            source_transaction_id = int(row["next_id"] if row else -1)
+            cursor.execute(
+                """
+                INSERT INTO family_capital_contributions (
+                    family_id,
+                    source_user_id,
+                    source_transaction_id,
+                    target_owner_user_id,
+                    target_capital_account_id,
+                    source_money_source,
+                    amount,
+                    date,
+                    comment,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    family_id,
+                    source_user_id,
+                    source_transaction_id,
+                    target_owner_user_id,
+                    target_capital_account_id,
+                    normalized_source,
+                    amount,
+                    date,
+                    comment,
+                ),
+            )
+            contribution_id = int(cursor.lastrowid)
+            conn.commit()
+        return {
+            "id": contribution_id,
+            "family_id": family_id,
+            "source_user_id": source_user_id,
+            "source_transaction_id": source_transaction_id,
+            "target_owner_user_id": target_owner_user_id,
+            "target_capital_account_id": target_capital_account_id,
+            "source_money_source": normalized_source,
             "amount": amount,
             "date": date,
             "comment": comment,
@@ -2137,6 +2230,7 @@ class AuthService:
             "source_transaction_id": int(row["source_transaction_id"]),
             "target_owner_user_id": int(row["target_owner_user_id"]),
             "target_capital_account_id": int(row["target_capital_account_id"]),
+            "source_money_source": str(row["source_money_source"] or "cashless"),
             "amount": float(row["amount"] or 0),
             "date": str(row["date"] or ""),
             "comment": str(row["comment"] or ""),
@@ -2174,6 +2268,7 @@ class AuthService:
                        fcc.source_transaction_id,
                        fcc.target_owner_user_id,
                        fcc.target_capital_account_id,
+                       fcc.source_money_source,
                        fcc.amount,
                        fcc.date,
                        fcc.comment,
@@ -2204,6 +2299,7 @@ class AuthService:
                 "source_transaction_id": int(row["source_transaction_id"]),
                 "target_owner_user_id": int(row["target_owner_user_id"]),
                 "target_capital_account_id": int(row["target_capital_account_id"]),
+                "source_money_source": str(row["source_money_source"] or "cashless"),
                 "amount": float(row["amount"] or 0),
                 "date": str(row["date"] or ""),
                 "comment": str(row["comment"] or ""),
@@ -2231,6 +2327,7 @@ class AuthService:
                        fcc.source_transaction_id,
                        fcc.target_owner_user_id,
                        fcc.target_capital_account_id,
+                       fcc.source_money_source,
                        fcc.amount,
                        fcc.date,
                        fcc.comment,
@@ -2259,6 +2356,7 @@ class AuthService:
                 "source_transaction_id": int(row["source_transaction_id"]),
                 "target_owner_user_id": int(row["target_owner_user_id"]),
                 "target_capital_account_id": int(row["target_capital_account_id"]),
+                "source_money_source": str(row["source_money_source"] or "cashless"),
                 "amount": float(row["amount"] or 0),
                 "date": str(row["date"] or ""),
                 "comment": str(row["comment"] or ""),

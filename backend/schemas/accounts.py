@@ -74,12 +74,13 @@ class TransferResponse(BaseModel):
 class TransferCreateRequest(BaseModel):
     from_account_id: int
     to_account_id: int
+    target_owner_user_id: Optional[int] = None
     amount: float = Field(gt=0)
     date: Optional[str] = None
     comment: str = ""
 
     @model_validator(mode="after")
     def validate_accounts(self) -> "TransferCreateRequest":
-        if self.from_account_id == self.to_account_id:
+        if self.target_owner_user_id is None and self.from_account_id == self.to_account_id:
             raise ValueError("Счет списания и счет зачисления должны отличаться")
         return self
