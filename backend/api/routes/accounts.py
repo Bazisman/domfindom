@@ -8,7 +8,7 @@ from backend.auth.service import auth_service
 from backend.schemas.accounts import AccountCreateRequest, AccountResponse, AccountUpdateRequest
 from backend.schemas.common import MessageResponse
 from backend.services import transaction_service
-from backend.storage.shadow_write import mirror_capital_accounts_shadow_write
+from backend.storage.shadow_write import mirror_capital_accounts_shadow_write, mirror_family_snapshot_shadow_write
 
 
 router = APIRouter()
@@ -205,6 +205,7 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
             is_visible=effective_family_visible,
             is_default_target=effective_family_default,
         )
+        mirror_family_snapshot_shadow_write(family_id)
 
     if not updated:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить счет")
@@ -214,6 +215,7 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет обновлен, но не найден")
     if not bool(_row_value(refreshed[1], "is_active", 1)):
         _hide_family_capital_account_if_needed(family_id, current_user_id, account_id)
+        mirror_family_snapshot_shadow_write(family_id)
     mirror_capital_accounts_shadow_write(current_user, core.get_capital_accounts(include_inactive=True))
     family_meta = _family_meta_map(family_id, current_user_id)
     return _capital_account_response(refreshed[1], family_meta.get(account_id))
@@ -236,5 +238,7 @@ def delete_account(account_id: int, current_user=Depends(require_user)) -> Messa
     if not deleted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось удалить счет")
     _hide_family_capital_account_if_needed(_current_family_id(int(current_user["id"])), int(current_user["id"]), account_id)
+    family_id = _current_family_id(int(current_user["id"]))
+    mirror_family_snapshot_shadow_write(family_id)
     mirror_capital_accounts_shadow_write(current_user, core.get_capital_accounts(include_inactive=True))
     return MessageResponse(message="Счет отключен")

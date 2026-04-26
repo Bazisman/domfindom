@@ -444,3 +444,121 @@ def mirror_transfer_shadow_write(
             exc,
         )
         return {"enabled": True, "status": "failed", "reason": str(exc)}
+
+
+def _auth_rows_for_family(family_id: int) -> Dict[str, Any]:
+    from backend.auth.service import auth_service
+
+    def _rows(cursor, sql: str, params=()):
+        cursor.execute(sql, params)
+        return [_row_to_dict(row) for row in cursor.fetchall()]
+
+    with auth_service._auth_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, owner_user_id, created_at, updated_at, archived_at FROM families WHERE id = ?",
+            (int(family_id),),
+        )
+        family = _row_to_dict(cursor.fetchone())
+        if not family:
+            return {}
+        return {
+            "family": family,
+            "memberships": _rows(
+                cursor,
+                """
+                SELECT id, family_id, user_id, role, status, invited_by_user_id, created_at, updated_at
+                FROM family_memberships
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+            "invites": _rows(
+                cursor,
+                """
+                SELECT id, family_id, email, role, token_hash, invited_by_user_id,
+                       expires_at, accepted_at, revoked_at, created_at
+                FROM family_invites
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+            "capital_accounts": _rows(
+                cursor,
+                """
+                SELECT id, family_id, owner_user_id, capital_account_id, is_visible,
+                       is_default_target, created_at, updated_at
+                FROM family_capital_accounts
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+            "capital_member_settings": _rows(
+                cursor,
+                """
+                SELECT family_id, user_id, target_owner_user_id, target_capital_account_id, updated_at
+                FROM family_capital_member_settings
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+            "categories": _rows(
+                cursor,
+                """
+                SELECT id, family_id, semantic_key, display_name, type, is_active,
+                       created_by_user_id, created_at, updated_at
+                FROM family_categories
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+            "category_bindings": _rows(
+                cursor,
+                """
+                SELECT id, family_id, family_category_id, user_id, local_category_id,
+                       local_category_name, local_category_type, status,
+                       confirmed_by_user_id, created_at, updated_at
+                FROM family_category_bindings
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+            "category_audit_resolutions": _rows(
+                cursor,
+                """
+                SELECT id, family_id, code, group_key, action, category_names_json,
+                       note, resolved_by_user_id, created_at, updated_at
+                FROM family_category_audit_resolutions
+                WHERE family_id = ?
+                """,
+                (int(family_id),),
+            ),
+        }
+
+
+def mirror_family_snapshot_shadow_write(
+    family_id: int,
+    config=settings,
+) -> Dict[str, Any]:
+    if not postgres_shadow_write_enabled(config):
+        return {"enabled": False, "status": "disabled"}
+    snapshot = _auth_rows_for_family(int(family_id))
+    if not snapshot:
+        return {"enabled": True, "status": "skipped", "reason": "missing_family"}
+    try:
+        repo = PostgresWriteRepository(config.database_url)
+        with repo.connect() as conn:
+            result = repo.mirror_family_snapshot(
+                conn,
+                source_db_path="auth.db",
+                snapshot=snapshot,
+            )
+            conn.commit()
+        return {"enabled": True, "status": "ok", "result": result}
+    except Exception as exc:
+        app_logger.warning(
+            "PostgreSQL shadow-write family snapshot failed for family_id=%s: %s",
+            int(family_id),
+            exc,
+        )
+        return {"enabled": True, "status": "failed", "reason": str(exc)}

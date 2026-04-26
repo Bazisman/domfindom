@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Set
 
 from backend.storage.postgres_read import PostgresReadRepository
 from tools.money_minor import to_minor
@@ -138,6 +138,77 @@ class PostgresWriteRepository(PostgresReadRepository):
                 int(legacy_user_id),
                 str(source_table),
                 int(source_local_id),
+                str(target_table),
+                int(target_id),
+            ),
+        )
+
+    def _mapped_id(
+        self,
+        conn,
+        source_db_path: str,
+        source_user_id: Optional[int],
+        source_table: str,
+        source_local_id: Optional[int],
+    ) -> Optional[int]:
+        if source_local_id is None:
+            return None
+        row = conn.execute(
+            """
+            SELECT target_id
+            FROM migration.id_map
+            WHERE source_db_path = %s
+              AND source_user_id IS NOT DISTINCT FROM %s
+              AND source_table = %s
+              AND source_local_id = %s
+            """,
+            (str(source_db_path), source_user_id, str(source_table), int(source_local_id)),
+        ).fetchone()
+        return int(row["target_id"]) if row else None
+
+    def _upsert_null_user_id_map(
+        self,
+        conn,
+        source_db_path: str,
+        source_table: str,
+        source_local_id: int,
+        target_schema: str,
+        target_table: str,
+        target_id: int,
+    ) -> None:
+        updated = conn.execute(
+            """
+            UPDATE migration.id_map
+            SET target_schema = %s, target_table = %s, target_id = %s
+            WHERE source_db_path = %s
+              AND source_user_id IS NULL
+              AND source_table = %s
+              AND source_local_id = %s
+            """,
+            (
+                target_schema,
+                target_table,
+                int(target_id),
+                str(source_db_path),
+                str(source_table),
+                int(source_local_id),
+            ),
+        )
+        if getattr(updated, "rowcount", 0):
+            return
+        conn.execute(
+            """
+            INSERT INTO migration.id_map (
+                source_db_path, source_user_id, source_table, source_local_id,
+                target_schema, target_table, target_id
+            )
+            VALUES (%s, NULL, %s, %s, %s, %s, %s)
+            """,
+            (
+                str(source_db_path),
+                str(source_table),
+                int(source_local_id),
+                str(target_schema),
                 str(target_table),
                 int(target_id),
             ),
@@ -660,6 +731,302 @@ class PostgresWriteRepository(PostgresReadRepository):
             self._adjust_account_minor(conn, pg_user_id, from_legacy, -amount_minor)
             self._adjust_account_minor(conn, pg_user_id, to_legacy, amount_minor)
         return {"status": "inserted", "transfer_id": pg_transfer_id}
+
+    def mirror_family_snapshot(
+        self,
+        conn,
+        source_db_path: str,
+        snapshot: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Mirror one auth.db family snapshot into PostgreSQL family/auth schemas."""
+        family = snapshot.get("family") or {}
+        legacy_family_id = int(family["id"])
+        owner_user_id = self.get_user_id_by_legacy(conn, int(family["owner_user_id"]))
+        if owner_user_id is None:
+            raise RuntimeError(f"PostgreSQL owner for legacy user {family['owner_user_id']} was not found")
+
+        pg_family_id = self._mapped_id(conn, source_db_path, None, "families", legacy_family_id)
+        if pg_family_id is None:
+            row = conn.execute(
+                """
+                INSERT INTO family.families (name, owner_user_id, archived_at)
+                VALUES (%s, %s, %s)
+                RETURNING id
+                """,
+                (family["name"], owner_user_id, family.get("archived_at")),
+            ).fetchone()
+            pg_family_id = int(row["id"])
+            self._upsert_null_user_id_map(conn, source_db_path, "families", legacy_family_id, "family", "families", pg_family_id)
+            family_status = "inserted"
+        else:
+            conn.execute(
+                """
+                UPDATE family.families
+                SET name = %s, owner_user_id = %s, archived_at = %s, updated_at = now()
+                WHERE id = %s
+                """,
+                (family["name"], owner_user_id, family.get("archived_at"), pg_family_id),
+            )
+            family_status = "updated"
+
+        counts = {
+            "family": 1,
+            "memberships": 0,
+            "invites": 0,
+            "capital_accounts": 0,
+            "capital_member_settings": 0,
+            "categories": 0,
+            "category_bindings": 0,
+            "category_audit_resolutions": 0,
+        }
+        for row in snapshot.get("memberships", []):
+            self._mirror_family_membership(conn, source_db_path, pg_family_id, row)
+            counts["memberships"] += 1
+        for row in snapshot.get("invites", []):
+            self._mirror_family_invite(conn, source_db_path, pg_family_id, row)
+            counts["invites"] += 1
+        for row in snapshot.get("capital_accounts", []):
+            if self._mirror_family_capital_account(conn, source_db_path, pg_family_id, row):
+                counts["capital_accounts"] += 1
+        for row in snapshot.get("capital_member_settings", []):
+            if self._mirror_family_capital_member_setting(conn, pg_family_id, row):
+                counts["capital_member_settings"] += 1
+        for row in snapshot.get("categories", []):
+            self._mirror_family_category(conn, source_db_path, pg_family_id, row)
+            counts["categories"] += 1
+        for row in snapshot.get("category_bindings", []):
+            if self._mirror_family_category_binding(conn, source_db_path, pg_family_id, row):
+                counts["category_bindings"] += 1
+        for row in snapshot.get("category_audit_resolutions", []):
+            self._mirror_family_category_audit_resolution(conn, source_db_path, pg_family_id, row)
+            counts["category_audit_resolutions"] += 1
+        self._prune_family_category_audit_resolutions(
+            conn,
+            source_db_path,
+            pg_family_id,
+            {int(row["id"]) for row in snapshot.get("category_audit_resolutions", [])},
+        )
+        return {"status": family_status, "family_id": pg_family_id, "counts": counts}
+
+    def _prune_family_category_audit_resolutions(
+        self,
+        conn,
+        source_db_path: str,
+        pg_family_id: int,
+        current_legacy_ids: Set[int],
+    ) -> None:
+        mapped_rows = conn.execute(
+            """
+            SELECT source_local_id, target_id
+            FROM migration.id_map
+            WHERE source_db_path = %s
+              AND source_user_id IS NULL
+              AND source_table = 'family_category_audit_resolutions'
+            """,
+            (str(source_db_path),),
+        ).fetchall()
+        stale_target_ids = [
+            int(row["target_id"])
+            for row in mapped_rows
+            if int(row["source_local_id"]) not in current_legacy_ids
+        ]
+        if not stale_target_ids:
+            return
+        deleted = conn.execute(
+            """
+            DELETE FROM family.category_audit_resolutions
+            WHERE family_id = %s
+              AND id = ANY(%s)
+            RETURNING id
+            """,
+            (pg_family_id, stale_target_ids),
+        ).fetchall()
+        for row in deleted:
+            conn.execute(
+                """
+                DELETE FROM migration.id_map
+                WHERE source_db_path = %s
+                  AND source_user_id IS NULL
+                  AND source_table = 'family_category_audit_resolutions'
+                  AND target_id = %s
+                """,
+                (str(source_db_path), int(row["id"])),
+            )
+
+    def _normalize_family_role(self, role: Any) -> str:
+        return str(role or "member") if str(role or "member") in {"owner", "member", "viewer"} else "member"
+
+    def _normalize_family_status(self, status: Any) -> str:
+        value = str(status or "active")
+        return "removed" if value == "revoked" else value if value in {"active", "inactive", "removed"} else "active"
+
+    def _mirror_family_membership(self, conn, source_db_path: str, pg_family_id: int, row: Dict[str, Any]) -> None:
+        pg_user_id = self.get_user_id_by_legacy(conn, int(row["user_id"]))
+        invited_by = self.get_user_id_by_legacy(conn, int(row["invited_by_user_id"])) if row.get("invited_by_user_id") else None
+        if pg_user_id is None:
+            return
+        pg_row = conn.execute(
+            """
+            INSERT INTO family.memberships (family_id, user_id, role, status, invited_by_user_id)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (family_id, user_id) DO UPDATE SET
+                role = excluded.role,
+                status = excluded.status,
+                invited_by_user_id = excluded.invited_by_user_id,
+                updated_at = now()
+            RETURNING id
+            """,
+            (pg_family_id, pg_user_id, self._normalize_family_role(row.get("role")), self._normalize_family_status(row.get("status")), invited_by),
+        ).fetchone()
+        self._upsert_null_user_id_map(conn, source_db_path, "family_memberships", int(row["id"]), "family", "memberships", int(pg_row["id"]))
+
+    def _mirror_family_invite(self, conn, source_db_path: str, pg_family_id: int, row: Dict[str, Any]) -> None:
+        invited_by = self.get_user_id_by_legacy(conn, int(row["invited_by_user_id"]))
+        if invited_by is None:
+            return
+        pg_row = conn.execute(
+            """
+            INSERT INTO family.invites (
+                family_id, email, role, token_hash, invited_by_user_id, expires_at, accepted_at, revoked_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (token_hash) DO UPDATE SET
+                accepted_at = excluded.accepted_at,
+                revoked_at = excluded.revoked_at
+            RETURNING id
+            """,
+            (
+                pg_family_id,
+                row["email"],
+                self._normalize_family_role(row.get("role")),
+                row["token_hash"],
+                invited_by,
+                row["expires_at"],
+                row.get("accepted_at"),
+                row.get("revoked_at"),
+            ),
+        ).fetchone()
+        self._upsert_null_user_id_map(conn, source_db_path, "family_invites", int(row["id"]), "family", "invites", int(pg_row["id"]))
+
+    def _mirror_family_capital_account(self, conn, source_db_path: str, pg_family_id: int, row: Dict[str, Any]) -> bool:
+        owner = self.get_user_id_by_legacy(conn, int(row["owner_user_id"]))
+        account_id = self._finance_id_by_legacy(conn, "capital_accounts", owner or 0, int(row["capital_account_id"]))
+        if owner is None or account_id is None:
+            return False
+        pg_row = conn.execute(
+            """
+            INSERT INTO family.capital_accounts (family_id, owner_user_id, capital_account_id, is_visible, is_default_target)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (family_id, owner_user_id, capital_account_id) DO UPDATE SET
+                is_visible = excluded.is_visible,
+                is_default_target = excluded.is_default_target,
+                updated_at = now()
+            RETURNING id
+            """,
+            (pg_family_id, owner, account_id, bool(row.get("is_visible")), bool(row.get("is_default_target"))),
+        ).fetchone()
+        self._upsert_null_user_id_map(conn, source_db_path, "family_capital_accounts", int(row["id"]), "family", "capital_accounts", int(pg_row["id"]))
+        return True
+
+    def _mirror_family_capital_member_setting(self, conn, pg_family_id: int, row: Dict[str, Any]) -> bool:
+        user_id = self.get_user_id_by_legacy(conn, int(row["user_id"]))
+        target_owner = self.get_user_id_by_legacy(conn, int(row["target_owner_user_id"])) if row.get("target_owner_user_id") else None
+        target_account = self._finance_id_by_legacy(conn, "capital_accounts", target_owner or 0, row.get("target_capital_account_id")) if target_owner else None
+        if user_id is None:
+            return False
+        conn.execute(
+            """
+            INSERT INTO family.capital_member_settings (
+                family_id, user_id, target_owner_user_id, target_capital_account_id
+            )
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (family_id, user_id) DO UPDATE SET
+                target_owner_user_id = excluded.target_owner_user_id,
+                target_capital_account_id = excluded.target_capital_account_id,
+                updated_at = now()
+            """,
+            (pg_family_id, user_id, target_owner, target_account),
+        )
+        return True
+
+    def _mirror_family_category(self, conn, source_db_path: str, pg_family_id: int, row: Dict[str, Any]) -> None:
+        created_by = self.get_user_id_by_legacy(conn, int(row["created_by_user_id"])) if row.get("created_by_user_id") else None
+        pg_row = conn.execute(
+            """
+            INSERT INTO family.categories (family_id, semantic_key, display_name, type, is_active, created_by_user_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (family_id, semantic_key) DO UPDATE SET
+                display_name = excluded.display_name,
+                type = excluded.type,
+                is_active = excluded.is_active,
+                updated_at = now()
+            RETURNING id
+            """,
+            (pg_family_id, row["semantic_key"], row["display_name"], row.get("type") or "both", bool(row.get("is_active", True)), created_by),
+        ).fetchone()
+        self._upsert_null_user_id_map(conn, source_db_path, "family_categories", int(row["id"]), "family", "categories", int(pg_row["id"]))
+
+    def _mirror_family_category_binding(self, conn, source_db_path: str, pg_family_id: int, row: Dict[str, Any]) -> bool:
+        family_category_id = self._mapped_id(conn, source_db_path, None, "family_categories", int(row["family_category_id"]))
+        user_id = self.get_user_id_by_legacy(conn, int(row["user_id"]))
+        local_category_id = self._finance_id_by_legacy(conn, "categories", user_id or 0, int(row["local_category_id"]))
+        confirmed_by = self.get_user_id_by_legacy(conn, int(row["confirmed_by_user_id"])) if row.get("confirmed_by_user_id") else None
+        if None in (family_category_id, user_id, local_category_id):
+            return False
+        pg_row = conn.execute(
+            """
+            INSERT INTO family.category_bindings (
+                family_id, family_category_id, user_id, local_category_id,
+                local_category_name, local_category_type, status, confirmed_by_user_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (family_id, user_id, local_category_id) DO UPDATE SET
+                family_category_id = excluded.family_category_id,
+                status = excluded.status,
+                confirmed_by_user_id = excluded.confirmed_by_user_id,
+                updated_at = now()
+            RETURNING id
+            """,
+            (
+                pg_family_id,
+                family_category_id,
+                user_id,
+                local_category_id,
+                row["local_category_name"],
+                row["local_category_type"],
+                row.get("status") or "confirmed",
+                confirmed_by,
+            ),
+        ).fetchone()
+        self._upsert_null_user_id_map(conn, source_db_path, "family_category_bindings", int(row["id"]), "family", "category_bindings", int(pg_row["id"]))
+        return True
+
+    def _mirror_family_category_audit_resolution(self, conn, source_db_path: str, pg_family_id: int, row: Dict[str, Any]) -> None:
+        resolved_by = self.get_user_id_by_legacy(conn, int(row["resolved_by_user_id"])) if row.get("resolved_by_user_id") else None
+        pg_row = conn.execute(
+            """
+            INSERT INTO family.category_audit_resolutions (
+                family_id, code, group_key, action, category_names_json, note, resolved_by_user_id
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (family_id, code, group_key, action) DO UPDATE SET
+                category_names_json = excluded.category_names_json,
+                note = excluded.note,
+                resolved_by_user_id = excluded.resolved_by_user_id,
+                updated_at = now()
+            RETURNING id
+            """,
+            (
+                pg_family_id,
+                row["code"],
+                row["group_key"],
+                row["action"],
+                row.get("category_names_json") or "[]",
+                row.get("note") or "",
+                resolved_by,
+            ),
+        ).fetchone()
+        self._upsert_null_user_id_map(conn, source_db_path, "family_category_audit_resolutions", int(row["id"]), "family", "category_audit_resolutions", int(pg_row["id"]))
 
     def delete_planned_transactions_for_template(
         self,

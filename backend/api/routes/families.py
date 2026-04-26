@@ -46,6 +46,7 @@ from backend.schemas.families import (
 )
 from backend.schemas.forecast import ForecastResponse
 from backend.services import row_to_transaction_response, transaction_service
+from backend.storage.shadow_write import mirror_family_snapshot_shadow_write
 
 
 router = APIRouter()
@@ -1316,6 +1317,7 @@ def _validate_member_management_rules(
 @router.post("", response_model=FamilyItemResponse, status_code=status.HTTP_201_CREATED)
 def create_family(payload: FamilyCreatePayload, current_user=Depends(require_user)) -> FamilyItemResponse:
     family = auth_service.create_family(owner_user_id=int(current_user["id"]), name=payload.name.strip())
+    mirror_family_snapshot_shadow_write(int(family["id"]))
     return FamilyItemResponse(**family)
 
 
@@ -1378,6 +1380,7 @@ def resolve_family_category_audit_item(
         note=payload.note or "",
         resolved_by_user_id=int(current_user["id"]),
     )
+    mirror_family_snapshot_shadow_write(family_id)
     action_label = "оставлено личным" if payload.action == "keep_personal" else "скрыто из проверки"
     return FamilyCategoryAuditResolutionResponse(
         message=f"Решение сохранено: {action_label}.",
@@ -1406,6 +1409,7 @@ def delete_family_category_audit_resolution(
     )
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Решение аудита не найдено")
+    mirror_family_snapshot_shadow_write(family_id)
     return FamilyActionResponse(message="Решение отменено. Пункт снова появится в аудите.", family_id=family_id)
 
 
@@ -1459,6 +1463,7 @@ def apply_family_category_binding(
         applied_count += 1
 
     refreshed_preview = _build_family_category_binding_preview(family_id=family_id, payload=payload)
+    mirror_family_snapshot_shadow_write(family_id)
     if applied_count == 0 and refreshed_preview.already_bound_count == refreshed_preview.candidate_count:
         message = "Категория уже добавлена в семейный учет."
     else:
@@ -1488,6 +1493,7 @@ def update_family_capital_target(
             target_owner_user_id=None,
             target_capital_account_id=None,
         )
+        mirror_family_snapshot_shadow_write(family_id)
         return FamilyCapitalSelectionResponse()
 
     published_meta = auth_service.get_family_capital_account(
@@ -1504,6 +1510,7 @@ def update_family_capital_target(
         target_owner_user_id=int(payload.target_owner_user_id),
         target_capital_account_id=int(payload.target_capital_account_id),
     )
+    mirror_family_snapshot_shadow_write(family_id)
     return FamilyCapitalSelectionResponse(
         target_owner_user_id=int(payload.target_owner_user_id),
         target_capital_account_id=int(payload.target_capital_account_id),
@@ -1597,6 +1604,7 @@ def create_family_invite(
         user_agent=request.headers.get("user-agent", ""),
         detail="sent_via_email_and_cabinet" if sent_email else "saved_to_cabinet_only",
     )
+    mirror_family_snapshot_shadow_write(family_id)
 
     return FamilyInviteCreateResponse(
         message="Приглашение отправлено на почту и добавлено в личный кабинет." if sent_email else "Приглашение добавлено в личный кабинет.",
@@ -1613,6 +1621,7 @@ def accept_family_invite(payload: FamilyInviteAcceptPayload, current_user=Depend
     accepted = auth_service.accept_family_invite(token=payload.token, user_id=int(current_user["id"]))
     if not accepted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Инвайт недействителен или истек")
+    mirror_family_snapshot_shadow_write(int(accepted["family_id"]))
 
     return FamilyInviteAcceptResponse(
         message="Вы подключены к семейному бюджету.",
@@ -1635,6 +1644,7 @@ def accept_family_invite_by_id(invite_id: int, current_user=Depends(require_user
     accepted = auth_service.accept_family_invite_by_id(invite_id=invite_id, user_id=int(current_user["id"]))
     if not accepted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Приглашение недействительно или истекло")
+    mirror_family_snapshot_shadow_write(int(accepted["family_id"]))
     return FamilyInviteAcceptResponse(
         message="Вы подключены к семейному бюджету.",
         family_id=int(accepted["family_id"]),
@@ -1647,9 +1657,16 @@ def accept_family_invite_by_id(invite_id: int, current_user=Depends(require_user
 def decline_family_invite_by_id(invite_id: int, current_user=Depends(require_user)) -> FamilyActionResponse:
     if invite_id <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Некорректный идентификатор приглашения")
+    invite_family_id = 0
+    for invite in auth_service.list_pending_family_invites(int(current_user["id"])):
+        if int(invite["invite_id"]) == invite_id:
+            invite_family_id = int(invite["family_id"])
+            break
     declined = auth_service.decline_family_invite_by_id(invite_id=invite_id, user_id=int(current_user["id"]))
     if not declined:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Приглашение недействительно или уже обработано")
+    if invite_family_id > 0:
+        mirror_family_snapshot_shadow_write(invite_family_id)
     return FamilyActionResponse(message="Приглашение отклонено.")
 
 
@@ -1686,6 +1703,7 @@ def update_family_member_role(
 
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник не найден")
+    mirror_family_snapshot_shadow_write(family_id)
     return FamilyActionResponse(message="Роль участника обновлена.")
 
 
@@ -1716,4 +1734,5 @@ def remove_family_member(
 
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Участник не найден")
+    mirror_family_snapshot_shadow_write(family_id)
     return FamilyActionResponse(message="Участник исключен из семьи.")
