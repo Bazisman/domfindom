@@ -429,6 +429,49 @@ class MySqlReadRepository:
             for row in rows
         ]
 
+    def get_planned_transactions_due(self, conn, legacy_user_id: int) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    t.legacy_local_id AS id,
+                    t.type,
+                    t.category,
+                    t.amount_minor,
+                    COALESCE(t.comment, '') AS comment,
+                    DATE_FORMAT(t.date, '%%Y-%%m-%%d') AS date,
+                    t.money_source,
+                    t.template_id,
+                    rt.name AS template_name
+                FROM finance_transactions t
+                LEFT JOIN finance_recurring_templates rt ON rt.legacy_local_id = t.template_id
+                    AND rt.user_id = t.user_id
+                WHERE t.user_id = %s
+                  AND t.status = 'planned'
+                  AND t.date <= CURDATE()
+                ORDER BY t.date ASC, t.legacy_local_id ASC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "type": row["type"],
+                "category": row["category"],
+                "amount": from_minor_float(row["amount_minor"]),
+                "comment": row["comment"] or "",
+                "date": str(row["date"]),
+                "money_source": row.get("money_source") or "cashless",
+                "template_id": row.get("template_id"),
+                "template_name": row.get("template_name"),
+            }
+            for row in rows
+        ]
+
     def get_transfers_history(
         self,
         conn,

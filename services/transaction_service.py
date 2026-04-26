@@ -694,6 +694,19 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка получения шаблонов: {e}", exc_info=True)
             return []
+
+    def get_recurring_template_by_id(self, template_id: int):
+        """Получает шаблон регулярного платежа по ID."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    rows = repo.get_recurring_templates(conn, legacy_user_id)
+                return next((row for row in rows if int(row["id"]) == int(template_id)), None)
+            return core.get_recurring_template_by_id(template_id)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения шаблона ID={template_id}: {e}", exc_info=True)
+            return None
     
     def create_recurring_template(self, template_type: str, name: str, amount: float, 
                                    day_of_month: int, category_id: int = None,
@@ -737,6 +750,18 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка удаления шаблона: {e}", exc_info=True)
             return False
+
+    def get_planned_transactions_due(self) -> list:
+        """Получает просроченные плановые транзакции."""
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_planned_transactions_due(conn, legacy_user_id)
+            return core.get_planned_transactions_due()
+        except Exception as e:
+            app_logger.error(f"Ошибка получения просроченных плановых транзакций: {e}", exc_info=True)
+            return []
     
     def regenerate_template_transactions(self, template_id: int) -> int:
         """Принудительно перегенерирует плановые транзакции для шаблона"""

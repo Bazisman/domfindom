@@ -2,7 +2,6 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-import core
 from backend.auth.dependencies import require_user
 from backend.schemas.common import MessageResponse
 from backend.schemas.recurring import (
@@ -12,7 +11,7 @@ from backend.schemas.recurring import (
     RecurringTemplateResponse,
     RecurringTemplateUpdateRequest,
 )
-from backend.services import transaction_service
+from backend.services import category_service, transaction_service
 from backend.storage.shadow_write import (
     mirror_deleted_recurring_template_shadow_write,
     mirror_recurring_template_shadow_write,
@@ -66,13 +65,13 @@ def create_recurring_template(
     if not template_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось создать шаблон")
 
-    row = core.get_recurring_template_by_id(template_id)
+    row = transaction_service.get_recurring_template_by_id(template_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Шаблон создан, но не найден")
     category_name = None
     if row["category_id"]:
-        category = core.get_category_by_id(row["category_id"])
-        category_name = category["name"] if category else None
+        category = category_service.get_category_by_id(row["category_id"])
+        category_name = category.name if category else None
     merged = dict(row)
     merged["category_name"] = category_name
     mirror_recurring_template_shadow_write(current_user, row)
@@ -93,13 +92,13 @@ def update_recurring_template(
     if not updated:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить шаблон")
 
-    row = core.get_recurring_template_by_id(template_id)
+    row = transaction_service.get_recurring_template_by_id(template_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаблон не найден")
     category_name = None
     if row["category_id"]:
-        category = core.get_category_by_id(row["category_id"])
-        category_name = category["name"] if category else None
+        category = category_service.get_category_by_id(row["category_id"])
+        category_name = category.name if category else None
     merged = dict(row)
     merged["category_name"] = category_name
     mirror_recurring_template_shadow_write(current_user, row)
@@ -117,7 +116,7 @@ def delete_recurring_template(template_id: int, current_user=Depends(require_use
 
 @router.get("/due", response_model=List[PlannedTransactionDueResponse])
 def list_due_planned_transactions() -> List[PlannedTransactionDueResponse]:
-    rows = core.get_planned_transactions_due()
+    rows = transaction_service.get_planned_transactions_due()
     return [
         PlannedTransactionDueResponse(
             id=row["id"],
