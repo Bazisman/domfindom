@@ -53,20 +53,39 @@ function isDailyTransferAccount(accountId: number) {
   return accountId === 1 || accountId === 2;
 }
 
-function getTransferStory(transfer: Transfer) {
+function getTransferStory(transfer: Transfer, accountById: Map<number, Account>) {
   const fromIsDaily = isDailyTransferAccount(transfer.from_account_id);
   const toIsDaily = isDailyTransferAccount(transfer.to_account_id);
+  const fromAccount = accountById.get(transfer.from_account_id);
+  const toAccount = accountById.get(transfer.to_account_id);
+  const fromIsFamilyCushion = Boolean(fromAccount?.family_visible);
+  const toIsFamilyCushion =
+    transfer.id < 0 ||
+    Boolean(toAccount?.family_visible) ||
+    transfer.to_name.toLocaleLowerCase("ru-RU").includes("семейн");
 
   if (fromIsDaily && !toIsDaily) {
+    if (toIsFamilyCushion) {
+      return {
+        label: "В семейную подушку",
+        note: "Это не расход: деньги на жизнь уменьшились, подушка семьи выросла.",
+      };
+    }
     return {
-      label: "Отложили в подушку",
-      note: "Это не расход: деньги на жизнь уменьшились, подушка выросла.",
+      label: "В личную подушку",
+      note: "Деньги на жизнь уменьшились, личная подушка выросла.",
     };
   }
   if (!fromIsDaily && toIsDaily) {
+    if (fromIsFamilyCushion) {
+      return {
+        label: "Из семейной подушки",
+        note: "Подушка семьи уменьшилась, деньги на жизнь выросли.",
+      };
+    }
     return {
-      label: "Вернули из подушки",
-      note: "Подушка уменьшилась, деньги на жизнь выросли.",
+      label: "Из личной подушки",
+      note: "Личная подушка уменьшилась, деньги на жизнь выросли.",
     };
   }
   if (fromIsDaily && toIsDaily) {
@@ -75,9 +94,15 @@ function getTransferStory(transfer: Transfer) {
       note: "Общая сумма на руках не изменилась.",
     };
   }
+  if (toIsFamilyCushion) {
+    return {
+      label: "В семейную подушку",
+      note: "Деньги перешли в подушку семьи.",
+    };
+  }
   return {
-    label: "Перенесли между подушками",
-    note: "Общая сумма в подушках не изменилась.",
+    label: "В личную подушку",
+    note: "Деньги перешли в личную подушку.",
   };
 }
 
@@ -201,6 +226,10 @@ export function AccountsPage() {
 
   const transferAccounts = useMemo(
     () => (accounts.data ?? []).filter((item) => item.is_active),
+    [accounts.data],
+  );
+  const transferAccountById = useMemo(
+    () => new Map((accounts.data ?? []).map((account) => [account.id, account])),
     [accounts.data],
   );
   const selectedTransferFromAccount = useMemo(
@@ -1346,7 +1375,7 @@ export function AccountsPage() {
 
           <div className="transaction-table">
             {(transfers.data ?? []).map((transfer) => {
-              const story = getTransferStory(transfer);
+              const story = getTransferStory(transfer, transferAccountById);
               return (
                 <article className="transaction-row" key={transfer.id}>
                   <div className="transaction-main">
