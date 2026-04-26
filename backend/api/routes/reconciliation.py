@@ -3,7 +3,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-import core
 from backend.schemas.common import MessageResponse
 from backend.schemas.reconciliation import (
     ReconciliationApplyResponse,
@@ -13,6 +12,7 @@ from backend.schemas.reconciliation import (
     ReconciliationSourceUpdateRequest,
     ReconciliationSummaryResponse,
 )
+from backend.services import transaction_service
 
 
 router = APIRouter()
@@ -40,16 +40,15 @@ def _serialize_history_item(row: Any) -> ReconciliationHistoryItemResponse:
 
 
 def _get_program_balance() -> float:
-    main_balance, _, _ = core.get_balance(force_update=True)
-    return float(main_balance or 0)
+    return transaction_service.get_program_balance()
 
 
 def _get_summary() -> ReconciliationSummaryResponse:
-    sources = [_serialize_source(item) for item in core.get_reconciliation_sources()]
-    history_rows = core.get_reconciliations_history(limit=20)
+    sources = [_serialize_source(item) for item in transaction_service.get_reconciliation_sources()]
+    history_rows = transaction_service.get_reconciliations_history(limit=20)
     history = [_serialize_history_item(item) for item in history_rows]
-    last_row = core.get_last_reconciliation()
-    real_balance = float(core.get_total_real_balance() or 0)
+    last_row = transaction_service.get_last_reconciliation()
+    real_balance = transaction_service.get_total_real_balance()
     program_balance = _get_program_balance()
 
     return ReconciliationSummaryResponse(
@@ -63,10 +62,7 @@ def _get_summary() -> ReconciliationSummaryResponse:
 
 
 def _ensure_adjustment_category() -> None:
-    category = core.get_category_by_name("Корректировка")
-    if category:
-        return
-    core.add_category("Корректировка", "both", "#9c27b0", "⚖️")
+    transaction_service.ensure_category_exists("Корректировка", "both", "#9c27b0", "⚖️")
 
 
 @router.get("", response_model=ReconciliationSummaryResponse)
@@ -76,8 +72,8 @@ def get_reconciliation_summary() -> ReconciliationSummaryResponse:
 
 @router.post("/sources", response_model=ReconciliationSourceResponse, status_code=status.HTTP_201_CREATED)
 def create_reconciliation_source(payload: ReconciliationSourceCreateRequest) -> ReconciliationSourceResponse:
-    source_id = core.add_reconciliation_source(payload.name.strip(), payload.balance)
-    sources = core.get_reconciliation_sources()
+    source_id = transaction_service.add_reconciliation_source(payload.name.strip(), payload.balance)
+    sources = transaction_service.get_reconciliation_sources()
     source = next((item for item in sources if int(item["id"]) == int(source_id)), None)
     if not source:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Источник создан, но не найден")
@@ -94,11 +90,11 @@ def update_reconciliation_source(source_id: int, payload: ReconciliationSourceUp
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не переданы изменения")
 
-    updated = core.update_reconciliation_source(source_id, **updates)
+    updated = transaction_service.update_reconciliation_source(source_id, **updates)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Источник не найден")
 
-    sources = core.get_reconciliation_sources()
+    sources = transaction_service.get_reconciliation_sources()
     source = next((item for item in sources if int(item["id"]) == source_id), None)
     if not source:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Источник не найден")
@@ -107,7 +103,7 @@ def update_reconciliation_source(source_id: int, payload: ReconciliationSourceUp
 
 @router.delete("/sources/{source_id}", response_model=MessageResponse)
 def delete_reconciliation_source(source_id: int) -> MessageResponse:
-    deleted = core.delete_reconciliation_source(source_id)
+    deleted = transaction_service.delete_reconciliation_source(source_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Источник не найден")
     return MessageResponse(message="Источник удален")
@@ -115,7 +111,7 @@ def delete_reconciliation_source(source_id: int) -> MessageResponse:
 
 @router.post("/apply", response_model=ReconciliationApplyResponse)
 def apply_reconciliation() -> ReconciliationApplyResponse:
-    real_balance = float(core.get_total_real_balance() or 0)
+    real_balance = transaction_service.get_total_real_balance()
     program_balance = _get_program_balance()
     difference = real_balance - program_balance
     adjustment_transaction_id = None
@@ -126,12 +122,24 @@ def apply_reconciliation() -> ReconciliationApplyResponse:
         comment = "Корректировка баланса"
         amount = abs(difference)
         if difference > 0:
-            adjustment_transaction_id = core.add_income_with_capital(amount, "Корректировка", comment, today, 0, None)
+            adjustment_transaction_id = transaction_service.add_income_with_capital(
+                amount,
+                "Корректировка",
+                comment,
+                today,
+                0,
+                None,
+            )
         else:
-            adjustment_transaction_id = core.add_expense(amount, "Корректировка", comment, today)
+            adjustment_transaction_id = transaction_service.add_expense(amount, "Корректировка", comment, today)
 
-    recon_id = core.save_reconciliation(real_balance, program_balance, difference, adjustment_transaction_id)
-    history = core.get_reconciliations_history(limit=20)
+    recon_id = transaction_service.save_reconciliation(
+        real_balance,
+        program_balance,
+        difference,
+        adjustment_transaction_id,
+    )
+    history = transaction_service.get_reconciliations_history(limit=20)
     reconciliation = next((item for item in history if int(item["id"]) == int(recon_id)), None)
     if not reconciliation:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Сверка сохранена, но не найдена")

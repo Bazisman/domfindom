@@ -1143,3 +1143,104 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка пересчета бюджета в месяц: {e}", exc_info=True)
             return float(amount or 0)
+
+    # ========== СВЕРКА БАЛАНСА ==========
+
+    def get_program_balance(self) -> float:
+        """Получает программный баланс для сверки."""
+        try:
+            main_balance, _, _ = core.get_balance(force_update=True)
+            return float(main_balance or 0)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения программного баланса: {e}", exc_info=True)
+            return 0.0
+
+    def get_reconciliation_sources(self) -> list:
+        """Получает источники реального баланса."""
+        try:
+            return core.get_reconciliation_sources()
+        except Exception as e:
+            app_logger.error(f"Ошибка получения источников сверки: {e}", exc_info=True)
+            return []
+
+    def add_reconciliation_source(self, name: str, balance: float = 0):
+        """Добавляет источник реального баланса."""
+        try:
+            result = core.add_reconciliation_source(name, balance)
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка добавления источника сверки: {e}", exc_info=True)
+            return None
+
+    def update_reconciliation_source(self, source_id: int, **kwargs) -> bool:
+        """Обновляет источник реального баланса."""
+        try:
+            result = core.update_reconciliation_source(source_id, **kwargs)
+            if result:
+                self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка обновления источника сверки {source_id}: {e}", exc_info=True)
+            return False
+
+    def delete_reconciliation_source(self, source_id: int) -> bool:
+        """Удаляет источник реального баланса."""
+        try:
+            result = core.delete_reconciliation_source(source_id)
+            if result:
+                self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка удаления источника сверки {source_id}: {e}", exc_info=True)
+            return False
+
+    def get_total_real_balance(self) -> float:
+        """Получает общий реальный баланс."""
+        try:
+            return float(core.get_total_real_balance() or 0)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения реального баланса: {e}", exc_info=True)
+            return 0.0
+
+    def get_last_reconciliation(self):
+        """Получает последнюю сверку."""
+        try:
+            return core.get_last_reconciliation()
+        except Exception as e:
+            app_logger.error(f"Ошибка получения последней сверки: {e}", exc_info=True)
+            return None
+
+    def get_reconciliations_history(self, limit: int = 50) -> list:
+        """Получает историю сверок."""
+        try:
+            return core.get_reconciliations_history(limit=limit)
+        except Exception as e:
+            app_logger.error(f"Ошибка получения истории сверок: {e}", exc_info=True)
+            return []
+
+    def save_reconciliation(
+        self,
+        real_balance: float,
+        program_balance: float,
+        difference: float,
+        adjustment_transaction_id: int = None,
+    ):
+        """Сохраняет результат сверки."""
+        try:
+            result = core.save_reconciliation(real_balance, program_balance, difference, adjustment_transaction_id)
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка сохранения сверки: {e}", exc_info=True)
+            return None
+
+    def ensure_category_exists(self, name: str, category_type: str, color: str, icon: str) -> None:
+        """Создает категорию, если она отсутствует."""
+        try:
+            if core.get_category_by_name(name):
+                return
+            core.add_category(name, category_type, color, icon)
+            self.notify_listeners()
+        except Exception as e:
+            app_logger.error(f"Ошибка проверки/создания категории {name}: {e}", exc_info=True)
