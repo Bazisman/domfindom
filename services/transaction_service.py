@@ -266,7 +266,12 @@ class TransactionService:
     def get_transaction_by_id(self, tid: int) -> Optional[Transaction]:
         """Получает транзакцию по ID"""
         try:
-            row = core.get_transaction_by_id(tid)
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    row = repo.get_transaction_by_id(conn, legacy_user_id, tid)
+            else:
+                row = core.get_transaction_by_id(tid)
             if row:
                 return Transaction(
                     id=row['id'],
@@ -286,6 +291,10 @@ class TransactionService:
     def get_transaction_row_by_id(self, tid: int):
         """Получает сырую строку транзакции по ID для совместимости с mirror/write слоями."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_transaction_by_id(conn, legacy_user_id, tid)
             return core.get_transaction_by_id(tid)
         except Exception as e:
             app_logger.error(f"Ошибка получения строки транзакции {tid}: {e}", exc_info=True)
@@ -300,31 +309,31 @@ class TransactionService:
                 # Проверяем категорию - для "Остаток" отчисление не делается
                 if "Остаток" in transaction.category:
                     app_logger.info(f"Категория '{transaction.category}' - отчисление не делается")
-                    core.add_income_with_capital(
+                    self.add_income_with_capital(
                         transaction.amount, transaction.category, transaction.comment,
                         transaction.date, 0, None, money_source=transaction.money_source
                     )
                 else:
                     # Получаем основной счёт капитала
-                    capital_account = core.get_default_capital_account()
+                    capital_account = self.get_default_capital_account()
                     
                     if not capital_account:
                         app_logger.warning("Нет основного счёта капитала! Отчисление не будет выполнено.")
                         # Добавляем доход без отчисления
-                        core.add_income_with_capital(
+                        self.add_income_with_capital(
                             transaction.amount, transaction.category, transaction.comment,
                             transaction.date, 0, None, money_source=transaction.money_source
                         )
                     else:
                         # Добавляем доход с отчислением
-                        core.add_income_with_capital(
+                        self.add_income_with_capital(
                             transaction.amount, transaction.category, transaction.comment,
                             transaction.date, self._auto_percent if self._auto_enabled else 0,
                             capital_account['id'], money_source=transaction.money_source
                         )
             else:
                 # Расход
-                core.add_expense(
+                self.add_expense(
                     transaction.amount,
                     transaction.category,
                     transaction.comment,
@@ -352,6 +361,25 @@ class TransactionService:
     ):
         """Создаёт доход с возможным отчислением в капитал и возвращает ID."""
         try:
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_actual_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        transaction_type="income",
+                        category=category,
+                        amount=amount,
+                        comment=comment,
+                        date=date,
+                        money_source=money_source,
+                        capital_percent=capital_percent,
+                        capital_account_id=capital_account_id,
+                    )
+                    conn.commit()
+                self.notify_listeners()
+                return int(write_result["legacy_transaction_id"])
             result = core.add_income_with_capital(
                 amount,
                 category,
@@ -377,6 +405,23 @@ class TransactionService:
     ):
         """Создаёт расход и возвращает ID."""
         try:
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_actual_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        transaction_type="expense",
+                        category=category,
+                        amount=amount,
+                        comment=comment,
+                        date=date,
+                        money_source=money_source,
+                    )
+                    conn.commit()
+                self.notify_listeners()
+                return int(write_result["legacy_transaction_id"])
             result = core.add_expense(amount, category, comment, date, money_source=money_source)
             self.notify_listeners()
             return result
@@ -426,7 +471,20 @@ class TransactionService:
     def update_transaction(self, tid: int, field: str, value) -> bool:
         """Обновляет поле транзакции"""
         try:
-            result = core.update_transaction(tid, field, value)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_actual_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        legacy_transaction_id=tid,
+                        **{field: value},
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "inserted_missing", "noop"}
+            else:
+                result = core.update_transaction(tid, field, value)
             if result:
                 self.notify_listeners()
                 app_logger.debug(f"Транзакция {tid} обновлена: {field}={value}")
@@ -438,7 +496,20 @@ class TransactionService:
     def update_transaction_fields(self, tid: int, **kwargs) -> bool:
         """Обновляет несколько полей транзакции."""
         try:
-            result = core.update_transaction_fields(tid, **kwargs)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_actual_transaction(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        legacy_transaction_id=tid,
+                        **kwargs,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "inserted_missing", "noop"}
+            else:
+                result = core.update_transaction_fields(tid, **kwargs)
             if result:
                 self.notify_listeners()
                 app_logger.debug(f"Транзакция {tid} обновлена: {kwargs}")
@@ -450,7 +521,14 @@ class TransactionService:
     def delete_transaction(self, tid: int) -> bool:
         """Удаляет транзакцию."""
         try:
-            result = core.delete_transaction(tid)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.mirror_delete_transaction(conn, legacy_user_id, tid)
+                    conn.commit()
+                result = write_result.get("status") == "deleted"
+            else:
+                result = core.delete_transaction(tid)
             if result:
                 self.notify_listeners()
                 app_logger.info(f"Транзакция {tid} удалена")

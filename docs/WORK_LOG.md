@@ -90,6 +90,7 @@
 - Capital account CRUD переведен на MySQL runtime write: создание, обновление, назначение default и деактивация счетов капитала пишут напрямую в `finance_capital_accounts` с сохранением legacy ids.
 - Standalone transfers переведены на MySQL runtime write: `transfer_money` создает запись в `finance_transfers`, обновляет балансы счетов и сохраняет legacy id без записи в SQLite core.
 - Ручные корректировки daily/capital account balance переведены на MySQL runtime write через общий `adjust_account_balance`.
+- Actual transaction create/update/delete переведены на MySQL runtime write: доходы/расходы, автоотчисления и пересчет балансов выполняются через `finance_transactions`/`finance_transfers`; transaction shadow-write в MySQL runtime становится no-op.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION`; reconciliation sources/apply теперь имеют MySQL shadow-write adapter paths, а rollback-probe проверяет reconciliation source и reconciliation writes.
 - Начат последний блокер `auth_and_sessions`: добавлен `MySqlAuthWriteRepository` и rollback-probe `tools/mysql_auth_write_probe.py` для users/sessions/preferences/login_attempts/auth_events/password/email/account-deletion tokens без изменения runtime auth path.
 

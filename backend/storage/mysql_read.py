@@ -107,6 +107,32 @@ class MySqlReadRepository:
             rows = cursor.fetchall()
         return [self._transaction_row(row) for row in rows]
 
+    def get_transaction_by_id(self, conn, legacy_user_id: int, legacy_transaction_id: int) -> Optional[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return None
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    legacy_local_id AS id,
+                    DATE_FORMAT(date, '%%Y-%%m-%%d') AS date,
+                    type,
+                    category,
+                    amount_minor,
+                    COALESCE(comment, '') AS comment,
+                    money_source,
+                    status,
+                    template_id
+                FROM finance_transactions
+                WHERE user_id = %s AND legacy_local_id = %s
+                LIMIT 1
+                """,
+                (user_id, int(legacy_transaction_id)),
+            )
+            row = cursor.fetchone()
+        return self._transaction_row(row) if row else None
+
     def get_category_totals(
         self,
         conn,

@@ -132,6 +132,30 @@ class MySqlShadowWriteTestCase(unittest.TestCase):
                 config=config,
             )
 
+    def test_transaction_shadow_write_is_mysql_noop_when_mysql_is_runtime_primary(self):
+        config = SimpleNamespace(
+            storage_backend="mysql",
+            mysql_shadow_write_enabled=True,
+            mysql_database_url="mysql+pymysql://example/db",
+        )
+        row = _Row(
+            id=11,
+            type="income",
+            category="Salary",
+            amount=1000.0,
+            comment="April",
+            date="2026-04-26",
+            money_source="cashless",
+            status="actual",
+        )
+
+        with mock.patch("backend.storage.shadow_write.MySqlWriteRepository") as repo_cls:
+            result = shadow_write.mirror_created_transaction_shadow_write({"id": 12}, row, config=config)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["results"]["mysql"]["result"]["status"], "primary_runtime")
+        repo_cls.assert_not_called()
+
     def test_require_mysql_accounts_capital_shadow_write_success_raises_on_failure_when_strict_flag_is_on(self):
         config = SimpleNamespace(
             mysql_shadow_write_enabled=True,

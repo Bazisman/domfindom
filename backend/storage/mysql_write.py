@@ -256,6 +256,92 @@ class MySqlWriteRepository(MySqlReadRepository):
 
         return {"status": "inserted", "transaction_id": mysql_transaction_id, "transfer_ids": mirrored_transfer_ids}
 
+    def _active_transfers_for_transaction(self, conn, mysql_user_id: int, mysql_transaction_id: int) -> list[Dict[str, Any]]:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    legacy_local_id AS id,
+                    legacy_from_account_id AS from_account_id,
+                    legacy_to_account_id AS to_account_id,
+                    amount_minor,
+                    DATE_FORMAT(date, '%%Y-%%m-%%d') AS date,
+                    COALESCE(comment, '') AS comment,
+                    is_active
+                FROM finance_transfers
+                WHERE user_id = %s
+                  AND transaction_id = %s
+                  AND is_active = TRUE
+                ORDER BY id
+                """,
+                (int(mysql_user_id), int(mysql_transaction_id)),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "from_account_id": int(row["from_account_id"]),
+                "to_account_id": int(row["to_account_id"]),
+                "amount": from_minor_float(row["amount_minor"]),
+                "date": str(row["date"]),
+                "comment": row["comment"] or "",
+                "is_active": bool(row["is_active"]),
+            }
+            for row in rows
+        ]
+
+    def create_actual_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        transaction_type: str,
+        category: str,
+        amount: float,
+        comment: str,
+        date: str,
+        money_source: str = "cashless",
+        capital_percent: int = 0,
+        capital_account_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_transaction_id = self._next_legacy_id(conn, mysql_user_id, "transactions")
+        transaction = {
+            "id": legacy_transaction_id,
+            "type": str(transaction_type),
+            "category": category,
+            "amount": amount,
+            "comment": comment,
+            "date": date,
+            "money_source": money_source,
+            "status": "actual",
+        }
+        transfers = []
+        if (
+            str(transaction_type) == "income"
+            and capital_percent
+            and int(capital_percent) > 0
+            and capital_account_id
+        ):
+            capital_id = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, int(capital_account_id))
+            if capital_id is not None:
+                transfer_amount = float(amount) * (int(capital_percent) / 100)
+                transfers.append(
+                    {
+                        "id": self._next_legacy_id(conn, mysql_user_id, "transfers"),
+                        "from_account_id": 2 if str(money_source) == "cash" else 1,
+                        "to_account_id": int(capital_account_id),
+                        "amount": transfer_amount,
+                        "date": date,
+                        "comment": f"Автоотчисление {int(capital_percent)}% от дохода: {comment}",
+                        "is_active": True,
+                    }
+                )
+        result = self.mirror_actual_transaction(conn, legacy_user_id, source_db_path, transaction, transfers=transfers)
+        return {**result, "legacy_transaction_id": legacy_transaction_id}
+
     def _mirror_transfer(
         self,
         conn,
@@ -468,6 +554,57 @@ class MySqlWriteRepository(MySqlReadRepository):
             "delete": delete_result,
             "insert": insert_result,
         }
+
+    def update_actual_transaction(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        legacy_transaction_id: int,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_transaction_id = self._finance_id_by_legacy(conn, "transactions", mysql_user_id, legacy_transaction_id)
+        if mysql_transaction_id is None:
+            return {"status": "missing"}
+        current = self.get_transaction_by_id(conn, legacy_user_id, legacy_transaction_id)
+        if current is None:
+            return {"status": "missing"}
+        if str(current.get("status") or "actual") != "actual":
+            return {"status": "skipped", "reason": "non_actual_transaction"}
+
+        allowed_fields = {"category", "amount", "comment", "date", "type", "money_source"}
+        update_data = {key: value for key, value in kwargs.items() if key in allowed_fields}
+        if not update_data:
+            return {"status": "noop", "transaction_id": mysql_transaction_id}
+
+        transfers = self._active_transfers_for_transaction(conn, mysql_user_id, mysql_transaction_id)
+        old_amount = float(current.get("amount") or 0)
+        new_amount = float(update_data.get("amount", old_amount))
+        if "amount" in update_data and old_amount > 0:
+            for transfer in transfers:
+                transfer["amount"] = new_amount * (float(transfer["amount"] or 0) / old_amount)
+        for transfer in transfers:
+            if "date" in update_data:
+                transfer["date"] = update_data["date"]
+            if "comment" in update_data:
+                transfer["comment"] = f"Автоотчисление от дохода: {update_data['comment']}"
+
+        transaction = {
+            **current,
+            **update_data,
+            "id": int(legacy_transaction_id),
+            "status": "actual",
+        }
+        return self.mirror_update_transaction(
+            conn,
+            legacy_user_id=legacy_user_id,
+            source_db_path=source_db_path,
+            transaction=transaction,
+            transfers=transfers,
+        )
 
     def mirror_planned_transaction(
         self,

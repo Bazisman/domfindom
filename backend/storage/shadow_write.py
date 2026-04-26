@@ -79,6 +79,12 @@ def require_mysql_transaction_shadow_write_success(
     raise RuntimeError(f"MySQL strict transaction shadow-write failed for {operation}: {reason}")
 
 
+def _mysql_runtime_primary_result(config=settings) -> Optional[Dict[str, Any]]:
+    if getattr(config, "storage_backend", "") != "mysql" or not mysql_shadow_write_enabled(config):
+        return None
+    return {"enabled": True, "status": "ok", "result": {"status": "primary_runtime"}}
+
+
 def require_mysql_accounts_capital_shadow_write_success(
     result: Dict[str, Any],
     operation: str,
@@ -157,7 +163,10 @@ def mirror_created_transaction_shadow_write(
     legacy_transaction_id = int(transaction["id"])
     source_db_path = f"data/users/{legacy_user_id}/finance.db"
     results: Dict[str, Any] = {}
-    if mysql_shadow_write_enabled(config):
+    mysql_primary_result = _mysql_runtime_primary_result(config)
+    if mysql_primary_result is not None:
+        results["mysql"] = mysql_primary_result
+    elif mysql_shadow_write_enabled(config):
         try:
             repo = MySqlWriteRepository(config.mysql_database_url)
             with repo.connect() as conn:
@@ -248,7 +257,10 @@ def mirror_deleted_transaction_shadow_write(
 
     legacy_user_id = int(current_user["id"])
     results: Dict[str, Any] = {}
-    if mysql_shadow_write_enabled(config):
+    mysql_primary_result = _mysql_runtime_primary_result(config)
+    if mysql_primary_result is not None:
+        results["mysql"] = mysql_primary_result
+    elif mysql_shadow_write_enabled(config):
         try:
             repo = MySqlWriteRepository(config.mysql_database_url)
             with repo.connect() as conn:
@@ -325,7 +337,10 @@ def mirror_updated_transaction_shadow_write(
     legacy_transaction_id = int(transaction["id"])
     source_db_path = f"data/users/{legacy_user_id}/finance.db"
     results: Dict[str, Any] = {}
-    if mysql_shadow_write_enabled(config):
+    mysql_primary_result = _mysql_runtime_primary_result(config)
+    if mysql_primary_result is not None:
+        results["mysql"] = mysql_primary_result
+    elif mysql_shadow_write_enabled(config):
         try:
             repo = MySqlWriteRepository(config.mysql_database_url)
             with repo.connect() as conn:
