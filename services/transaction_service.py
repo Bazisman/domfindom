@@ -244,7 +244,12 @@ class TransactionService:
     def get_transactions_for_export(self) -> List[Transaction]:
         """Получает все транзакции без UI-лимита для экспорта"""
         try:
-            raw = core.get_all_transactions()
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    raw = repo.get_transactions(conn, legacy_user_id, limit=100000, offset=0)
+            else:
+                raw = core.get_all_transactions()
             result = []
             for row in raw:
                 result.append(Transaction(
@@ -477,7 +482,7 @@ class TransactionService:
     def get_main_account(self):
         """Получает основной счёт"""
         try:
-            accounts = core.get_all_accounts()
+            accounts = self.get_all_accounts()
             for acc in accounts:
                 if acc['id'] == 1:
                     return acc
@@ -759,7 +764,19 @@ class TransactionService:
     def get_transactions_by_date_range(self, start_date, end_date):
         """Получает транзакции за произвольный диапазон дат"""
         try:
-            raw = core.get_transactions_by_period(start_date, end_date)
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    raw = repo.get_transactions(
+                        conn,
+                        legacy_user_id,
+                        limit=100000,
+                        offset=0,
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+            else:
+                raw = core.get_transactions_by_period(start_date, end_date)
             result = []
             for row in raw:
                 result.append(Transaction(
@@ -1518,8 +1535,7 @@ class TransactionService:
     def get_program_balance(self) -> float:
         """Получает программный баланс для сверки."""
         try:
-            main_balance, _, _ = core.get_balance(force_update=True)
-            return float(main_balance or 0)
+            return float(self.get_balance(force_update=True).main_balance or 0)
         except Exception as e:
             app_logger.error(f"Ошибка получения программного баланса: {e}", exc_info=True)
             return 0.0
@@ -1619,6 +1635,10 @@ class TransactionService:
     def get_last_reconciliation(self):
         """Получает последнюю сверку."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_last_reconciliation(conn, legacy_user_id)
             return core.get_last_reconciliation()
         except Exception as e:
             app_logger.error(f"Ошибка получения последней сверки: {e}", exc_info=True)
@@ -1627,6 +1647,10 @@ class TransactionService:
     def get_reconciliations_history(self, limit: int = 50) -> list:
         """Получает историю сверок."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_reconciliations_history(conn, legacy_user_id, limit=limit)
             return core.get_reconciliations_history(limit=limit)
         except Exception as e:
             app_logger.error(f"Ошибка получения истории сверок: {e}", exc_info=True)

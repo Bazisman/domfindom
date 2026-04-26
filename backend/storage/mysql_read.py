@@ -716,6 +716,49 @@ class MySqlReadRepository:
             row = cursor.fetchone()
         return from_minor_float(row["total_minor"] if row else 0)
 
+    def get_last_reconciliation(self, conn, legacy_user_id: int) -> Optional[Dict[str, Any]]:
+        rows = self.get_reconciliations_history(conn, legacy_user_id, limit=1)
+        return rows[0] if rows else None
+
+    def get_reconciliations_history(self, conn, legacy_user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    r.legacy_local_id AS id,
+                    r.real_balance_minor,
+                    r.program_balance_minor,
+                    r.difference_minor,
+                    t.legacy_local_id AS adjustment_transaction_id,
+                    DATE_FORMAT(r.created_at, '%%Y-%%m-%%d %%H:%%i:%%s') AS created_at
+                FROM finance_reconciliations r
+                LEFT JOIN finance_transactions t ON t.id = r.adjustment_transaction_id
+                WHERE r.user_id = %s
+                ORDER BY r.created_at DESC, r.legacy_local_id DESC
+                LIMIT %s
+                """,
+                (user_id, int(limit)),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "real_balance": from_minor_float(row["real_balance_minor"]),
+                "program_balance": from_minor_float(row["program_balance_minor"]),
+                "difference": from_minor_float(row["difference_minor"]),
+                "adjustment_transaction_id": (
+                    int(row["adjustment_transaction_id"])
+                    if row.get("adjustment_transaction_id") is not None
+                    else None
+                ),
+                "created_at": row.get("created_at"),
+            }
+            for row in rows
+        ]
+
     def get_app_setting(self, conn, legacy_user_id: int, key: str, default: Optional[str] = None) -> Optional[str]:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if user_id is None:
