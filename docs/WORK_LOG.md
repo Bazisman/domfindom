@@ -30,6 +30,7 @@
 - Для перехода на PostgreSQL подготовлен безопасный runtime-шаг без cutover: добавлены конфиги `FINANCE_APP_STORAGE_BACKEND`, `FINANCE_APP_DATABASE_URL`, `FINANCE_APP_RUN_DB_MIGRATIONS`, `FINANCE_APP_POSTGRES_READ_SHADOW`, а `/dashboard` получил выключенный по умолчанию shadow-read, который при явном включении сравнивает SQLite-ответ с PostgreSQL read-model и пишет в лог только факт/количество расхождений.
 - PostgreSQL migration/shadow-read код выложен на production без переключения основной БД: сервер обновлен до `ca29eb0`, Passenger перезапущен, health вернул `{"status":"ok"}`; полный PostgreSQL cutover отложен до появления production PostgreSQL target и write-path адаптера.
 - Production venv подготовлен к подключению PostgreSQL: установлены optional-зависимости `SQLAlchemy`, `Alembic`, `psycopg`; добавлен `tools/postgres_cutover_check.py` и startup guard, который не даст случайно включить `FINANCE_APP_STORAGE_BACKEND=postgres` до готовности write-path.
+- Начат write-path для будущего dual-write: добавлен `backend/storage/postgres_write.py` для зеркалирования личных actual transactions в PostgreSQL с обновлением balances/transfers и rollback-probe `tools/postgres_shadow_write_probe.py` для проверки stage target без сохранения тестовой записи.
 
 ### 2026-04-25
 

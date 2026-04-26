@@ -204,6 +204,9 @@ tools/postgres_reconciliation.py
 - добавлены runtime-флаги `FINANCE_APP_STORAGE_BACKEND`, `FINANCE_APP_DATABASE_URL`, `FINANCE_APP_RUN_DB_MIGRATIONS`, `FINANCE_APP_POSTGRES_READ_SHADOW`;
 - `FINANCE_APP_POSTGRES_READ_SHADOW=false` по умолчанию, поэтому production продолжает отвечать из SQLite;
 - при явном включении shadow-read `/dashboard` сравнивает SQLite-ответ с PostgreSQL read-model и пишет только количество расхождений в лог, не меняя ответ пользователю.
+- добавлен первый PostgreSQL write adapter `backend/storage/postgres_write.py` для будущего dual-write личных actual transactions;
+- adapter умеет зеркалировать уже созданную SQLite-транзакцию в PostgreSQL один раз, обновляя daily/capital balances и связанные transfers;
+- добавлен rollback-probe `tools/postgres_shadow_write_probe.py`, который проверяет write adapter на stage PostgreSQL без сохранения тестовой записи.
 
 ## 10. Stage и cutover
 
