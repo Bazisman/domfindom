@@ -1740,6 +1740,40 @@ class WebApiTestCase(unittest.TestCase):
         }
         self.assertTrue(cushion_flags[investment_id])
 
+    def test_personal_capital_account_is_not_cushion_or_investment(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья личные деньги"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        personal = self.client.post(
+            "/api/v1/accounts",
+            json={
+                "type": "capital",
+                "name": "Сбер платежный",
+                "balance": 3429.74,
+                "color": "#1d8f61",
+                "purpose": "personal",
+                "counts_as_cushion": False,
+            },
+        )
+        self.assertEqual(personal.status_code, 201)
+        self.assertEqual(personal.json()["purpose"], "personal")
+        self.assertFalse(personal.json()["counts_as_cushion"])
+        account_id = int(personal.json()["id"])
+
+        self.assertEqual(
+            self.client.patch(f"/api/v1/accounts/{account_id}", json={"family_visible": True}).status_code,
+            200,
+        )
+
+        dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(dashboard.status_code, 200)
+        balance = dashboard.json()["balance"]
+        self.assertEqual(balance["capital_balance"], 3429.74)
+        self.assertEqual(balance["cushion_balance"], 0)
+        self.assertEqual(balance["investment_balance"], 0)
+        self.assertEqual(dashboard.json()["capital_accounts"][0]["purpose"], "personal")
+
     def test_deactivated_family_capital_account_is_removed_from_family_visibility_and_targets(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья деактивация капитала"})
         self.assertEqual(create_family.status_code, 201)

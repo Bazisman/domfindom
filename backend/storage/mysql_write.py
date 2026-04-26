@@ -1294,7 +1294,9 @@ class MySqlWriteRepository(MySqlReadRepository):
             raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
         legacy_account_id = int(account["id"])
         existing = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, legacy_account_id)
-        purpose = "investment" if str(account.get("purpose") or "").strip() == "investment" else "cushion"
+        purpose = str(account.get("purpose") or "").strip()
+        if purpose not in {"cushion", "investment", "personal"}:
+            purpose = "cushion"
         counts_as_cushion = account.get("counts_as_cushion")
         if counts_as_cushion is None:
             counts_as_cushion = purpose == "cushion"
@@ -1354,7 +1356,9 @@ class MySqlWriteRepository(MySqlReadRepository):
         purpose: str = "cushion",
         counts_as_cushion: Optional[bool] = None,
     ) -> Dict[str, Any]:
-        purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
+        purpose = str(purpose or "").strip()
+        if purpose not in {"cushion", "investment", "personal"}:
+            purpose = "cushion"
         if counts_as_cushion is None:
             counts_as_cushion = purpose == "cushion"
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)

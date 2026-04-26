@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 
 MoneySource = Literal["cashless", "cash"]
 AccountType = Literal["main", "cash", "cashless", "capital"]
-CapitalPurpose = Literal["cushion", "investment"]
+CapitalPurpose = Literal["cushion", "investment", "personal"]
 
 
 class AccountResponse(BaseModel):

@@ -70,7 +70,9 @@ def add_capital_account(
     purpose="cushion",
     counts_as_cushion=None,
 ):
-    purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
+    purpose = str(purpose or "").strip()
+    if purpose not in {"cushion", "investment", "personal"}:
+        purpose = "cushion"
     if counts_as_cushion is None:
         counts_as_cushion = purpose == "cushion"
     app_logger.info(f"Добавление счёта капитала: {name}")

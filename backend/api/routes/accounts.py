@@ -29,7 +29,10 @@ def _row_value(row, key: str, default=None):
 
 
 def _capital_purpose(value) -> str:
-    return "investment" if str(value or "").strip() == "investment" else "cushion"
+    value = str(value or "").strip()
+    if value in {"investment", "personal"}:
+        return value
+    return "cushion"
 
 
 def _counts_as_cushion(row) -> bool:

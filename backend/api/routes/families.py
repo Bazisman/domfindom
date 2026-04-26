@@ -372,7 +372,10 @@ def _get_active_capital_account(owner_user_id: int, capital_account_id: int):
 
 
 def _capital_purpose(value) -> str:
-    return "investment" if str(value or "").strip() == "investment" else "cushion"
+    value = str(value or "").strip()
+    if value in {"investment", "personal"}:
+        return value
+    return "cushion"
 
 
 def _counts_as_cushion(account) -> bool:

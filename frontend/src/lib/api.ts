@@ -185,7 +185,7 @@ export type BudgetUpdatePayload = {
 };
 
 export type AccountType = "main" | "cash" | "cashless" | "capital";
-export type CapitalPurpose = "cushion" | "investment";
+export type CapitalPurpose = "cushion" | "investment" | "personal";
 
 export type Account = {
   id: number;

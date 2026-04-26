@@ -46,7 +46,7 @@ function getInitialAccountForm() {
     name: "",
     balance: "",
     color: ACCOUNT_COLORS[0],
-    purpose: "cushion" as "cushion" | "investment",
+    purpose: "cushion" as "cushion" | "investment" | "personal",
     counts_as_cushion: true,
   };
 }
@@ -56,22 +56,37 @@ function isDailyTransferAccount(accountId: number) {
 }
 
 function getCapitalPurposeLabel(purpose: Account["purpose"] | undefined) {
+  if (purpose === "personal") {
+    return "Личные деньги";
+  }
   return purpose === "investment" ? "Инвестиции" : "Подушка";
 }
 
 function getCapitalPurposeFromLabel(purpose: Account["purpose"] | undefined) {
+  if (purpose === "personal") {
+    return "личных денег";
+  }
   return purpose === "investment" ? "инвестиций" : "подушки";
 }
 
 function getCapitalPurposeToLabel(purpose: Account["purpose"] | undefined) {
+  if (purpose === "personal") {
+    return "личные деньги";
+  }
   return purpose === "investment" ? "инвестиции" : "подушку";
 }
 
 function getCapitalPurposeGrowthLabel(purpose: Account["purpose"] | undefined) {
+  if (purpose === "personal") {
+    return "личных денег стало больше";
+  }
   return purpose === "investment" ? "инвестиции стали больше" : "подушка стала больше";
 }
 
 function getCapitalPurposePersonalToLabel(purpose: Account["purpose"] | undefined) {
+  if (purpose === "personal") {
+    return "личные деньги";
+  }
   return purpose === "investment" ? "личные инвестиции" : "личную подушку";
 }
 
@@ -81,7 +96,10 @@ function getCapitalPurposeTone(account: Pick<Account, "purpose" | "family_visibl
   if (account.family_visible) {
     return `В семье · ${base}${cushionNote}`;
   }
-  return account.purpose === "investment" ? `Личные инвестиции${cushionNote}` : "Личная подушка";
+  if (account.purpose === "investment") {
+    return `Личные инвестиции${cushionNote}`;
+  }
+  return account.purpose === "personal" ? "Личные деньги" : "Личная подушка";
 }
 
 function getTransferStory(transfer: Transfer, accountById: Map<number, Account>) {
@@ -96,7 +114,8 @@ function getTransferStory(transfer: Transfer, accountById: Map<number, Account>)
     transfer.to_name.toLocaleLowerCase("ru-RU").includes("семейн");
 
   if (fromIsDaily && !toIsDaily) {
-    const toAction = toAccount?.purpose === "investment" ? "В инвестиции" : "В подушку";
+    const toAction =
+      toAccount?.purpose === "investment" ? "В инвестиции" : toAccount?.purpose === "personal" ? "В личные деньги" : "В подушку";
     if (toIsFamilyCushion) {
       return {
         label: `${toAction} семьи`,
@@ -1102,6 +1121,15 @@ export function AccountsPage() {
                   type="button"
                 >
                   Инвестиции
+                </button>
+                <button
+                  className={accountForm.purpose === "personal" ? "toggle active" : "toggle"}
+                  onClick={() =>
+                    setAccountForm((current) => ({ ...current, purpose: "personal", counts_as_cushion: false }))
+                  }
+                  type="button"
+                >
+                  Личные
                 </button>
               </div>
             </div>

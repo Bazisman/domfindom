@@ -926,7 +926,9 @@ class TransactionService:
 
     def add_capital_account(self, name, balance=0, icon='💰', color='#ff9800', purpose='cushion', counts_as_cushion=None):
         """Добавляет новый счёт капитала."""
-        purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
+        purpose = str(purpose or "").strip()
+        if purpose not in {"cushion", "investment", "personal"}:
+            purpose = "cushion"
         if counts_as_cushion is None:
             counts_as_cushion = purpose == "cushion"
         try:
