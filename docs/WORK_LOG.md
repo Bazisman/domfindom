@@ -59,6 +59,7 @@
 - Category routes перестали читать `core.get_category_by_id` для shadow-write: данные берутся из `CategoryService`, а MySQL mirror получает совместимый словарь.
 - Recurring routes переведены на `TransactionService`/`CategoryService` для чтения шаблонов и due-плановых операций; MySQL read repository получил SELECT для due planned transactions.
 - Reports category summary читает метаданные категорий через `CategoryService`, оставляя `core` только для переключения пользовательских SQLite DB в family scope.
+- Settings route больше не импортирует `core`: default money source читается и обновляется через `TransactionService`.
 
 ### 2026-04-25
 

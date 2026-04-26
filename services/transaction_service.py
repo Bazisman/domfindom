@@ -827,6 +827,24 @@ class TransactionService:
         self._auto_enabled = settings['enabled']
         self._auto_percent = settings['percent']
         return (self._auto_enabled, self._auto_percent)
+
+    def get_default_money_source(self) -> str:
+        """Получает источник денег по умолчанию."""
+        try:
+            return core.get_default_money_source()
+        except Exception as e:
+            app_logger.error(f"Ошибка получения источника денег по умолчанию: {e}", exc_info=True)
+            return "cashless"
+
+    def set_default_money_source(self, money_source: str) -> str:
+        """Устанавливает источник денег по умолчанию."""
+        try:
+            result = core.set_default_money_source(money_source)
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка установки источника денег по умолчанию: {e}", exc_info=True)
+            return self.get_default_money_source()
     
     # ========== БЮДЖЕТЫ ==========
     
