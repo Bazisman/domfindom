@@ -375,6 +375,20 @@ def _capital_purpose(value) -> str:
     return "investment" if str(value or "").strip() == "investment" else "cushion"
 
 
+def _counts_as_cushion(account) -> bool:
+    try:
+        value = account["counts_as_cushion"]
+    except (KeyError, IndexError, TypeError):
+        value = None
+    if value is None:
+        try:
+            purpose = account["purpose"]
+        except (KeyError, IndexError, TypeError):
+            purpose = "cushion"
+        return _capital_purpose(purpose) == "cushion"
+    return bool(value)
+
+
 def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
     result: List[Dict[str, object]] = []
     for item in auth_service.list_family_capital_accounts(family_id):
@@ -403,6 +417,7 @@ def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
                 "color": account["color"] if "color" in account.keys() else None,
                 "icon": account["icon"] if "icon" in account.keys() else None,
                 "purpose": _capital_purpose(account["purpose"] if "purpose" in account.keys() else "cushion"),
+                "counts_as_cushion": _counts_as_cushion(account),
                 "is_visible": True,
                 "is_default_target": bool(item.get("is_default_target")),
             }
@@ -431,7 +446,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     cushion_balance = sum(
         float(item["balance"] or 0)
         for item in capital_accounts
-        if str(item.get("purpose") or "cushion") == "cushion"
+        if bool(item.get("counts_as_cushion", str(item.get("purpose") or "cushion") == "cushion"))
     )
     investment_balance = sum(
         float(item["balance"] or 0)

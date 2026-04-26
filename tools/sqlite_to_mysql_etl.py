@@ -339,9 +339,9 @@ class MySqlEtlWriter:
                 cursor,
                 """
                 INSERT INTO finance_capital_accounts (
-                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, purpose, is_default, is_active
+                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, purpose, counts_as_cushion, is_default, is_active
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     user_id,
@@ -352,6 +352,12 @@ class MySqlEtlWriter:
                     row_value(row, columns, "icon"),
                     row_value(row, columns, "color"),
                     row_value(row, columns, "purpose", "cushion") or "cushion",
+                    row_bool(
+                        row,
+                        columns,
+                        "counts_as_cushion",
+                        (row_value(row, columns, "purpose", "cushion") or "cushion") != "investment",
+                    ),
                     row_bool(row, columns, "is_default", False),
                     row_bool(row, columns, "is_active", True),
                 ),

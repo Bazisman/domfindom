@@ -114,6 +114,7 @@ class FamilyCapitalAccountItemResponse(BaseModel):
     color: Optional[str] = None
     icon: Optional[str] = None
     purpose: Literal["cushion", "investment"] = "cushion"
+    counts_as_cushion: bool = True
     is_visible: bool
     is_default_target: bool
 

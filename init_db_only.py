@@ -49,6 +49,8 @@ cursor.execute('''
         currency TEXT DEFAULT 'RUB',
         icon TEXT DEFAULT '💰',
         color TEXT DEFAULT '#ff9800',
+        purpose TEXT NOT NULL DEFAULT 'cushion',
+        counts_as_cushion INTEGER NOT NULL DEFAULT 1,
         is_default INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
         created_at TEXT,

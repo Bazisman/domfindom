@@ -47,6 +47,7 @@ function getInitialAccountForm() {
     balance: "",
     color: ACCOUNT_COLORS[0],
     purpose: "cushion" as "cushion" | "investment",
+    counts_as_cushion: true,
   };
 }
 
@@ -74,12 +75,13 @@ function getCapitalPurposePersonalToLabel(purpose: Account["purpose"] | undefine
   return purpose === "investment" ? "личные инвестиции" : "личную подушку";
 }
 
-function getCapitalPurposeTone(account: Pick<Account, "purpose" | "family_visible">) {
+function getCapitalPurposeTone(account: Pick<Account, "purpose" | "family_visible" | "counts_as_cushion">) {
   const base = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
+  const cushionNote = account.counts_as_cushion && account.purpose === "investment" ? " · входит в подушку" : "";
   if (account.family_visible) {
-    return `В семье · ${base}`;
+    return `В семье · ${base}${cushionNote}`;
   }
-  return account.purpose === "investment" ? "Личные инвестиции" : "Личная подушка";
+  return account.purpose === "investment" ? `Личные инвестиции${cushionNote}` : "Личная подушка";
 }
 
 function getTransferStory(transfer: Transfer, accountById: Map<number, Account>) {
@@ -257,7 +259,7 @@ export function AccountsPage() {
   const ownCushion = useMemo(
     () =>
       capitalAccounts
-        .filter((item) => item.is_active && item.purpose !== "investment")
+        .filter((item) => item.is_active && item.counts_as_cushion)
         .reduce((sum, account) => sum + account.balance, 0),
     [capitalAccounts],
   );
@@ -443,7 +445,7 @@ export function AccountsPage() {
       places.push({
         key: `family:${account.owner_user_id}:${account.capital_account_id}`,
         name: account.name,
-        tone: `${getCapitalPurposeLabel(account.purpose)} семьи · ${ownerLabel}`,
+        tone: `${getCapitalPurposeLabel(account.purpose)} семьи${account.counts_as_cushion && account.purpose === "investment" ? " · в подушке" : ""} · ${ownerLabel}`,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
       });
@@ -457,12 +459,12 @@ export function AccountsPage() {
         .map((account) => ({
           key: `personal:${account.id}`,
           label: account.name,
-          description: getCapitalPurposeLabel(account.purpose),
+          description: `${getCapitalPurposeLabel(account.purpose)}${account.counts_as_cushion && account.purpose === "investment" ? " · в подушке" : ""}`,
         })),
       ...familyVisibleAccounts.map((account) => ({
         key: `family:${account.owner_user_id}:${account.capital_account_id}`,
         label: account.name,
-        description: `${getCapitalPurposeLabel(account.purpose)} семьи · ${account.owner_display_name || account.owner_email || "Семья"}`,
+        description: `${getCapitalPurposeLabel(account.purpose)} семьи${account.counts_as_cushion && account.purpose === "investment" ? " · в подушке" : ""} · ${account.owner_display_name || account.owner_email || "Семья"}`,
       })),
     ],
     [capitalAccounts, familyVisibleAccounts, personalAccountsPublishedToFamily],
@@ -516,7 +518,7 @@ export function AccountsPage() {
         name: account.name,
         balance: account.balance,
         color: account.color ?? "#5f6b76",
-        tone: `${getCapitalPurposeLabel(account.purpose)} семьи · ${ownerLabel}`,
+        tone: `${getCapitalPurposeLabel(account.purpose)} семьи${account.counts_as_cushion && account.purpose === "investment" ? " · в подушке" : ""} · ${ownerLabel}`,
       };
     }
     return null;
@@ -820,10 +822,11 @@ export function AccountsPage() {
     setEditingAccountId(account.id);
     setAccountForm({
       name: account.name,
-        balance: String(account.balance),
-        color: account.color ?? ACCOUNT_COLORS[0],
-        purpose: account.purpose ?? "cushion",
-      });
+      balance: String(account.balance),
+      color: account.color ?? ACCOUNT_COLORS[0],
+      purpose: account.purpose ?? "cushion",
+      counts_as_cushion: account.counts_as_cushion,
+    });
     setAccountError(null);
     moveToAccountEditForm();
   }
@@ -852,6 +855,7 @@ export function AccountsPage() {
           balance,
           color: accountForm.color,
           purpose: accountForm.purpose,
+          counts_as_cushion: accountForm.counts_as_cushion,
         },
       });
       return;
@@ -862,6 +866,7 @@ export function AccountsPage() {
       balance,
       color: accountForm.color,
       purpose: accountForm.purpose,
+      counts_as_cushion: accountForm.counts_as_cushion,
     });
   }
 
@@ -1082,20 +1087,35 @@ export function AccountsPage() {
               <div className="toggle-row">
                 <button
                   className={accountForm.purpose === "cushion" ? "toggle active" : "toggle"}
-                  onClick={() => setAccountForm((current) => ({ ...current, purpose: "cushion" }))}
+                  onClick={() =>
+                    setAccountForm((current) => ({ ...current, purpose: "cushion", counts_as_cushion: true }))
+                  }
                   type="button"
                 >
                   Подушка
                 </button>
                 <button
                   className={accountForm.purpose === "investment" ? "toggle active" : "toggle"}
-                  onClick={() => setAccountForm((current) => ({ ...current, purpose: "investment" }))}
+                  onClick={() =>
+                    setAccountForm((current) => ({ ...current, purpose: "investment", counts_as_cushion: false }))
+                  }
                   type="button"
                 >
                   Инвестиции
                 </button>
               </div>
             </div>
+
+            <label className="checkbox-field">
+              <input
+                checked={accountForm.counts_as_cushion}
+                onChange={(event) =>
+                  setAccountForm((current) => ({ ...current, counts_as_cushion: event.target.checked }))
+                }
+                type="checkbox"
+              />
+              <span>Считать частью подушки</span>
+            </label>
 
             <label className="field">
               <span>{editingAccountId !== null ? "Сколько сейчас" : "Сколько сейчас"}</span>

@@ -201,6 +201,7 @@ export type Account = {
   family_default_target: boolean;
   money_source: MoneySource | null;
   purpose: CapitalPurpose;
+  counts_as_cushion: boolean;
 };
 
 export type AccountCreatePayload = {
@@ -210,6 +211,7 @@ export type AccountCreatePayload = {
   icon?: string;
   color?: string;
   purpose?: CapitalPurpose;
+  counts_as_cushion?: boolean | null;
 };
 
 export type AccountUpdatePayload = {
@@ -221,6 +223,7 @@ export type AccountUpdatePayload = {
   family_visible?: boolean;
   family_default_target?: boolean;
   purpose?: CapitalPurpose;
+  counts_as_cushion?: boolean;
 };
 
 export type Transfer = {
@@ -410,6 +413,7 @@ export type FamilyDashboardResponse = {
     color: string | null;
     icon: string | null;
     purpose: CapitalPurpose;
+    counts_as_cushion: boolean;
     is_visible: boolean;
     is_default_target: boolean;
   }>;

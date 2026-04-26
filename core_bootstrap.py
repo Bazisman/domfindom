@@ -95,6 +95,7 @@ def init_db(
                 icon TEXT DEFAULT '💰',
                 color TEXT DEFAULT '#ff9800',
                 purpose TEXT NOT NULL DEFAULT 'cushion',
+                counts_as_cushion INTEGER NOT NULL DEFAULT 1,
                 is_default INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT (datetime('now')),
@@ -109,6 +110,20 @@ def init_db(
                 "ALTER TABLE capital_accounts ADD COLUMN purpose TEXT NOT NULL DEFAULT 'cushion'"
             )
             app_logger.info("Добавлено поле 'purpose' в capital_accounts")
+        if "counts_as_cushion" not in capital_columns:
+            cursor.execute(
+                """
+                ALTER TABLE capital_accounts
+                ADD COLUMN counts_as_cushion INTEGER NOT NULL DEFAULT 1
+                """
+            )
+            cursor.execute(
+                """
+                UPDATE capital_accounts
+                SET counts_as_cushion = CASE WHEN purpose = 'investment' THEN 0 ELSE 1 END
+                """
+            )
+            app_logger.info("Добавлено поле 'counts_as_cushion' в capital_accounts")
 
         cursor.execute(
             """

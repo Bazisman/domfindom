@@ -49,17 +49,21 @@
 
 Подушка считается отдельно:
 
-`family_emergency_fund = sum(family emergency_fund accounts)`
+`family_emergency_fund = sum(family accounts where "counts_as_cushion" is enabled)`
 
 Инвестиции считаются отдельно:
 
 `family_investments = sum(family investment accounts)`
 
+Подушка и инвестиции — это разные взгляды на деньги. Один инвестиционный счет может входить в подушку, если эти деньги отложены для безопасности.
+
 Если нужен общий взгляд на состояние семьи:
 
-`family_net_position = family_living_money + family_emergency_fund + family_investments`
+`family_net_position = family_living_money + family_capital`
 
-Но `family_net_position` не должен заменять `family_living_money` на главной, потому что отвечает на другой вопрос.
+`family_capital = sum(all family cushion/investment places)`
+
+Но `family_net_position` не должен заменять `family_living_money` на главной, потому что отвечает на другой вопрос. Подушку и инвестиции нельзя просто складывать между собой: один счет может быть сразу и инвестицией, и частью подушки.
 
 ### 2.1.1. Источник денег в транзакциях
 

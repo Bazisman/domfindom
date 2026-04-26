@@ -22,6 +22,7 @@ class AccountResponse(BaseModel):
     family_default_target: bool = False
     money_source: Optional[MoneySource] = None
     purpose: CapitalPurpose = "cushion"
+    counts_as_cushion: bool = True
 
 
 class AccountCreateRequest(BaseModel):
@@ -31,6 +32,7 @@ class AccountCreateRequest(BaseModel):
     icon: str = "💰"
     color: str = "#ff9800"
     purpose: CapitalPurpose = "cushion"
+    counts_as_cushion: Optional[bool] = None
 
 
 class AccountUpdateRequest(BaseModel):
@@ -43,6 +45,7 @@ class AccountUpdateRequest(BaseModel):
     family_visible: Optional[bool] = None
     family_default_target: Optional[bool] = None
     purpose: Optional[CapitalPurpose] = None
+    counts_as_cushion: Optional[bool] = None
 
     @model_validator(mode="after")
     def validate_has_changes(self) -> "AccountUpdateRequest":
@@ -58,6 +61,7 @@ class AccountUpdateRequest(BaseModel):
                 self.family_visible,
                 self.family_default_target,
                 self.purpose,
+                self.counts_as_cushion,
             )
         ):
             raise ValueError("Нужно передать хотя бы одно поле для изменения")

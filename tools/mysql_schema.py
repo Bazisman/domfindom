@@ -304,6 +304,7 @@ DDL = [
         icon VARCHAR(80) NULL,
         color VARCHAR(80) NULL,
         purpose VARCHAR(40) NOT NULL DEFAULT 'cushion',
+        counts_as_cushion BOOLEAN NOT NULL DEFAULT TRUE,
         is_default BOOLEAN NOT NULL DEFAULT FALSE,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -591,6 +592,11 @@ MYSQL_MIGRATIONS = [
         "purpose",
         "ALTER TABLE finance_capital_accounts ADD COLUMN purpose VARCHAR(40) NOT NULL DEFAULT 'cushion' AFTER color",
     ),
+    (
+        "finance_capital_accounts",
+        "counts_as_cushion",
+        "ALTER TABLE finance_capital_accounts ADD COLUMN counts_as_cushion BOOLEAN NOT NULL DEFAULT TRUE AFTER purpose",
+    ),
 ]
 
 
@@ -636,6 +642,14 @@ def apply_schema(database_url: str, reset_target: bool) -> dict:
                 )
                 if int(cursor.fetchone()["count"] or 0) == 0:
                     cursor.execute(statement)
+                    if table == "finance_capital_accounts" and column == "counts_as_cushion":
+                        cursor.execute(
+                            """
+                            UPDATE finance_capital_accounts
+                            SET counts_as_cushion = FALSE
+                            WHERE purpose = 'investment'
+                            """
+                        )
             cursor.execute("SHOW TABLES")
             tables = [next(iter(row.values())) for row in cursor.fetchall()]
         conn.commit()

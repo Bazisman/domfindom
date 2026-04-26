@@ -1703,9 +1703,17 @@ class WebApiTestCase(unittest.TestCase):
 
         investment = self.client.post(
             "/api/v1/accounts",
-            json={"type": "capital", "name": "Инвестиции", "balance": 300.0, "color": "#222222", "purpose": "investment"},
+            json={
+                "type": "capital",
+                "name": "Инвестиции",
+                "balance": 300.0,
+                "color": "#222222",
+                "purpose": "investment",
+                "counts_as_cushion": True,
+            },
         )
         self.assertEqual(investment.status_code, 201)
+        self.assertTrue(investment.json()["counts_as_cushion"])
         investment_id = int(investment.json()["id"])
 
         self.assertEqual(
@@ -1721,11 +1729,16 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(dashboard.status_code, 200)
         balance = dashboard.json()["balance"]
         self.assertEqual(balance["capital_balance"], 400.0)
-        self.assertEqual(balance["cushion_balance"], 100.0)
+        self.assertEqual(balance["cushion_balance"], 400.0)
         self.assertEqual(balance["investment_balance"], 300.0)
         purposes = {item["capital_account_id"]: item["purpose"] for item in dashboard.json()["capital_accounts"]}
         self.assertEqual(purposes[cushion_id], "cushion")
         self.assertEqual(purposes[investment_id], "investment")
+        cushion_flags = {
+            item["capital_account_id"]: item["counts_as_cushion"]
+            for item in dashboard.json()["capital_accounts"]
+        }
+        self.assertTrue(cushion_flags[investment_id])
 
     def test_deactivated_family_capital_account_is_removed_from_family_visibility_and_targets(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья деактивация капитала"})

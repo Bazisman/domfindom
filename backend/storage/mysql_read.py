@@ -415,7 +415,7 @@ class MySqlReadRepository:
         with conn.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT legacy_local_id AS id, name, balance_minor, currency, icon, color, purpose, is_active, is_default
+                SELECT legacy_local_id AS id, name, balance_minor, currency, icon, color, purpose, counts_as_cushion, is_active, is_default
                 FROM finance_capital_accounts
                 WHERE {' AND '.join(filters)}
                 ORDER BY is_default DESC, name
@@ -432,6 +432,7 @@ class MySqlReadRepository:
                 "icon": row["icon"],
                 "color": row["color"],
                 "purpose": row.get("purpose") or "cushion",
+                "counts_as_cushion": bool(row.get("counts_as_cushion")),
                 "is_active": bool(row["is_active"]),
                 "is_default": bool(row["is_default"]),
             }
@@ -445,7 +446,7 @@ class MySqlReadRepository:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT legacy_local_id AS id, name, balance_minor, icon, color, purpose
+                SELECT legacy_local_id AS id, name, balance_minor, icon, color, purpose, counts_as_cushion
                 FROM finance_capital_accounts
                 WHERE user_id = %s
                   AND is_default = TRUE
@@ -464,6 +465,7 @@ class MySqlReadRepository:
             "icon": row["icon"],
             "color": row["color"],
             "purpose": row.get("purpose") or "cushion",
+            "counts_as_cushion": bool(row.get("counts_as_cushion")),
         }
 
     def get_total_capital(self, conn, legacy_user_id: int) -> float:

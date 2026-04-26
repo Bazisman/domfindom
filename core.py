@@ -376,7 +376,7 @@ def _invalidate_capital_cache():
     _capital_invalidate_capital_cache(_cache)
 
 
-def add_capital_account(name, balance=0, icon='💰', color='#ff9800', purpose='cushion'):
+def add_capital_account(name, balance=0, icon='💰', color='#ff9800', purpose='cushion', counts_as_cushion=None):
     return _capital_add_capital_account(
         get_connection,
         app_logger,
@@ -386,6 +386,7 @@ def add_capital_account(name, balance=0, icon='💰', color='#ff9800', purpose='
         icon=icon,
         color=color,
         purpose=purpose,
+        counts_as_cushion=counts_as_cushion,
     )
 
 

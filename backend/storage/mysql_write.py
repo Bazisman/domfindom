@@ -1294,13 +1294,18 @@ class MySqlWriteRepository(MySqlReadRepository):
             raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
         legacy_account_id = int(account["id"])
         existing = self._finance_id_by_legacy(conn, "capital_accounts", mysql_user_id, legacy_account_id)
+        purpose = "investment" if str(account.get("purpose") or "").strip() == "investment" else "cushion"
+        counts_as_cushion = account.get("counts_as_cushion")
+        if counts_as_cushion is None:
+            counts_as_cushion = purpose == "cushion"
         values = (
             str(account["name"]),
             to_minor(account.get("balance") or 0),
             str(account.get("currency") or "RUB"),
             account.get("icon"),
             account.get("color"),
-            "investment" if str(account.get("purpose") or "").strip() == "investment" else "cushion",
+            purpose,
+            bool(counts_as_cushion),
             bool(account.get("is_default", False)),
             bool(account.get("is_active", True)),
         )
@@ -1315,6 +1320,7 @@ class MySqlWriteRepository(MySqlReadRepository):
                         icon = %s,
                         color = %s,
                         purpose = %s,
+                        counts_as_cushion = %s,
                         is_default = %s,
                         is_active = %s
                     WHERE id = %s
@@ -1326,9 +1332,9 @@ class MySqlWriteRepository(MySqlReadRepository):
             cursor.execute(
                 """
                 INSERT INTO finance_capital_accounts (
-                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, purpose, is_default, is_active
+                    user_id, legacy_local_id, name, balance_minor, currency, icon, color, purpose, counts_as_cushion, is_default, is_active
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (mysql_user_id, legacy_account_id, *values),
             )
@@ -1346,8 +1352,11 @@ class MySqlWriteRepository(MySqlReadRepository):
         icon: str = "",
         color: str = "",
         purpose: str = "cushion",
+        counts_as_cushion: Optional[bool] = None,
     ) -> Dict[str, Any]:
         purpose = "investment" if str(purpose or "").strip() == "investment" else "cushion"
+        if counts_as_cushion is None:
+            counts_as_cushion = purpose == "cushion"
         mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if mysql_user_id is None:
             raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
@@ -1370,6 +1379,7 @@ class MySqlWriteRepository(MySqlReadRepository):
             "icon": icon,
             "color": color,
             "purpose": purpose,
+            "counts_as_cushion": bool(counts_as_cushion),
             "is_default": active_count == 0,
             "is_active": True,
         }
@@ -1410,6 +1420,7 @@ class MySqlWriteRepository(MySqlReadRepository):
             "icon": "icon",
             "color": "color",
             "purpose": "purpose",
+            "counts_as_cushion": "counts_as_cushion",
             "is_active": "is_active",
             "is_default": "is_default",
         }
@@ -1420,7 +1431,7 @@ class MySqlWriteRepository(MySqlReadRepository):
                 assignments.append(f"{column} = %s")
                 if key == "balance":
                     values.append(to_minor(kwargs[key]))
-                elif key in {"is_active", "is_default"}:
+                elif key in {"is_active", "is_default", "counts_as_cushion"}:
                     values.append(bool(kwargs[key]))
                 else:
                     values.append(kwargs[key])
