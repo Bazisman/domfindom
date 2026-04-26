@@ -79,6 +79,7 @@
 - MySQL rollback-probe расширен на обычные transactions: проверяет actual transaction insert/update/delete в той же транзакции с rollback перед включением strict transaction dual-write.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_ACCOUNTS_CAPITAL` для capital account create/update/delete и standalone transfers; rollback-probe расширен на capital account и transfer write paths.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION`; reconciliation sources/apply теперь имеют MySQL shadow-write adapter paths, а rollback-probe проверяет reconciliation source и reconciliation writes.
+- Начат последний блокер `auth_and_sessions`: добавлен `MySqlAuthWriteRepository` и rollback-probe `tools/mysql_auth_write_probe.py` для users/sessions/preferences/login_attempts/auth_events/password/email/account-deletion tokens без изменения runtime auth path.
 
 ### 2026-04-25
 
