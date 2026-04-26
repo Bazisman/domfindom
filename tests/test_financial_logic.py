@@ -256,6 +256,23 @@ class FinancialLogicTestCase(unittest.TestCase):
         self.assertEqual(forecast["executed_planned_expense"], 1500.0)
         self.assertEqual(forecast["projected_balance"], 8500.0)
 
+    def test_projected_balance_ignores_transfer_between_capital_accounts(self):
+        first_capital_id = core.add_capital_account("Подушка 1", balance=0.0)
+        second_capital_id = core.add_capital_account("Подушка 2", balance=0.0)
+        core.add_income_with_capital(10000.0, "Зарплата", "Доход", "2026-04-05", 0, None)
+        core.add_transfer_record(1, first_capital_id, 1500.0, date="2026-04-10", comment="В подушку")
+        core.add_transfer_record(first_capital_id, second_capital_id, 500.0, date="2026-04-11", comment="Между подушками")
+        with core.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE accounts SET balance = ? WHERE id = 1", (8500.0,))
+            conn.commit()
+
+        forecast = core.get_projected_balance(end_date="2026-04-30")
+
+        self.assertEqual(core.get_capital_outflow_for_period("2026-04-01", "2026-04-30"), 1500.0)
+        self.assertEqual(forecast["executed_planned_expense"], 1500.0)
+        self.assertEqual(forecast["projected_balance"], 8500.0)
+
     def test_export_path_returns_all_transactions_without_ui_limit(self):
         with core.get_connection() as conn:
             cursor = conn.cursor()

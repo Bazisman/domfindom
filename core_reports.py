@@ -47,7 +47,19 @@ def get_income_by_category(get_connection, start_date=None, end_date=None):
 def get_capital_contributions_for_period(get_connection, start_date=None, end_date=None):
     with get_connection() as conn:
         cursor = conn.cursor()
-        query = "SELECT COALESCE(SUM(amount), 0) FROM transfers WHERE is_active = 1"
+        query = """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM transfers
+            WHERE is_active = 1
+              AND to_account_id IN (
+                  SELECT id
+                  FROM capital_accounts
+              )
+              AND from_account_id NOT IN (
+                  SELECT id
+                  FROM capital_accounts
+              )
+        """
         params = []
         if start_date and end_date:
             query += " AND date BETWEEN ? AND ?"
@@ -73,6 +85,10 @@ def get_capital_outflow_for_period(get_connection, start_date=None, end_date=Non
                   SELECT id
                   FROM capital_accounts
                   WHERE is_active = 1
+              )
+              AND from_account_id NOT IN (
+                  SELECT id
+                  FROM capital_accounts
               )
         """
         params = []

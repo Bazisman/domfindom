@@ -154,6 +154,7 @@ class PostgresReadRepository:
             "user_id = %s",
             "is_active = true",
             "to_capital_account_id IS NOT NULL",
+            "from_capital_account_id IS NULL",
         ]
         if start_date:
             filters.append("date >= %s")

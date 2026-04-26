@@ -55,6 +55,10 @@ def get_projected_balance(get_connection, get_budget_monthly_limit_fn, app_logge
                   FROM capital_accounts
                   WHERE is_active = 1
               )
+              AND from_account_id NOT IN (
+                  SELECT id
+                  FROM capital_accounts
+              )
               AND date >= ?
               AND date <= ?
             """,

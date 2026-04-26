@@ -2786,6 +2786,68 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(payload["forecast"]["executed_planned_expense"], 1500.0)
         self.assertEqual(payload["forecast"]["projected_balance"], 8500.0)
 
+    def test_dashboard_ignores_transfer_between_capital_accounts_as_outflow(self):
+        income_category = self.client.get("/api/v1/categories?type=income").json()[0]["name"]
+        current_month_date = datetime.now().strftime("%Y-%m-08")
+
+        self.assertEqual(self.client.patch("/api/v1/settings", json={"auto_capital_enabled": False}).status_code, 200)
+
+        first_capital = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Подушка 1", "balance": 0.0, "color": "#228b22"},
+        )
+        self.assertEqual(first_capital.status_code, 201)
+        first_capital_id = int(first_capital.json()["id"])
+        second_capital = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Подушка 2", "balance": 0.0, "color": "#2255aa"},
+        )
+        self.assertEqual(second_capital.status_code, 201)
+        second_capital_id = int(second_capital.json()["id"])
+
+        income = self.client.post(
+            "/api/v1/transactions",
+            json={
+                "type": "income",
+                "category_name": income_category,
+                "amount": 10000.0,
+                "comment": "Income before cushion transfers",
+                "date": current_month_date,
+            },
+        )
+        self.assertEqual(income.status_code, 201)
+
+        to_cushion = self.client.post(
+            "/api/v1/transfers",
+            json={
+                "from_account_id": 1,
+                "to_account_id": first_capital_id,
+                "amount": 1500.0,
+                "date": current_month_date,
+                "comment": "Move to cushion",
+            },
+        )
+        self.assertEqual(to_cushion.status_code, 201)
+        between_cushions = self.client.post(
+            "/api/v1/transfers",
+            json={
+                "from_account_id": first_capital_id,
+                "to_account_id": second_capital_id,
+                "amount": 500.0,
+                "date": current_month_date,
+                "comment": "Move between cushions",
+            },
+        )
+        self.assertEqual(between_cushions.status_code, 201)
+
+        response = self.client.get("/api/v1/dashboard")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["balance"]["expense"], 1500.0)
+        self.assertEqual(payload["forecast"]["executed_planned_expense"], 1500.0)
+        self.assertEqual(payload["forecast"]["projected_balance"], 8500.0)
+
     def test_categories_endpoint_returns_seed_categories(self):
         response = self.client.get("/api/v1/categories")
         payload = response.json()

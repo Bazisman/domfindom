@@ -347,6 +347,7 @@ class MySqlReadRepository:
             "user_id = %s",
             "is_active = TRUE",
             "to_capital_account_id IS NOT NULL",
+            "from_capital_account_id IS NULL",
         ]
         if start_date:
             filters.append("date >= %s")
@@ -1037,6 +1038,7 @@ class MySqlReadRepository:
                 WHERE user_id = %s
                   AND is_active = TRUE
                   AND to_capital_account_id IS NOT NULL
+                  AND from_capital_account_id IS NULL
                   AND date >= %s
                   AND date <= %s
                 """,
