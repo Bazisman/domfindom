@@ -85,6 +85,7 @@
 - `/api/v1/health` расширен полями `storage_backend` и `runtime_mode`, чтобы после MySQL cutover внешний smoke-check сразу показывал активный storage режим без доступа к серверной `.env`.
 - Начат перевод primary-write с SQLite на MySQL: `CategoryService` при `FINANCE_APP_STORAGE_BACKEND=mysql` создает, обновляет и деактивирует категории напрямую в MySQL, сохраняя legacy `id` для совместимости API.
 - Primary-write перевод расширен на budgets: `TransactionService.set_budget/delete_budget` при MySQL runtime пишет напрямую в `finance_budgets`, создавая новый legacy id только при первом бюджете категории.
+- Reconciliation sources переведены на MySQL runtime read/write: список источников и сумма реального баланса читаются из MySQL, create/update/delete источников пишут напрямую в `finance_reconciliation_sources`.
 - Добавлен выключенный по умолчанию строгий dual-write флаг `FINANCE_APP_MYSQL_STRICT_WRITE_RECONCILIATION`; reconciliation sources/apply теперь имеют MySQL shadow-write adapter paths, а rollback-probe проверяет reconciliation source и reconciliation writes.
 - Начат последний блокер `auth_and_sessions`: добавлен `MySqlAuthWriteRepository` и rollback-probe `tools/mysql_auth_write_probe.py` для users/sessions/preferences/login_attempts/auth_events/password/email/account-deletion tokens без изменения runtime auth path.
 

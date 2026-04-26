@@ -647,6 +647,47 @@ class MySqlReadRepository:
             result = [item for item in result if int(item["category_id"]) == int(category_id)]
         return result
 
+    def get_reconciliation_sources(self, conn, legacy_user_id: int) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT legacy_local_id AS id, name, balance_minor, is_active
+                FROM finance_reconciliation_sources
+                WHERE user_id = %s AND is_active = TRUE
+                ORDER BY name
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "balance": from_minor_float(row["balance_minor"]),
+                "is_active": bool(row["is_active"]),
+            }
+            for row in rows
+        ]
+
+    def get_total_real_balance(self, conn, legacy_user_id: int) -> float:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return 0.0
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(balance_minor), 0) AS total_minor
+                FROM finance_reconciliation_sources
+                WHERE user_id = %s AND is_active = TRUE
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        return from_minor_float(row["total_minor"] if row else 0)
+
     def get_recurring_templates(self, conn, legacy_user_id: int, template_type: Optional[str] = None) -> List[Dict[str, Any]]:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if user_id is None:

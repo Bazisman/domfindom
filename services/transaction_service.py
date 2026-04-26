@@ -1238,6 +1238,10 @@ class TransactionService:
     def get_reconciliation_sources(self) -> list:
         """Получает источники реального баланса."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_reconciliation_sources(conn, legacy_user_id)
             return core.get_reconciliation_sources()
         except Exception as e:
             app_logger.error(f"Ошибка получения источников сверки: {e}", exc_info=True)
@@ -1246,7 +1250,20 @@ class TransactionService:
     def add_reconciliation_source(self, name: str, balance: float = 0):
         """Добавляет источник реального баланса."""
         try:
-            result = core.add_reconciliation_source(name, balance)
+            repo, legacy_user_id, source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.create_reconciliation_source(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        source_db_path=source_db_path,
+                        name=name,
+                        balance=balance,
+                    )
+                    conn.commit()
+                result = int(write_result["legacy_source_id"])
+            else:
+                result = core.add_reconciliation_source(name, balance)
             self.notify_listeners()
             return result
         except Exception as e:
@@ -1256,7 +1273,19 @@ class TransactionService:
     def update_reconciliation_source(self, source_id: int, **kwargs) -> bool:
         """Обновляет источник реального баланса."""
         try:
-            result = core.update_reconciliation_source(source_id, **kwargs)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_reconciliation_source(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_source_id=source_id,
+                        **kwargs,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "noop"}
+            else:
+                result = core.update_reconciliation_source(source_id, **kwargs)
             if result:
                 self.notify_listeners()
             return result
@@ -1267,7 +1296,18 @@ class TransactionService:
     def delete_reconciliation_source(self, source_id: int) -> bool:
         """Удаляет источник реального баланса."""
         try:
-            result = core.delete_reconciliation_source(source_id)
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.delete_reconciliation_source(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_source_id=source_id,
+                    )
+                    conn.commit()
+                result = write_result.get("status") == "updated"
+            else:
+                result = core.delete_reconciliation_source(source_id)
             if result:
                 self.notify_listeners()
             return result
@@ -1278,6 +1318,10 @@ class TransactionService:
     def get_total_real_balance(self) -> float:
         """Получает общий реальный баланс."""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return float(repo.get_total_real_balance(conn, legacy_user_id) or 0)
             return float(core.get_total_real_balance() or 0)
         except Exception as e:
             app_logger.error(f"Ошибка получения реального баланса: {e}", exc_info=True)

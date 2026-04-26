@@ -975,6 +975,74 @@ class MySqlWriteRepository(MySqlReadRepository):
         )
         return {"status": "inserted", "source_id": mysql_source_id}
 
+    def create_reconciliation_source(
+        self,
+        conn,
+        legacy_user_id: int,
+        source_db_path: str,
+        name: str,
+        balance: float = 0,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        legacy_source_id = self._next_legacy_id(conn, mysql_user_id, "reconciliation_sources")
+        source = {
+            "id": legacy_source_id,
+            "name": name,
+            "balance": balance,
+            "is_active": True,
+        }
+        result = self.mirror_reconciliation_source(conn, legacy_user_id, source_db_path, source)
+        return {**result, "legacy_source_id": legacy_source_id}
+
+    def update_reconciliation_source(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_source_id: int,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_source_id = self._finance_id_by_legacy(conn, "reconciliation_sources", mysql_user_id, legacy_source_id)
+        if mysql_source_id is None:
+            return {"status": "missing"}
+        allowed = {
+            "name": "name",
+            "balance": "balance_minor",
+            "is_active": "is_active",
+        }
+        assignments = []
+        values = []
+        for key, column in allowed.items():
+            if key in kwargs:
+                assignments.append(f"{column} = %s")
+                if key == "balance":
+                    values.append(to_minor(kwargs[key]))
+                elif key == "is_active":
+                    values.append(bool(kwargs[key]))
+                else:
+                    values.append(kwargs[key])
+        if not assignments:
+            return {"status": "noop", "source_id": mysql_source_id}
+        values.append(mysql_source_id)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE finance_reconciliation_sources SET {', '.join(assignments)} WHERE id = %s",
+                tuple(values),
+            )
+        return {"status": "updated", "source_id": mysql_source_id}
+
+    def delete_reconciliation_source(self, conn, legacy_user_id: int, legacy_source_id: int) -> Dict[str, Any]:
+        return self.update_reconciliation_source(
+            conn,
+            legacy_user_id=legacy_user_id,
+            legacy_source_id=legacy_source_id,
+            is_active=False,
+        )
+
     def mirror_reconciliation(
         self,
         conn,
