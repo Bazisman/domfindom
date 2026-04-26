@@ -717,7 +717,13 @@ export function FamilyPage() {
             <article className="list-item">
               <div>
                 <strong>Подушка семьи</strong>
-                <p>{formatMoney(familyDashboardQuery.data?.balance.capital_balance ?? 0)}</p>
+                <p>{formatMoney(familyDashboardQuery.data?.balance.cushion_balance ?? 0)}</p>
+              </div>
+            </article>
+            <article className="list-item">
+              <div>
+                <strong>Инвестиции семьи</strong>
+                <p>{formatMoney(familyDashboardQuery.data?.balance.investment_balance ?? 0)}</p>
               </div>
             </article>
             <article className="list-item">

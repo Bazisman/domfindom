@@ -1689,6 +1689,44 @@ class WebApiTestCase(unittest.TestCase):
         self.assertEqual(len(capital_accounts), 1)
         self.assertEqual(capital_accounts[0]["capital_account_id"], first_capital_id)
 
+    def test_family_dashboard_splits_cushion_and_investments(self):
+        create_family = self.client.post("/api/v1/families", json={"name": "Семья капитал"})
+        self.assertEqual(create_family.status_code, 201)
+        family_id = int(create_family.json()["id"])
+
+        cushion = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Подушка", "balance": 100.0, "color": "#111111", "purpose": "cushion"},
+        )
+        self.assertEqual(cushion.status_code, 201)
+        cushion_id = int(cushion.json()["id"])
+
+        investment = self.client.post(
+            "/api/v1/accounts",
+            json={"type": "capital", "name": "Инвестиции", "balance": 300.0, "color": "#222222", "purpose": "investment"},
+        )
+        self.assertEqual(investment.status_code, 201)
+        investment_id = int(investment.json()["id"])
+
+        self.assertEqual(
+            self.client.patch(f"/api/v1/accounts/{cushion_id}", json={"family_visible": True}).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.patch(f"/api/v1/accounts/{investment_id}", json={"family_visible": True}).status_code,
+            200,
+        )
+
+        dashboard = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(dashboard.status_code, 200)
+        balance = dashboard.json()["balance"]
+        self.assertEqual(balance["capital_balance"], 400.0)
+        self.assertEqual(balance["cushion_balance"], 100.0)
+        self.assertEqual(balance["investment_balance"], 300.0)
+        purposes = {item["capital_account_id"]: item["purpose"] for item in dashboard.json()["capital_accounts"]}
+        self.assertEqual(purposes[cushion_id], "cushion")
+        self.assertEqual(purposes[investment_id], "investment")
+
     def test_deactivated_family_capital_account_is_removed_from_family_visibility_and_targets(self):
         create_family = self.client.post("/api/v1/families", json={"name": "Семья деактивация капитала"})
         self.assertEqual(create_family.status_code, 201)

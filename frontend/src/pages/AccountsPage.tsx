@@ -243,6 +243,20 @@ export function AccountsPage() {
     () => capitalAccounts.filter((item) => item.is_active).reduce((sum, account) => sum + account.balance, 0),
     [capitalAccounts],
   );
+  const ownCushion = useMemo(
+    () =>
+      capitalAccounts
+        .filter((item) => item.is_active && item.purpose !== "investment")
+        .reduce((sum, account) => sum + account.balance, 0),
+    [capitalAccounts],
+  );
+  const ownInvestments = useMemo(
+    () =>
+      capitalAccounts
+        .filter((item) => item.is_active && item.purpose === "investment")
+        .reduce((sum, account) => sum + account.balance, 0),
+    [capitalAccounts],
+  );
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
   const familyModeEnabled = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
   const familyMemberMoney = familyDashboard.data?.member_money ?? [];
@@ -357,12 +371,14 @@ export function AccountsPage() {
       ) ?? null
     );
   }, [familyDashboard.data]);
-  const familyCapitalBalance = familyDashboard.data?.balance.capital_balance ?? 0;
+  const familyCushionBalance = familyDashboard.data?.balance.cushion_balance ?? 0;
+  const familyInvestmentBalance = familyDashboard.data?.balance.investment_balance ?? 0;
   const familyDailyBalance = familyDashboard.data?.balance.main_balance ?? 0;
   const familyForecastBalance = familyDashboard.data?.forecast.projected_balance ?? null;
   const personalCashOnHand = dailyBalance;
   const personalTotalVisibleMoney = dailyBalance + ownCapital;
-  const visibleEmergencyMoney = familyModeEnabled ? familyCapitalBalance : ownCapital;
+  const visibleEmergencyMoney = familyModeEnabled ? familyCushionBalance : ownCushion;
+  const visibleInvestmentMoney = familyModeEnabled ? familyInvestmentBalance : ownInvestments;
   const visibleDailyMoney = familyModeEnabled ? familyDailyBalance : dailyBalance;
   const moneyPlaces = useMemo(() => {
     const places: Array<{
@@ -1242,6 +1258,12 @@ export function AccountsPage() {
               <p className="panel-label">{familyModeEnabled ? "Подушка семьи" : "Моя подушка"}</p>
               <h3>{formatMoney(visibleEmergencyMoney)}</h3>
               <p className="muted">Деньги, которые лучше не тратить каждый день.</p>
+            </article>
+
+            <article className="summary-card account-summary-card">
+              <p className="panel-label">{familyModeEnabled ? "Инвестиции семьи" : "Мои инвестиции"}</p>
+              <h3>{formatMoney(visibleInvestmentMoney)}</h3>
+              <p className="muted">Деньги, которые работают на будущее.</p>
             </article>
 
             <article className="summary-card account-summary-card">

@@ -428,6 +428,16 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     member_money: List[Dict[str, object]] = []
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
+    cushion_balance = sum(
+        float(item["balance"] or 0)
+        for item in capital_accounts
+        if str(item.get("purpose") or "cushion") == "cushion"
+    )
+    investment_balance = sum(
+        float(item["balance"] or 0)
+        for item in capital_accounts
+        if str(item.get("purpose") or "cushion") == "investment"
+    )
     personal_category_names = _personal_category_names_for_family(family_id)
     family_capital_outflow_by_source_user: Dict[int, float] = {}
     for item in auth_service.list_family_capital_contributions_for_family(family_id=family_id, limit=300):
@@ -514,6 +524,8 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         balance=FamilyDashboardBalanceResponse(
             main_balance=round(main_balance, 2),
             capital_balance=round(capital_balance, 2),
+            cushion_balance=round(cushion_balance, 2),
+            investment_balance=round(investment_balance, 2),
             income=round(income, 2),
             expense=round(expense, 2),
             difference=round(income - expense, 2),

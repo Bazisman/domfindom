@@ -90,6 +90,8 @@ class FamilyPendingInviteListResponse(BaseModel):
 class FamilyDashboardBalanceResponse(BaseModel):
     main_balance: float
     capital_balance: float = 0
+    cushion_balance: float = 0
+    investment_balance: float = 0
     income: float
     expense: float
     difference: float

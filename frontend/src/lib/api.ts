@@ -387,6 +387,8 @@ export type FamilyDashboardResponse = {
   balance: {
     main_balance: number;
     capital_balance: number;
+    cushion_balance: number;
+    investment_balance: number;
     income: number;
     expense: number;
     difference: number;

@@ -192,10 +192,17 @@ export function DashboardPage() {
   const familyForecast = familyDashboardQuery.data?.forecast;
   const familyBalance = familyDashboardQuery.data?.balance;
   const familyMemberMoney = familyDashboardQuery.data?.member_money ?? [];
-  const personalCapitalBalance = useMemo(
+  const personalCushionBalance = useMemo(
     () =>
       (accountsQuery.data ?? [])
-        .filter((account) => account.type === "capital" && account.is_active)
+        .filter((account) => account.type === "capital" && account.is_active && account.purpose !== "investment")
+        .reduce((sum, account) => sum + account.balance, 0),
+    [accountsQuery.data],
+  );
+  const personalInvestmentBalance = useMemo(
+    () =>
+      (accountsQuery.data ?? [])
+        .filter((account) => account.type === "capital" && account.is_active && account.purpose === "investment")
         .reduce((sum, account) => sum + account.balance, 0),
     [accountsQuery.data],
   );
@@ -789,7 +796,11 @@ export function DashboardPage() {
           </div>
           <div className="money-breakdown-item">
             <span>Моя подушка</span>
-            <strong>{formatMoney(personalCapitalBalance)}</strong>
+            <strong>{formatMoney(personalCushionBalance)}</strong>
+          </div>
+          <div className="money-breakdown-item">
+            <span>Мои инвестиции</span>
+            <strong>{formatMoney(personalInvestmentBalance)}</strong>
           </div>
         </div>
         <div className="stats-row">
@@ -826,7 +837,11 @@ export function DashboardPage() {
           </div>
           <div className="money-breakdown-item">
             <span>Подушка семьи</span>
-            <strong>{familyBalance ? formatMoney(familyBalance.capital_balance) : "—"}</strong>
+            <strong>{familyBalance ? formatMoney(familyBalance.cushion_balance) : "—"}</strong>
+          </div>
+          <div className="money-breakdown-item">
+            <span>Инвестиции семьи</span>
+            <strong>{familyBalance ? formatMoney(familyBalance.investment_balance) : "—"}</strong>
           </div>
         </div>
         {!!familyMemberMoney.length && (
