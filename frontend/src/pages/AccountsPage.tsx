@@ -198,6 +198,55 @@ export function AccountsPage() {
   const personalTotalVisibleMoney = dailyBalance + ownCapital;
   const visibleEmergencyMoney = familyModeEnabled ? familyCapitalBalance : ownCapital;
   const visibleDailyMoney = familyModeEnabled ? familyDailyBalance : dailyBalance;
+  const moneyPlaces = useMemo(() => {
+    const places: Array<{
+      key: string;
+      name: string;
+      tone: string;
+      balance: number;
+      color: string;
+    }> = [];
+    if (cashlessAccount) {
+      places.push({
+        key: `daily:${cashlessAccount.id}`,
+        name: cashlessAccount.name || "Для трат",
+        tone: "Мои деньги на каждый день",
+        balance: cashlessAccount.balance,
+        color: cashlessAccount.color ?? "#3578e5",
+      });
+    }
+    if (cashAccount) {
+      places.push({
+        key: `daily:${cashAccount.id}`,
+        name: cashAccount.name || "Наличные",
+        tone: "Деньги на руках",
+        balance: cashAccount.balance,
+        color: cashAccount.color ?? "#1d8f61",
+      });
+    }
+    capitalAccounts
+      .filter((account) => account.is_active)
+      .forEach((account) => {
+        places.push({
+          key: `personal:${account.id}`,
+          name: account.name,
+          tone: "Моя подушка",
+          balance: account.balance,
+          color: account.color ?? "#5f6b76",
+        });
+      });
+    familyVisibleAccounts.forEach((account) => {
+      const ownerLabel = account.owner_display_name || account.owner_email || "Семья";
+      places.push({
+        key: `family:${account.owner_user_id}:${account.capital_account_id}`,
+        name: account.name,
+        tone: `Подушка семьи · ${ownerLabel}`,
+        balance: account.balance,
+        color: account.color ?? "#5f6b76",
+      });
+    });
+    return places;
+  }, [capitalAccounts, cashAccount, cashlessAccount, familyVisibleAccounts]);
   const personalAccountsPublishedToFamily = useMemo(
     () =>
       new Set(
@@ -992,78 +1041,45 @@ export function AccountsPage() {
           </div>
         </section>
 
-        {!!familyVisibleAccounts.length && (
-          <section className="panel panel-list">
-            <div className="panel-header">
-              <h2>Подушка семьи</h2>
-            </div>
+        <section className="panel panel-list">
+          <div className="panel-header">
+            <h2>Где лежат деньги</h2>
+          </div>
 
-            <div className="category-card-grid">
-              {familyVisibleAccounts.map((account) => {
-                const ownerLabel = account.owner_display_name || account.owner_email || "Семья";
-                const isTarget =
-                  familyTarget?.owner_user_id === account.owner_user_id &&
-                  familyTarget?.capital_account_id === account.capital_account_id;
-
-                return (
-                  <article className="account-card" key={`${account.owner_user_id}:${account.capital_account_id}`}>
-                    <div className="category-card-main">
-                      <span
-                        aria-hidden="true"
-                        className="category-dot"
-                        style={{ backgroundColor: account.color ?? "#5f6b76" }}
-                      />
-                      <div>
-                        <strong>{account.name}</strong>
-                        <p>{isTarget ? `Сюда откладываем · ${ownerLabel}` : `Подушка семьи · ${ownerLabel}`}</p>
-                      </div>
+          <div className="category-card-grid">
+            {moneyPlaces.map((place) => {
+              const isTarget = activeAutoCapitalTarget?.key === place.key;
+              return (
+                <article className={isTarget ? "account-card account-card-main" : "account-card"} key={place.key}>
+                  <div className="category-card-main">
+                    <span
+                      aria-hidden="true"
+                      className="category-dot"
+                      style={{ backgroundColor: place.color }}
+                    />
+                    <div>
+                      <strong>{place.name}</strong>
+                      <p>{isTarget ? `Сюда откладываем · ${place.tone}` : place.tone}</p>
                     </div>
-                    <div className="account-balance">
-                      <strong>{formatMoney(account.balance)}</strong>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+                  </div>
+                  <div className="account-balance">
+                    <strong>{formatMoney(place.balance)}</strong>
+                  </div>
+                </article>
+              );
+            })}
 
-          </section>
-        )}
+            {accountsError && <p className="form-error">{accountsError}</p>}
+
+            {!accountsError && !moneyPlaces.length && (
+              <p className="empty">{isAccountsPending ? "Загружаем деньги..." : "Деньги пока не найдены."}</p>
+            )}
+          </div>
+        </section>
 
         <section className="panel panel-list">
           <div className="panel-header">
-            <h2>Мои деньги</h2>
-          </div>
-
-          <div className="summary-grid summary-grid-3 accounts-summary-grid">
-            <article className="summary-card summary-card-main account-summary-card account-summary-card-main">
-              <p className="panel-label">Деньги на жизнь</p>
-              <h3>{formatMoney(dailyBalance)}</h3>
-              <p className="muted">Этими деньгами можно пользоваться каждый день.</p>
-            </article>
-
-            <article className="summary-card account-summary-card">
-              <p className="panel-label">Для трат</p>
-              <h3>{formatMoney(cashlessAccount?.balance ?? 0)}</h3>
-              <p className="muted">Карты и деньги, которыми платим за обычные покупки.</p>
-            </article>
-
-            <article className="summary-card account-summary-card">
-              <p className="panel-label">Наличные</p>
-              <h3>{formatMoney(cashAccount?.balance ?? 0)}</h3>
-              <p className="muted">Деньги на руках.</p>
-            </article>
-
-            <article className="summary-card account-summary-card">
-              <p className="panel-label">Моя подушка</p>
-              <h3>{formatMoney(ownCapital)}</h3>
-              <p className="muted">Резерв на случай проблем.</p>
-            </article>
-
-            <article className="summary-card account-summary-card">
-              <p className="panel-label">Подушка семьи</p>
-              <h3>{formatMoney(familyCapitalBalance)}</h3>
-              <p className="muted">Общий резерв семьи.</p>
-            </article>
+            <h2>Мои подушки</h2>
           </div>
 
           {activeAutoCapitalTarget ? (
