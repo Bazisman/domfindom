@@ -20,7 +20,9 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         check = mysql_cutover_check.check_runtime_adapter_status(allow_mysql_backend=True)
 
         self.assertEqual(check["status"], "blocked")
-        self.assertIn("SQLite", check["reason"])
+        self.assertIn("primary MySQL write adapters", check["reason"])
+        self.assertIn("transactions", check["missing_groups"])
+        self.assertIn("auth_and_sessions", check["details"])
 
     def test_primary_read_pilot_requires_database_url(self):
         check = mysql_cutover_check.check_primary_read_pilot(
@@ -80,6 +82,24 @@ class MySqlCutoverCheckTestCase(unittest.TestCase):
         self.assertIn("Ready for shadow read: `True`", rendered)
         self.assertIn("Ready for runtime mysql: `False`", rendered)
         self.assertIn("`runtime_adapter`", rendered)
+
+    def test_render_markdown_includes_runtime_missing_groups(self):
+        report = {
+            "source_root": ".",
+            "ready_for_shadow_read": True,
+            "ready_for_runtime_mysql": False,
+            "blockers": ["runtime_adapter"],
+            "checks": {
+                "runtime_adapter": mysql_cutover_check.check_runtime_adapter_status(
+                    allow_mysql_backend=False
+                )
+            },
+        }
+
+        rendered = mysql_cutover_check.render_markdown(report)
+
+        self.assertIn("missing: auth_and_sessions", rendered)
+        self.assertIn("transactions", rendered)
 
 
 if __name__ == "__main__":

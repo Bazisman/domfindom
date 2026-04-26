@@ -15,6 +15,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from tools.mysql_schema import MYSQL_TABLES, mysql_connect
 
 
+RUNTIME_WRITE_GROUPS = {
+    "auth_and_sessions": "auth users, sessions, verification tokens and account lifecycle still use SQLite auth.db",
+    "transactions": "transaction create/update/delete still commits to SQLite core first; MySQL is shadow-write only",
+    "accounts_and_capital": "daily account, capital account and transfer balance mutations still commit to SQLite core first",
+    "categories_budgets_recurring": "category, budget and recurring-template mutations still commit to SQLite core first",
+    "reconciliation_settings": "reconciliation sources and user finance settings still commit to SQLite core/auth first",
+}
+
+
 def run_step(command: Sequence[str], env: Dict[str, str]) -> Dict[str, Any]:
     completed = subprocess.run(
         list(command),
@@ -104,14 +113,19 @@ def check_storage_backend(storage_backend: str, allow_mysql_backend: bool) -> Di
 
 
 def check_runtime_adapter_status(allow_mysql_backend: bool) -> Dict[str, Any]:
+    groups = list(RUNTIME_WRITE_GROUPS.keys())
     if allow_mysql_backend:
         return {
             "status": "blocked",
-            "reason": "allow flag was set, but the app still routes auth/core writes through SQLite; implement MySQL primary adapters first",
+            "reason": "allow flag was set, but primary MySQL write adapters are not complete",
+            "missing_groups": groups,
+            "details": RUNTIME_WRITE_GROUPS,
         }
     return {
         "status": "blocked",
         "reason": "primary runtime is still SQLite-first; MySQL is ready only for ETL, reconciliation, shadow-read and shadow-write",
+        "missing_groups": groups,
+        "details": RUNTIME_WRITE_GROUPS,
     }
 
 
@@ -230,6 +244,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
         detail = ""
         if check.get("missing"):
             detail = "missing: " + ", ".join(check["missing"])
+        elif check.get("missing_groups"):
+            detail = str(check.get("reason") or "") + "; missing: " + ", ".join(check["missing_groups"])
         elif check.get("reason"):
             detail = str(check["reason"])
         elif name == "schema_tables":

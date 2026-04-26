@@ -69,6 +69,7 @@
 - Reconciliation route переведен на `TransactionService`: источники реального баланса, история сверок, корректирующая категория и корректирующие транзакции больше не вызывают `core` напрямую из API route.
 - Transactions route убрал прямые balance update SQL для семейного капитала: daily/capital account adjustments теперь проходят через `TransactionService`, оставляя в route только временный SQLite user-context switch.
 - Общий user finance DB context вынесен в `backend.services.run_in_user_finance_db`; budget/report/transfer/family/transaction routes больше не импортируют `core` напрямую для переключения пользовательской базы.
+- MySQL cutover-check теперь раскрывает `runtime_adapter` по группам недостающего primary-write runtime: auth/sessions, transactions, accounts/capital/transfers, categories/budgets/recurring, reconciliation/settings.
 
 ### 2026-04-25
 
