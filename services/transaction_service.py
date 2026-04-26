@@ -542,6 +542,10 @@ class TransactionService:
     def get_transfers_history(self, account_id=None, limit=100):
         """Получает историю переводов"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_transfers_history(conn, legacy_user_id, account_id=account_id, limit=limit)
             return core.get_transfers_history(account_id, limit)
         except Exception as e:
             app_logger.error(f"Ошибка получения истории переводов: {e}", exc_info=True)
@@ -644,6 +648,10 @@ class TransactionService:
     def get_recurring_templates(self, template_type: str = None) -> list:
         """Получает список шаблонов регулярных платежей"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_recurring_templates(conn, legacy_user_id, template_type=template_type)
             return core.get_recurring_templates(template_type)
         except Exception as e:
             app_logger.error(f"Ошибка получения шаблонов: {e}", exc_info=True)
@@ -734,6 +742,10 @@ class TransactionService:
     def get_projected_balance(self, end_date: str = None) -> dict:
         """Получает прогнозируемый баланс"""
         try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_projected_balance(conn, legacy_user_id, end_date=end_date)
             return core.get_projected_balance(end_date)
         except Exception as e:
             app_logger.error(f"Ошибка получения прогноза: {e}", exc_info=True)

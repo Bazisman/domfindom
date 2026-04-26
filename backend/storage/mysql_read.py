@@ -376,6 +376,314 @@ class MySqlReadRepository:
             for row in rows
         ]
 
+    def get_recurring_templates(self, conn, legacy_user_id: int, template_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        filters = ["rt.user_id = %s", "rt.is_active = TRUE"]
+        params: List[Any] = [user_id]
+        if template_type:
+            filters.append("rt.type = %s")
+            params.append(template_type)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    rt.legacy_local_id AS id,
+                    rt.type,
+                    rt.name,
+                    rt.amount_minor,
+                    rt.day_of_month,
+                    c.legacy_local_id AS category_id,
+                    c.name AS category_name,
+                    rt.comment_template,
+                    rt.money_source,
+                    rt.months_ahead,
+                    rt.working_days_only,
+                    rt.is_active,
+                    DATE_FORMAT(rt.created_at, '%%Y-%%m-%%d %%H:%%i:%%s') AS created_at
+                FROM finance_recurring_templates rt
+                LEFT JOIN finance_categories c ON c.id = rt.category_id
+                WHERE {' AND '.join(filters)}
+                ORDER BY rt.day_of_month
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "type": row["type"],
+                "name": row["name"],
+                "amount": from_minor_float(row["amount_minor"]),
+                "day_of_month": int(row["day_of_month"]),
+                "category_id": int(row["category_id"]) if row.get("category_id") is not None else None,
+                "category_name": row.get("category_name"),
+                "comment_template": row.get("comment_template"),
+                "money_source": row.get("money_source") or "cashless",
+                "months_ahead": int(row.get("months_ahead") or 12),
+                "working_days_only": bool(row.get("working_days_only")),
+                "is_active": bool(row.get("is_active")),
+                "created_at": row.get("created_at"),
+            }
+            for row in rows
+        ]
+
+    def get_transfers_history(
+        self,
+        conn,
+        legacy_user_id: int,
+        account_id: Optional[int] = None,
+        limit: int = 100,
+        include_inactive: bool = False,
+    ) -> List[Dict[str, Any]]:
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return []
+        filters = ["t.user_id = %s"]
+        params: List[Any] = [user_id]
+        if account_id is not None:
+            filters.append("(t.legacy_from_account_id = %s OR t.legacy_to_account_id = %s)")
+            params.extend([int(account_id), int(account_id)])
+        if not include_inactive:
+            filters.append("t.is_active = TRUE")
+        params.append(int(limit))
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    t.legacy_local_id AS id,
+                    t.legacy_from_account_id AS from_account_id,
+                    t.legacy_to_account_id AS to_account_id,
+                    t.amount_minor,
+                    DATE_FORMAT(t.date, '%%Y-%%m-%%d') AS date,
+                    COALESCE(t.comment, '') AS comment,
+                    t.is_active,
+                    COALESCE(fa.name, fca.name, 'Неизвестный') AS from_name,
+                    COALESCE(ta.name, tca.name, 'Неизвестный') AS to_name
+                FROM finance_transfers t
+                LEFT JOIN finance_accounts fa ON t.from_daily_account_id = fa.id
+                LEFT JOIN finance_capital_accounts fca ON t.from_capital_account_id = fca.id
+                LEFT JOIN finance_accounts ta ON t.to_daily_account_id = ta.id
+                LEFT JOIN finance_capital_accounts tca ON t.to_capital_account_id = tca.id
+                WHERE {' AND '.join(filters)}
+                ORDER BY t.date DESC, t.legacy_local_id DESC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "from_account_id": int(row["from_account_id"]),
+                "to_account_id": int(row["to_account_id"]),
+                "amount": from_minor_float(row["amount_minor"]),
+                "date": str(row["date"]),
+                "comment": row["comment"] or "",
+                "is_active": bool(row["is_active"]),
+                "from_name": row["from_name"],
+                "to_name": row["to_name"],
+            }
+            for row in rows
+        ]
+
+    def get_projected_balance(self, conn, legacy_user_id: int, end_date: Optional[str] = None) -> Dict[str, Any]:
+        import calendar
+        from datetime import datetime
+
+        user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            return {
+                "current_balance": 0,
+                "planned_income": 0,
+                "planned_expense": 0,
+                "executed_planned_income": 0,
+                "executed_planned_expense": 0,
+                "monthly_budget": 0,
+                "total_budgets": 0,
+                "current_expenses": 0,
+                "budget_remaining": 0,
+                "combined_pending_expense": 0,
+                "combined_executed_expense": 0,
+                "projected": 0,
+                "projected_balance": 0,
+                "end_date": end_date or "",
+            }
+        if not end_date:
+            now = datetime.now()
+            end_date = f"{now.year}-{now.month:02d}-{calendar.monthrange(now.year, now.month)[1]:02d}"
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        reference = datetime.strptime(today, "%Y-%m-%d")
+        days_in_month = calendar.monthrange(reference.year, reference.month)[1]
+        remaining_days_including_today = max(days_in_month - reference.day + 1, 0)
+        remaining_days_after_today = max(days_in_month - reference.day, 0)
+        start_of_month = today[:8] + "01"
+
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(balance_minor), 0) AS total_minor
+                FROM finance_accounts
+                WHERE user_id = %s
+                  AND legacy_local_id IN (1, 2)
+                  AND is_active = TRUE
+                """,
+                (user_id,),
+            )
+            current_balance = from_minor_float(cursor.fetchone()["total_minor"])
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transactions
+                WHERE user_id = %s
+                  AND status = 'actual'
+                  AND type = 'income'
+                  AND date >= %s
+                  AND date <= %s
+                """,
+                (user_id, start_of_month, today),
+            )
+            actual_income = from_minor_float(cursor.fetchone()["total_minor"])
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transactions
+                WHERE user_id = %s
+                  AND status = 'actual'
+                  AND type = 'expense'
+                  AND date >= %s
+                  AND date <= %s
+                """,
+                (user_id, start_of_month, today),
+            )
+            actual_expense = from_minor_float(cursor.fetchone()["total_minor"])
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transfers
+                WHERE user_id = %s
+                  AND is_active = TRUE
+                  AND to_capital_account_id IS NOT NULL
+                  AND date >= %s
+                  AND date <= %s
+                """,
+                (user_id, start_of_month, today),
+            )
+            actual_expense += from_minor_float(cursor.fetchone()["total_minor"])
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transactions
+                WHERE user_id = %s
+                  AND status = 'planned'
+                  AND type = 'income'
+                  AND date <= %s
+                """,
+                (user_id, end_date),
+            )
+            planned_income = from_minor_float(cursor.fetchone()["total_minor"])
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_minor), 0) AS total_minor
+                FROM finance_transactions
+                WHERE user_id = %s
+                  AND status = 'planned'
+                  AND type = 'expense'
+                  AND date <= %s
+                """,
+                (user_id, end_date),
+            )
+            planned_expense = from_minor_float(cursor.fetchone()["total_minor"])
+
+            cursor.execute(
+                """
+                SELECT b.amount_minor, b.period, c.name AS category_name
+                FROM finance_budgets b
+                JOIN finance_categories c ON b.category_id = c.id
+                WHERE b.user_id = %s
+                """,
+                (user_id,),
+            )
+            budgets = cursor.fetchall()
+
+            total_budgets = 0.0
+            current_expenses = 0.0
+            budget_remaining = 0.0
+            for budget in budgets:
+                period = str(budget.get("period") or "monthly").lower()
+                amount = from_minor_float(budget["amount_minor"])
+                if period == "daily":
+                    monthly_amount = amount * days_in_month
+                elif period == "weekly":
+                    monthly_amount = amount * 4
+                elif period == "yearly":
+                    monthly_amount = amount / 12
+                else:
+                    monthly_amount = amount
+                total_budgets += monthly_amount
+
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount_minor), 0) AS spent_minor
+                    FROM finance_transactions
+                    WHERE user_id = %s
+                      AND type = 'expense'
+                      AND category = %s
+                      AND date >= %s
+                      AND date <= %s
+                      AND status = 'actual'
+                    """,
+                    (user_id, budget["category_name"], start_of_month, today),
+                )
+                spent = from_minor_float(cursor.fetchone()["spent_minor"])
+                current_expenses += spent
+
+                if period == "daily":
+                    cursor.execute(
+                        """
+                        SELECT COALESCE(SUM(amount_minor), 0) AS spent_today_minor
+                        FROM finance_transactions
+                        WHERE user_id = %s
+                          AND type = 'expense'
+                          AND category = %s
+                          AND date = %s
+                          AND status = 'actual'
+                        """,
+                        (user_id, budget["category_name"], today),
+                    )
+                    spent_today = from_minor_float(cursor.fetchone()["spent_today_minor"])
+                    days_to_reserve = remaining_days_after_today if spent_today > 0 else remaining_days_including_today
+                    budget_remaining += max(amount * days_to_reserve, 0.0)
+                else:
+                    budget_remaining += max(monthly_amount - spent, 0.0)
+
+        combined_pending_expense = planned_expense + budget_remaining
+        combined_executed_expense = actual_expense
+        projected_balance = actual_income + planned_income - actual_expense - planned_expense - budget_remaining
+        return {
+            "current_balance": round(current_balance, 2),
+            "planned_income": round(planned_income, 2),
+            "planned_expense": round(planned_expense, 2),
+            "executed_planned_income": round(actual_income, 2),
+            "executed_planned_expense": round(actual_expense, 2),
+            "monthly_budget": round(total_budgets, 2),
+            "total_budgets": round(total_budgets, 2),
+            "current_expenses": round(current_expenses, 2),
+            "budget_remaining": round(budget_remaining, 2),
+            "combined_pending_expense": round(combined_pending_expense, 2),
+            "combined_executed_expense": round(combined_executed_expense, 2),
+            "projected": round(projected_balance, 2),
+            "projected_balance": round(projected_balance, 2),
+            "end_date": end_date,
+        }
+
     def _transaction_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "id": int(row["id"]),

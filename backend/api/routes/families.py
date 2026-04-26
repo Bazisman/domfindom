@@ -473,7 +473,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
             stats = transaction_service.get_monthly_stats(now.year, now.month)
             capital_outflow = core.get_capital_outflow_for_period(start_of_month, today)
             items = transaction_service.get_transactions(limit=100, period="all", offset=0)
-            forecast = core.get_projected_balance()
+            forecast = transaction_service.get_projected_balance()
             return balance, stats, capital_outflow, items, forecast
 
         balance, stats, direct_capital_outflow, items, forecast = _run_in_user_db(user_id, _action)

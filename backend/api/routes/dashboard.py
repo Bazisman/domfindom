@@ -40,7 +40,7 @@ def get_dashboard(request: Request) -> DashboardResponse:
         family_capital_outflow = _family_capital_outflow_for_user(int(current_user["id"]), start_date, today)
     capital_outflow = direct_capital_outflow + family_capital_outflow
 
-    forecast = core.get_projected_balance()
+    forecast = transaction_service.get_projected_balance()
     forecast["executed_planned_expense"] = round(
         float(forecast.get("executed_planned_expense", 0.0) or 0.0) + family_capital_outflow,
         2,
