@@ -171,3 +171,46 @@ class MySqlAuthWriteRepository:
             cursor.execute(f"SELECT id FROM {target_table} WHERE token_hash = %s", (str(token["token_hash"]),))
             row = cursor.fetchone()
         return {"status": "upserted", "token_id": int(row["id"]) if row else None}
+
+    def revoke_session_by_token_hash(self, conn, token_hash: str) -> Dict[str, Any]:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE auth_sessions
+                SET revoked_at = COALESCE(revoked_at, NOW())
+                WHERE token_hash = %s
+                """,
+                (str(token_hash),),
+            )
+            affected = int(cursor.rowcount)
+        return {"status": "revoked", "affected": affected}
+
+    def revoke_user_sessions(self, conn, legacy_user_id: int, except_token_hash: str = "") -> Dict[str, Any]:
+        user_id = self._user_id_by_legacy(conn, legacy_user_id)
+        if user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        params: list[Any] = [user_id]
+        condition = ""
+        if except_token_hash:
+            condition = "AND token_hash != %s"
+            params.append(str(except_token_hash))
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE auth_sessions
+                SET revoked_at = COALESCE(revoked_at, NOW())
+                WHERE user_id = %s AND revoked_at IS NULL {condition}
+                """,
+                tuple(params),
+            )
+            affected = int(cursor.rowcount)
+        return {"status": "revoked", "affected": affected}
+
+    def delete_user(self, conn, legacy_user_id: int) -> Dict[str, Any]:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM auth_users WHERE legacy_sqlite_user_id = %s",
+                (int(legacy_user_id),),
+            )
+            affected = int(cursor.rowcount)
+        return {"status": "deleted", "affected": affected}

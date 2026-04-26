@@ -72,6 +72,7 @@ class AppConfig:
     mysql_strict_write_accounts_capital_enabled: bool
     mysql_strict_write_reconciliation_enabled: bool
     mysql_strict_write_categories_budgets_recurring_enabled: bool
+    mysql_strict_write_auth_enabled: bool
     auth_db_name: str
     users_data_dir: str
     session_cookie_name: str
@@ -135,6 +136,7 @@ settings = AppConfig(
     mysql_strict_write_categories_budgets_recurring_enabled=_parse_bool(
         os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_CATEGORIES_BUDGETS_RECURRING", "false")
     ),
+    mysql_strict_write_auth_enabled=_parse_bool(os.getenv("FINANCE_APP_MYSQL_STRICT_WRITE_AUTH", "false")),
     auth_db_name=os.getenv("FINANCE_APP_AUTH_DB_NAME", "auth.db"),
     users_data_dir=os.getenv("FINANCE_APP_USERS_DATA_DIR", "data/users"),
     session_cookie_name=os.getenv("FINANCE_APP_SESSION_COOKIE_NAME", "finance_session"),

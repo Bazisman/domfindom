@@ -12,6 +12,18 @@ from typing import Dict, List, Optional, Set
 
 import core
 from backend.config import settings
+from backend.storage.auth_shadow_write import (
+    mirror_auth_event_shadow_write,
+    mirror_auth_login_attempt_shadow_write,
+    mirror_auth_preferences_shadow_write,
+    mirror_auth_session_revoke_shadow_write,
+    mirror_auth_session_shadow_write,
+    mirror_auth_token_shadow_write,
+    mirror_auth_user_delete_shadow_write,
+    mirror_auth_user_sessions_revoke_shadow_write,
+    mirror_auth_user_shadow_write,
+    require_mysql_auth_shadow_write_success,
+)
 
 
 def _utcnow() -> datetime:
@@ -524,6 +536,8 @@ class AuthService:
         user_row = self.get_user_by_id(user_id)
         if not user_row:
             raise RuntimeError("Пользователь создан, но запись не найдена")
+        result = mirror_auth_user_shadow_write(user_row)
+        require_mysql_auth_shadow_write_success(result, "create_user")
         return self.get_user_public(user_row)
 
     def authenticate(self, email: str, password: str) -> Optional[Dict[str, object]]:
@@ -568,6 +582,15 @@ class AuthService:
                 (user_id, token_hash, expires_at, ip or "", user_agent or ""),
             )
             conn.commit()
+        user_row = self.get_user_by_id(user_id)
+        result = mirror_auth_session_shadow_write(
+            user_row,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            ip=ip or "",
+            user_agent=user_agent or "",
+        )
+        require_mysql_auth_shadow_write_success(result, "create_session")
         self.cleanup_expired_sessions()
         return raw_token
 
@@ -615,6 +638,10 @@ class AuthService:
                 (token_hash,),
             )
             conn.commit()
+            changed = cursor.rowcount > 0
+        if changed:
+            result = mirror_auth_session_revoke_shadow_write(token_hash)
+            require_mysql_auth_shadow_write_success(result, "revoke_session")
 
     def revoke_all_user_sessions(self, user_id: int) -> int:
         with self._auth_connection() as conn:
@@ -628,7 +655,11 @@ class AuthService:
                 (user_id,),
             )
             conn.commit()
-            return int(cursor.rowcount)
+            changed = int(cursor.rowcount)
+        if changed:
+            result = mirror_auth_user_sessions_revoke_shadow_write(user_id)
+            require_mysql_auth_shadow_write_success(result, "revoke_all_user_sessions")
+        return changed
 
     def revoke_other_user_sessions(self, user_id: int, current_raw_token: str) -> int:
         current_token_hash = self._token_hash(current_raw_token)
@@ -645,11 +676,26 @@ class AuthService:
                 (user_id, current_token_hash),
             )
             conn.commit()
-            return int(cursor.rowcount)
+            changed = int(cursor.rowcount)
+        if changed:
+            result = mirror_auth_user_sessions_revoke_shadow_write(user_id, except_token_hash=current_token_hash)
+            require_mysql_auth_shadow_write_success(result, "revoke_other_user_sessions")
+        return changed
 
     def revoke_user_session_by_id(self, user_id: int, session_id: int) -> bool:
         with self._auth_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT token_hash
+                FROM sessions
+                WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+                LIMIT 1
+                """,
+                (session_id, user_id),
+            )
+            row = cursor.fetchone()
+            token_hash = str(row["token_hash"]) if row else ""
             cursor.execute(
                 """
                 UPDATE sessions
@@ -661,7 +707,11 @@ class AuthService:
                 (session_id, user_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            changed = cursor.rowcount > 0
+        if changed and token_hash:
+            result = mirror_auth_session_revoke_shadow_write(token_hash)
+            require_mysql_auth_shadow_write_success(result, "revoke_user_session_by_id")
+        return changed
 
     def list_active_user_sessions(self, user_id: int, current_raw_token: str, limit: int = 8) -> List[Dict[str, object]]:
         safe_limit = max(1, min(limit, 50))
@@ -726,7 +776,12 @@ class AuthService:
                 (password_hash, user_id),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            changed = cursor.rowcount > 0
+        if changed:
+            user_row = self.get_user_by_id(user_id)
+            result = mirror_auth_user_shadow_write(user_row)
+            require_mysql_auth_shadow_write_success(result, "update_user_password")
+        return changed
 
     def cleanup_password_reset_tokens(self) -> int:
         with self._auth_connection() as conn:
@@ -794,6 +849,14 @@ class AuthService:
                 (user_id, token_hash, expires_at),
             )
             conn.commit()
+        user_row = self.get_user_by_id(user_id)
+        result = mirror_auth_token_shadow_write(
+            user_row,
+            "email_verification_tokens",
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        require_mysql_auth_shadow_write_success(result, "create_email_verification_token")
         self.cleanup_email_verification_tokens()
         return raw_token
 
@@ -838,6 +901,16 @@ class AuthService:
         user_row = self.get_user_by_id(user_id)
         if not user_row:
             return None
+        result = mirror_auth_user_shadow_write(user_row)
+        require_mysql_auth_shadow_write_success(result, "verify_email_user")
+        result = mirror_auth_token_shadow_write(
+            user_row,
+            "email_verification_tokens",
+            token_hash=token_hash,
+            expires_at=str(row["expires_at"]),
+            used_at=_format_utc(_utcnow()),
+        )
+        require_mysql_auth_shadow_write_success(result, "verify_email_token")
         return self.get_user_public(user_row)
 
     def create_account_deletion_token(self, user_id: int) -> Optional[str]:
@@ -865,6 +938,14 @@ class AuthService:
                 (user_id, token_hash, expires_at),
             )
             conn.commit()
+        user_row = self.get_user_by_id(user_id)
+        result = mirror_auth_token_shadow_write(
+            user_row,
+            "account_deletion_tokens",
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        require_mysql_auth_shadow_write_success(result, "create_account_deletion_token")
         self.cleanup_account_deletion_tokens()
         return raw_token
 
@@ -965,6 +1046,8 @@ class AuthService:
             conn.commit()
 
         self._delete_user_account_by_id(user_id, user_email)
+        result = mirror_auth_user_delete_shadow_write(user_id)
+        require_mysql_auth_shadow_write_success(result, "delete_account_by_token")
         self.cleanup_account_deletion_tokens()
         return user_email
 
@@ -985,6 +1068,14 @@ class AuthService:
                 (int(user["id"]), token_hash, expires_at),
             )
             conn.commit()
+        user_row = self.get_user_by_id(int(user["id"]))
+        result = mirror_auth_token_shadow_write(
+            user_row,
+            "password_reset_tokens",
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        require_mysql_auth_shadow_write_success(result, "create_password_reset_token")
         self.cleanup_password_reset_tokens()
         return raw_token
 
@@ -1034,6 +1125,19 @@ class AuthService:
                 (user_id,),
             )
             conn.commit()
+        user_row = self.get_user_by_id(user_id)
+        result = mirror_auth_user_shadow_write(user_row)
+        require_mysql_auth_shadow_write_success(result, "reset_password_user")
+        result = mirror_auth_token_shadow_write(
+            user_row,
+            "password_reset_tokens",
+            token_hash=token_hash,
+            expires_at=str(row["expires_at"]),
+            used_at=_format_utc(_utcnow()),
+        )
+        require_mysql_auth_shadow_write_success(result, "reset_password_token")
+        result = mirror_auth_user_sessions_revoke_shadow_write(user_id)
+        require_mysql_auth_shadow_write_success(result, "reset_password_sessions")
         self.cleanup_password_reset_tokens()
         return {
             "id": user_id,
@@ -1067,6 +1171,13 @@ class AuthService:
                 (rate_key, self._normalize_email(email), ip or "", 1 if success else 0),
             )
             conn.commit()
+        result = mirror_auth_login_attempt_shadow_write(
+            self._normalize_email(email),
+            rate_key=rate_key,
+            ip=ip or "",
+            success=success,
+        )
+        require_mysql_auth_shadow_write_success(result, "record_login_attempt")
         self._cleanup_old_login_attempts()
 
     def is_login_rate_limited(self, email: str, ip: str = "") -> bool:
@@ -1115,6 +1226,18 @@ class AuthService:
                 ),
             )
             conn.commit()
+        user_row = self.get_user_by_id(user_id) if user_id is not None else None
+        result = mirror_auth_event_shadow_write(
+            event_type=event_type,
+            status=status,
+            user_row=user_row,
+            user_id=user_id,
+            email=email,
+            ip=ip or "",
+            user_agent=user_agent or "",
+            detail=detail or "",
+        )
+        require_mysql_auth_shadow_write_success(result, "log_auth_event")
 
     def list_user_auth_events(self, user_id: int, limit: int = 20) -> List[Dict[str, str]]:
         safe_limit = max(1, min(limit, 100))
@@ -1218,11 +1341,15 @@ class AuthService:
                 (user_id, normalized_theme, normalized_workspace, normalized_display_name),
             )
             conn.commit()
-        return {
+        preferences = {
             "theme_mode": normalized_theme,
             "workspace_mode": normalized_workspace,
             "display_name": normalized_display_name,
         }
+        user_row = self.get_user_by_id(user_id)
+        result = mirror_auth_preferences_shadow_write(user_row, preferences)
+        require_mysql_auth_shadow_write_success(result, "update_user_preferences")
+        return preferences
 
     def create_family(self, owner_user_id: int, name: str) -> Dict[str, object]:
         clean_name = (name or "").strip()
