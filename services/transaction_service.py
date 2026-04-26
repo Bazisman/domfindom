@@ -8,15 +8,19 @@ import calendar
 from pathlib import Path
 from utils.logger import app_logger
 
+_AUTH_USER_TO_LEGACY_CACHE: dict[int, Optional[int]] = {}
+
 
 def _legacy_user_id_from_current_db() -> Optional[int]:
     parts = Path(core_runtime._current_db_name()).parts
     for index, part in enumerate(parts):
         if part == "users" and index + 1 < len(parts):
             try:
-                return int(parts[index + 1])
+                auth_user_id = int(parts[index + 1])
             except (TypeError, ValueError):
                 return None
+            legacy_user_id = _mysql_legacy_user_id_for_auth_user(auth_user_id)
+            return legacy_user_id if legacy_user_id is not None else auth_user_id
     return None
 
 
@@ -33,6 +37,34 @@ def _mysql_primary_reads_enabled() -> bool:
         )
     except Exception:
         return False
+
+
+def _mysql_legacy_user_id_for_auth_user(auth_user_id: int) -> Optional[int]:
+    if not (_mysql_primary_reads_enabled() or _mysql_primary_writes_enabled()):
+        return None
+    if auth_user_id in _AUTH_USER_TO_LEGACY_CACHE:
+        return _AUTH_USER_TO_LEGACY_CACHE[auth_user_id]
+    try:
+        from backend.config import settings
+        from tools.mysql_schema import mysql_connect
+
+        if not settings.mysql_database_url:
+            _AUTH_USER_TO_LEGACY_CACHE[auth_user_id] = None
+            return None
+        with mysql_connect(settings.mysql_database_url) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT legacy_sqlite_user_id FROM auth_users WHERE id = %s",
+                    (int(auth_user_id),),
+                )
+                row = cursor.fetchone()
+        legacy_user_id = int(row["legacy_sqlite_user_id"]) if row and row["legacy_sqlite_user_id"] is not None else None
+        _AUTH_USER_TO_LEGACY_CACHE[auth_user_id] = legacy_user_id
+        return legacy_user_id
+    except Exception:
+        app_logger.warning("Не удалось сопоставить пользователя MySQL со старым id", exc_info=True)
+        _AUTH_USER_TO_LEGACY_CACHE[auth_user_id] = None
+        return None
 
 
 def _mysql_read_repo_for_current_user():

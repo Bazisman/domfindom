@@ -22,6 +22,13 @@ class MySqlReadRepository:
                 (int(legacy_user_id),),
             )
             row = cursor.fetchone()
+            if row:
+                return int(row["id"])
+            cursor.execute(
+                "SELECT id FROM auth_users WHERE id = %s AND legacy_sqlite_user_id IS NULL",
+                (int(legacy_user_id),),
+            )
+            row = cursor.fetchone()
         return int(row["id"]) if row else None
 
     def get_balance(self, conn, legacy_user_id: int) -> Dict[str, float]:
