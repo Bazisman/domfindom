@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.auth.dependencies import require_user
+from backend.config import settings
 from backend.schemas.common import MessageResponse
 from backend.schemas.recurring import (
     ExecutePlannedResponse,
@@ -75,8 +76,9 @@ def create_recurring_template(
         category_name = category.name if category else None
     merged = dict(row)
     merged["category_name"] = category_name
-    mirror_result = mirror_recurring_template_shadow_write(current_user, row)
-    require_mysql_shadow_write_success(mirror_result, "recurring_template_create")
+    if settings.storage_backend != "mysql":
+        mirror_result = mirror_recurring_template_shadow_write(current_user, row)
+        require_mysql_shadow_write_success(mirror_result, "recurring_template_create")
     return _template_response(merged)
 
 
@@ -103,8 +105,9 @@ def update_recurring_template(
         category_name = category.name if category else None
     merged = dict(row)
     merged["category_name"] = category_name
-    mirror_result = mirror_recurring_template_shadow_write(current_user, row)
-    require_mysql_shadow_write_success(mirror_result, "recurring_template_update")
+    if settings.storage_backend != "mysql":
+        mirror_result = mirror_recurring_template_shadow_write(current_user, row)
+        require_mysql_shadow_write_success(mirror_result, "recurring_template_update")
     return _template_response(merged)
 
 
@@ -113,8 +116,9 @@ def delete_recurring_template(template_id: int, current_user=Depends(require_use
     deleted = transaction_service.delete_recurring_template(template_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Шаблон не найден")
-    mirror_result = mirror_deleted_recurring_template_shadow_write(current_user, template_id)
-    require_mysql_shadow_write_success(mirror_result, "recurring_template_delete")
+    if settings.storage_backend != "mysql":
+        mirror_result = mirror_deleted_recurring_template_shadow_write(current_user, template_id)
+        require_mysql_shadow_write_success(mirror_result, "recurring_template_delete")
     return MessageResponse(message="Шаблон удален")
 
 

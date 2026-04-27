@@ -911,7 +911,15 @@ class MySqlWriteRepository(MySqlReadRepository):
             "is_active": update_data.get("is_active", current.get("is_active", True)),
         }
         result = self.mirror_recurring_template(conn, legacy_user_id, source_db_path, template)
-        if any(
+        schedule_changed = any(field in update_data for field in ("day_of_month", "working_days_only", "months_ahead"))
+        if not schedule_changed:
+            self.update_planned_transactions_for_template(
+                conn,
+                legacy_user_id=legacy_user_id,
+                legacy_template_id=legacy_template_id,
+                update_data=update_data,
+            )
+        if schedule_changed and any(
             field in update_data
             for field in ("type", "amount", "day_of_month", "category_id", "comment_template", "money_source", "months_ahead", "working_days_only")
         ):
@@ -925,6 +933,63 @@ class MySqlWriteRepository(MySqlReadRepository):
             )
             return {**result, "planned_generated": generated.get("created", 0)}
         return result
+
+    def update_planned_transactions_for_template(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_template_id: int,
+        update_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        mysql_template_id = self._finance_id_by_legacy(conn, "recurring_templates", mysql_user_id, legacy_template_id)
+        if mysql_template_id is None:
+            return {"status": "missing_template", "updated": 0}
+        assignments = []
+        params: list[Any] = []
+        if "type" in update_data:
+            assignments.append("type = %s")
+            params.append(str(update_data["type"]))
+        if "amount" in update_data:
+            assignments.append("amount_minor = %s")
+            params.append(to_minor(update_data["amount"]))
+        if "comment_template" in update_data:
+            assignments.append("comment = %s")
+            params.append(update_data["comment_template"])
+        if "money_source" in update_data:
+            assignments.append("money_source = %s")
+            params.append(str(update_data["money_source"] or "cashless"))
+        if "category_id" in update_data:
+            category_id = self._finance_id_by_legacy(conn, "categories", mysql_user_id, update_data.get("category_id"))
+            category_name = None
+            if category_id is not None:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT name FROM finance_categories WHERE id = %s", (category_id,))
+                    row = cursor.fetchone()
+                    category_name = row["name"] if row else None
+            assignments.append("category_id = %s")
+            params.append(category_id)
+            if category_name:
+                assignments.append("category = %s")
+                params.append(category_name)
+        if not assignments:
+            return {"status": "noop", "updated": 0}
+        params.extend([int(mysql_user_id), int(mysql_template_id)])
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE finance_transactions
+                SET {', '.join(assignments)}
+                WHERE user_id = %s
+                  AND template_id = %s
+                  AND status = 'planned'
+                """,
+                tuple(params),
+            )
+            updated = int(cursor.rowcount)
+        return {"status": "updated", "updated": updated}
 
     def delete_planned_transactions_for_template(
         self,

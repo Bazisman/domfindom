@@ -205,11 +205,41 @@ def update_recurring_template(
                     (value, template_id),
                 )
         conn.commit()
-        schedule_changed = any(f in normalized_kwargs for f in ["day_of_month", "working_days_only"])
+        schedule_changed = any(f in normalized_kwargs for f in ["day_of_month", "working_days_only", "months_ahead"])
+        planned_updates = []
+        planned_params = []
+        if "type" in normalized_kwargs:
+            planned_updates.append("type = ?")
+            planned_params.append(normalized_kwargs["type"])
+        if "amount" in normalized_kwargs:
+            planned_updates.append("amount = ?")
+            planned_params.append(normalized_kwargs["amount"])
+        if "comment_template" in normalized_kwargs:
+            planned_updates.append("comment = ?")
+            planned_params.append(normalized_kwargs["comment_template"])
+        if "money_source" in normalized_kwargs:
+            planned_updates.append("money_source = ?")
+            planned_params.append(normalized_kwargs["money_source"])
+        if "category_id" in normalized_kwargs:
+            cursor.execute("SELECT name FROM categories WHERE id = ?", (normalized_kwargs["category_id"],))
+            category_row = cursor.fetchone()
+            if category_row:
+                planned_updates.append("category = ?")
+                planned_params.append(category_row["name"])
+        if planned_updates and not schedule_changed:
+            planned_params.append(template_id)
+            cursor.execute(
+                f"""
+                UPDATE transactions
+                SET {', '.join(planned_updates)}
+                WHERE template_id = ? AND status = 'planned'
+                """,
+                tuple(planned_params),
+            )
         if any(
             f in normalized_kwargs
             for f in ["type", "amount", "day_of_month", "category_id", "comment_template", "money_source", "months_ahead", "working_days_only"]
-        ):
+        ) and schedule_changed:
             delete_planned_transactions_fn(template_id)
             generate_planned_transactions_fn(template_id, include_current_due=schedule_changed)
         app_logger.info(f"Шаблон ID={template_id} обновлён: {normalized_kwargs}")
