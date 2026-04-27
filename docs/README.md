@@ -1,6 +1,6 @@
 # Документация проекта
 
-> Обновлено: 2026-04-26
+> Обновлено: 2026-04-27
 
 Эта папка теперь разделена на две части:
 
@@ -13,9 +13,10 @@
 2. `docs/PROJECT_STATE.md`
 3. `docs/MYSQL_RUNTIME_RUNBOOK.md`
 4. `docs/DECISIONS.md`
-5. `docs/WORKING_MEMORY.md`
-6. `docs/WORK_LOG.md`
-7. `docs/PROJECT_HISTORY.md`
+5. `docs/MONEY_MODEL_STATUS.md`
+6. `docs/WORKING_MEMORY.md`
+7. `docs/WORK_LOG.md`
+8. `docs/PROJECT_HISTORY.md`
 
 ## Живые документы
 
@@ -26,6 +27,7 @@
 - `FUNCTIONAL_SPEC.md` — единое описание пользовательского функционала, экранов и правил расчета.
 - `GLOSSARY.md` — единый словарь терминов продукта.
 - `BUSINESS_RULES.md` — формулы, расчетные правила и продуктовые инварианты.
+- `MONEY_MODEL_STATUS.md` — текущая модель денег: что уже сделано в `Деньгах`, семье, подушке, инвестициях и что еще осталось.
 - `CATEGORY_SYNC_SPEC.md` — ТЗ по смысловым категориям, аудиту, слиянию и семейной синхронизации.
 - `POSTGRES_MIGRATION_PLAN.md` — исторический план миграции на PostgreSQL; не является текущим production runtime.
 - `POSTGRES_ER_MODEL.md` — историческая PostgreSQL ER-модель.
