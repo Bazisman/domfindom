@@ -36,6 +36,7 @@ from core_budgets import (
 from core_accounts import (
     get_all_accounts as _accounts_get_all_accounts,
     get_account_balance as _accounts_get_account_balance,
+    update_daily_account as _accounts_update_daily_account,
     update_account_balance as _accounts_update_account_balance,
     sync_accounts_with_transactions as _accounts_sync_accounts_with_transactions,
 )
@@ -472,6 +473,19 @@ def update_account_balance(account_id, amount):
         _invalidate_capital_cache,
         account_id,
         amount,
+    )
+    if result:
+        _invalidate_cache()
+    return result
+
+
+def update_daily_account(account_id, **kwargs):
+    result = _accounts_update_daily_account(
+        get_connection,
+        app_logger,
+        account_id,
+        name=kwargs.get("name"),
+        balance=kwargs.get("balance"),
     )
     if result:
         _invalidate_cache()

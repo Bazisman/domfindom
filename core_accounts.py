@@ -81,6 +81,42 @@ def update_account_balance(
         return False
 
 
+def update_daily_account(get_connection, app_logger, account_id, name=None, balance=None):
+    updates = []
+    params = []
+    if name is not None:
+        clean_name = str(name).strip()
+        if not clean_name:
+            return False
+        updates.append("name = ?")
+        params.append(clean_name)
+    if balance is not None:
+        updates.append("balance = ?")
+        params.append(float(balance))
+    if not updates:
+        return True
+    updates.append("updated_at = datetime('now')")
+    params.append(int(account_id))
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            UPDATE accounts
+            SET {', '.join(updates)}
+            WHERE id = ?
+              AND id IN (1, 2)
+              AND is_active = 1
+            """,
+            tuple(params),
+        )
+        conn.commit()
+        if cursor.rowcount > 0:
+            app_logger.info(f"Повседневный счёт {account_id} обновлён")
+            return True
+    app_logger.error(f"Повседневный счёт {account_id} не найден")
+    return False
+
+
 def sync_accounts_with_transactions(
     get_connection,
     app_logger,

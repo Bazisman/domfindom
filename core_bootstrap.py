@@ -177,7 +177,7 @@ def init_db(
             cursor.execute(
                 """
                 UPDATE accounts
-                SET name = 'Безнал', type = 'main', updated_at = datetime('now')
+                SET type = 'main', updated_at = datetime('now')
                 WHERE id = ?
                 """,
                 (CASHLESS_ACCOUNT_ID,),

@@ -188,12 +188,35 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
     if not found:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Счет не найден")
 
+    update_data = payload.model_dump(exclude_none=True)
     account_type, _ = found
-    if account_type != "capital":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Через этот раздел можно изменять только счета капитала",
+    if account_type == "daily":
+        forbidden_daily_fields = {
+            "icon",
+            "color",
+            "is_active",
+            "is_default",
+            "family_visible",
+            "family_default_target",
+            "purpose",
+            "counts_as_cushion",
+        }
+        if forbidden_daily_fields.intersection(update_data):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="У карты и наличных можно менять только название и сумму",
+            )
+        updated = transaction_service.update_daily_account(
+            account_id,
+            name=update_data.get("name"),
+            balance=update_data.get("balance"),
         )
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить счет")
+        refreshed = _find_account_row(account_id, include_inactive=True)
+        if not refreshed:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Счет обновлен, но не найден")
+        return _daily_account_response(refreshed[1])
 
     if payload.is_default is False:
         raise HTTPException(
@@ -201,7 +224,6 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
             detail="Счет капитала по умолчанию можно изменить только назначив другой счет основным",
         )
 
-    update_data = payload.model_dump(exclude_none=True)
     should_set_default = update_data.pop("is_default", False)
     family_visible = update_data.pop("family_visible", None)
     family_default_target = update_data.pop("family_default_target", None)

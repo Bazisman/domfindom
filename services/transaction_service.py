@@ -861,6 +861,36 @@ class TransactionService:
             app_logger.error(f"Ошибка корректировки дневного счёта {money_source}: {e}", exc_info=True)
             raise
 
+    def update_daily_account(self, account_id: int, **kwargs) -> bool:
+        """Обновляет обязательный повседневный счёт: карту или наличные."""
+        try:
+            safe_account_id = int(account_id)
+            if safe_account_id not in (1, 2):
+                return False
+            allowed = {key: value for key, value in kwargs.items() if key in {"name", "balance"}}
+            if not allowed:
+                return True
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    write_result = repo.update_daily_account(
+                        conn,
+                        legacy_user_id=legacy_user_id,
+                        legacy_account_id=safe_account_id,
+                        **allowed,
+                    )
+                    conn.commit()
+                result = write_result.get("status") in {"updated", "noop"}
+            else:
+                result = core.update_daily_account(safe_account_id, **allowed)
+            if result:
+                self.notify_listeners()
+                app_logger.debug(f"Обновлён повседневный счёт {safe_account_id}: {allowed}")
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка обновления повседневного счёта {account_id}: {e}", exc_info=True)
+            return False
+
     def adjust_capital_account_balance(self, capital_account_id: int, amount_delta: float) -> bool:
         """Корректирует баланс активного счёта капитала."""
         try:

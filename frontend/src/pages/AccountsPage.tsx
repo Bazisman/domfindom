@@ -265,6 +265,10 @@ export function AccountsPage() {
     () => (accounts.data ?? []).filter((item) => item.type === "capital"),
     [accounts.data],
   );
+  const dailyAccounts = useMemo(
+    () => (accounts.data ?? []).filter((item) => item.type !== "capital"),
+    [accounts.data],
+  );
 
   const cashlessAccount = useMemo(
     () => (accounts.data ?? []).find((item) => item.money_source === "cashless" || item.id === 1) ?? null,
@@ -308,6 +312,11 @@ export function AccountsPage() {
     () => new Map((accounts.data ?? []).map((account) => [account.id, account])),
     [accounts.data],
   );
+  const editingAccount = useMemo(
+    () => (accounts.data ?? []).find((account) => account.id === editingAccountId) ?? null,
+    [accounts.data, editingAccountId],
+  );
+  const isEditingDailyAccount = editingAccount !== null && editingAccount.type !== "capital";
   const selectedTransferFromAccount = useMemo(
     () => transferAccounts.find((account) => String(account.id) === transferForm.fromAccountId) ?? null,
     [transferAccounts, transferForm.fromAccountId],
@@ -860,12 +869,9 @@ export function AccountsPage() {
   }
 
   function fillAccountForm(account: Account) {
-    if (account.type !== "capital") {
-      return;
-    }
     setEditingAccountId(account.id);
     setAccountForm({
-      name: account.name,
+      name: account.type === "capital" ? account.name : getDailyAccountName(account, account.money_source === "cash" ? "Наличные" : "Карта"),
       balance: String(account.balance),
       color: account.color ?? ACCOUNT_COLORS[0],
       purpose: account.purpose ?? "cushion",
@@ -892,15 +898,19 @@ export function AccountsPage() {
     }
 
     if (editingAccountId !== null) {
+      const payload =
+        isEditingDailyAccount
+          ? { name, balance }
+          : {
+              name,
+              balance,
+              color: accountForm.color,
+              purpose: accountForm.purpose,
+              counts_as_cushion: accountForm.counts_as_cushion,
+            };
       updateAccountMutation.mutate({
         accountId: editingAccountId,
-        payload: {
-          name,
-          balance,
-          color: accountForm.color,
-          purpose: accountForm.purpose,
-          counts_as_cushion: accountForm.counts_as_cushion,
-        },
+        payload,
       });
       return;
     }
@@ -962,7 +972,7 @@ export function AccountsPage() {
       const purposeLabel = getCapitalPurposeLabel(account.purpose).toLocaleLowerCase("ru-RU");
       return `${account.family_visible ? `Семья · ${purposeLabel}` : getCapitalPurposeLabel(account.purpose)} · ${account.name}`;
     }
-    return account.money_source === "cash" ? "Наличные" : "Карта";
+    return getDailyAccountName(account, account.money_source === "cash" ? "Наличные" : "Карта");
   }
 
   function saveDefaultMoneySource(source: "cashless" | "cash") {
@@ -1121,54 +1131,58 @@ export function AccountsPage() {
               <input
                 ref={accountNameInputRef}
                 onChange={(event) => setAccountForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Например, Подушка в Сбере"
+                placeholder={isEditingDailyAccount ? "Например, Сбер платежный" : "Например, Подушка в Сбере"}
                 value={accountForm.name}
               />
             </label>
 
-            <div className="field">
-              <span>Для чего это</span>
-              <div className="toggle-row">
-                <button
-                  className={accountForm.purpose === "cushion" ? "toggle active" : "toggle"}
-                  onClick={() =>
-                    setAccountForm((current) => ({ ...current, purpose: "cushion", counts_as_cushion: true }))
-                  }
-                  type="button"
-                >
-                  Подушка
-                </button>
-                <button
-                  className={accountForm.purpose === "investment" ? "toggle active" : "toggle"}
-                  onClick={() =>
-                    setAccountForm((current) => ({ ...current, purpose: "investment", counts_as_cushion: false }))
-                  }
-                  type="button"
-                >
-                  Инвестиции
-                </button>
-                <button
-                  className={accountForm.purpose === "personal" ? "toggle active" : "toggle"}
-                  onClick={() =>
-                    setAccountForm((current) => ({ ...current, purpose: "personal", counts_as_cushion: false }))
-                  }
-                  type="button"
-                >
-                  Личные
-                </button>
-              </div>
-            </div>
+            {!isEditingDailyAccount && (
+              <>
+                <div className="field">
+                  <span>Для чего это</span>
+                  <div className="toggle-row">
+                    <button
+                      className={accountForm.purpose === "cushion" ? "toggle active" : "toggle"}
+                      onClick={() =>
+                        setAccountForm((current) => ({ ...current, purpose: "cushion", counts_as_cushion: true }))
+                      }
+                      type="button"
+                    >
+                      Подушка
+                    </button>
+                    <button
+                      className={accountForm.purpose === "investment" ? "toggle active" : "toggle"}
+                      onClick={() =>
+                        setAccountForm((current) => ({ ...current, purpose: "investment", counts_as_cushion: false }))
+                      }
+                      type="button"
+                    >
+                      Инвестиции
+                    </button>
+                    <button
+                      className={accountForm.purpose === "personal" ? "toggle active" : "toggle"}
+                      onClick={() =>
+                        setAccountForm((current) => ({ ...current, purpose: "personal", counts_as_cushion: false }))
+                      }
+                      type="button"
+                    >
+                      Личные
+                    </button>
+                  </div>
+                </div>
 
-            <label className="checkbox-field">
-              <input
-                checked={accountForm.counts_as_cushion}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, counts_as_cushion: event.target.checked }))
-                }
-                type="checkbox"
-              />
-              <span>Считать частью подушки</span>
-            </label>
+                <label className="checkbox-field">
+                  <input
+                    checked={accountForm.counts_as_cushion}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, counts_as_cushion: event.target.checked }))
+                    }
+                    type="checkbox"
+                  />
+                  <span>Считать частью подушки</span>
+                </label>
+              </>
+            )}
 
             <label className="field">
               <span>{editingAccountId !== null ? "Сколько сейчас" : "Сколько сейчас"}</span>
@@ -1180,21 +1194,23 @@ export function AccountsPage() {
               />
             </label>
 
-            <div className="field">
-              <span>Цвет</span>
-              <div className="color-grid">
-                {ACCOUNT_COLORS.map((color) => (
-                  <button
-                    aria-label={`Выбрать цвет ${color}`}
-                    className={accountForm.color === color ? "color-swatch active" : "color-swatch"}
-                    key={color}
-                    onClick={() => setAccountForm((current) => ({ ...current, color }))}
-                    style={{ backgroundColor: color }}
-                    type="button"
-                  />
-                ))}
+            {!isEditingDailyAccount && (
+              <div className="field">
+                <span>Цвет</span>
+                <div className="color-grid">
+                  {ACCOUNT_COLORS.map((color) => (
+                    <button
+                      aria-label={`Выбрать цвет ${color}`}
+                      className={accountForm.color === color ? "color-swatch active" : "color-swatch"}
+                      key={color}
+                      onClick={() => setAccountForm((current) => ({ ...current, color }))}
+                      style={{ backgroundColor: color }}
+                      type="button"
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {accountError && <p className="form-error">{accountError}</p>}
 
@@ -1416,6 +1432,38 @@ export function AccountsPage() {
         <section className="panel panel-list">
           <div className="panel-header">
           <h2>Подушки и инвестиции</h2>
+          </div>
+
+          <div className="account-section">
+            <div className="account-section-header">
+              <h3>Карты и наличные</h3>
+            </div>
+
+            <div className="category-card-grid">
+              {dailyAccounts.map((account) => (
+                <article className="account-card" key={account.id}>
+                  <div className="category-card-main">
+                    <span
+                      aria-hidden="true"
+                      className="category-dot"
+                      style={{ backgroundColor: account.money_source === "cash" ? "#1d8f61" : "#3578e5" }}
+                    />
+                    <div>
+                      <strong>{getDailyAccountName(account, account.money_source === "cash" ? "Наличные" : "Карта")}</strong>
+                      <p>{account.money_source === "cash" ? "Деньги на руках" : "Сюда списываются траты с карты"}</p>
+                    </div>
+                  </div>
+                  <div className="account-balance">
+                    <strong>{formatMoney(account.balance)}</strong>
+                  </div>
+                  <div className="category-card-actions">
+                    <button className="ghost-button" onClick={() => fillAccountForm(account)} type="button">
+                      Изменить
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
 
           {activeAutoCapitalTarget ? (

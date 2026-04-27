@@ -3268,6 +3268,27 @@ class WebApiTestCase(unittest.TestCase):
         cash_account = next(item for item in payload if item["money_source"] == "cash")
         self.assertEqual(cash_account["id"], 2)
 
+    def test_daily_account_can_be_renamed_and_rebalanced_but_not_deleted(self):
+        updated = self.client.patch(
+            "/api/v1/accounts/1",
+            json={"name": "Сбер платежный", "balance": 12345.67},
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.json()["name"], "Сбер платежный")
+        self.assertEqual(updated.json()["balance"], 12345.67)
+        self.assertEqual(updated.json()["money_source"], "cashless")
+
+        forbidden = self.client.patch("/api/v1/accounts/1", json={"purpose": "personal"})
+        self.assertEqual(forbidden.status_code, 400)
+
+        deleted = self.client.delete("/api/v1/accounts/1")
+        self.assertEqual(deleted.status_code, 400)
+
+        fetched = self.client.get("/api/v1/accounts/1")
+        self.assertEqual(fetched.status_code, 200)
+        self.assertEqual(fetched.json()["name"], "Сбер платежный")
+        self.assertEqual(fetched.json()["balance"], 12345.67)
+
     def test_cash_transaction_and_edit_source_via_api(self):
         created = self.client.post(
             "/api/v1/transactions",

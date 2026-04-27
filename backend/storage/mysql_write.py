@@ -102,6 +102,59 @@ class MySqlWriteRepository(MySqlReadRepository):
             row = cursor.fetchone()
         return int(row["balance_minor"]) if row else None
 
+    def update_daily_account(
+        self,
+        conn,
+        legacy_user_id: int,
+        legacy_account_id: int,
+        *,
+        name: Optional[str] = None,
+        balance: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        if int(legacy_account_id) not in DAILY_ACCOUNT_IDS:
+            return {"status": "invalid", "account_id": None}
+        mysql_user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
+        if mysql_user_id is None:
+            raise RuntimeError(f"MySQL user for legacy user {legacy_user_id} was not found")
+        assignments = []
+        values: list[Any] = []
+        if name is not None:
+            clean_name = str(name).strip()
+            if not clean_name:
+                return {"status": "invalid", "account_id": None}
+            assignments.append("name = %s")
+            values.append(clean_name)
+        if balance is not None:
+            assignments.append("balance_minor = %s")
+            values.append(to_minor(balance))
+        if not assignments:
+            return {"status": "noop", "account_id": None}
+        values.extend([int(mysql_user_id), int(legacy_account_id)])
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE finance_accounts
+                SET {', '.join(assignments)}
+                WHERE user_id = %s
+                  AND legacy_local_id = %s
+                  AND legacy_local_id IN (1, 2)
+                  AND is_active = TRUE
+                """,
+                tuple(values),
+            )
+            if cursor.rowcount <= 0:
+                return {"status": "missing", "account_id": None}
+            cursor.execute(
+                """
+                SELECT id
+                FROM finance_accounts
+                WHERE user_id = %s AND legacy_local_id = %s
+                """,
+                (int(mysql_user_id), int(legacy_account_id)),
+            )
+            row = cursor.fetchone()
+        return {"status": "updated", "account_id": int(row["id"]) if row else None}
+
     def _insert_id_map(
         self,
         conn,
