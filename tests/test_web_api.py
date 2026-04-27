@@ -3605,11 +3605,13 @@ class WebApiTestCase(unittest.TestCase):
             json={
                 "amount": 15000.0,
                 "comment_template": "Salary updated",
+                "money_source": "cash",
             },
         )
         self.assertEqual(updated.status_code, 200)
         self.assertEqual(updated.json()["amount"], 15000.0)
         self.assertEqual(updated.json()["comment_template"], "Salary updated")
+        self.assertEqual(updated.json()["money_source"], "cash")
 
         db_token = self._push_current_user_db()
         try:
@@ -3617,6 +3619,7 @@ class WebApiTestCase(unittest.TestCase):
         finally:
             core.pop_db_name(db_token)
         self.assertGreaterEqual(len(planned_transactions), 1)
+        self.assertTrue(all(item["money_source"] == "cash" for item in planned_transactions))
 
         due_transaction_id = planned_transactions[0]["id"]
         db_token = self._push_current_user_db()

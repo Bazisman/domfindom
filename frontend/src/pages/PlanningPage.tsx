@@ -17,6 +17,7 @@ import {
   getRecurringTemplates,
   updateBudget,
   updateRecurringTemplate,
+  type MoneySource,
   type TransactionType,
 } from "../lib/api";
 
@@ -24,6 +25,11 @@ const PERIOD_OPTIONS = [
   { value: "daily", label: "В день" },
   { value: "monthly", label: "В месяц" },
   { value: "yearly", label: "В год" },
+];
+
+const MONEY_SOURCE_OPTIONS: Array<{ value: MoneySource; label: string }> = [
+  { value: "cashless", label: "Карта" },
+  { value: "cash", label: "Наличные" },
 ];
 
 function formatMoney(value: number) {
@@ -71,6 +77,7 @@ function getRecurringInitialForm() {
     selectedDate: getCurrentMonthDate(),
     categoryId: "",
     commentTemplate: "",
+    moneySource: "cashless" as MoneySource,
     monthsAhead: "12",
     workingDaysOnly: true,
   };
@@ -329,6 +336,7 @@ export function PlanningPage() {
       selectedDate: getCurrentMonthDate(template.day_of_month),
       categoryId: template.category_id ? String(template.category_id) : "",
       commentTemplate: template.comment_template,
+      moneySource: template.money_source,
       monthsAhead: String(template.months_ahead),
       workingDaysOnly: template.working_days_only,
     });
@@ -403,6 +411,7 @@ export function PlanningPage() {
       day_of_month: dayOfMonth,
       category_id: categoryId,
       comment_template: recurringForm.commentTemplate.trim(),
+      money_source: recurringForm.moneySource,
       months_ahead: monthsAhead,
       working_days_only: recurringForm.workingDaysOnly,
     };
@@ -531,6 +540,19 @@ export function PlanningPage() {
                 >
                   Доход
                 </button>
+              </div>
+
+              <div className="toggle-row">
+                {MONEY_SOURCE_OPTIONS.map((option) => (
+                  <button
+                    className={recurringForm.moneySource === option.value ? "toggle active" : "toggle"}
+                    key={option.value}
+                    onClick={() => setRecurringForm((current) => ({ ...current, moneySource: option.value }))}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
 
               <label className="field">
