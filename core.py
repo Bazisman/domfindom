@@ -22,6 +22,8 @@ from core_settings import (
     set_auto_capital_settings as _settings_set_auto_capital_settings,
     get_default_money_source as _settings_get_default_money_source,
     set_default_money_source as _settings_set_default_money_source,
+    get_family_visible_daily_money_sources as _settings_get_family_visible_daily_money_sources,
+    set_family_visible_daily_money_source as _settings_set_family_visible_daily_money_source,
 )
 from core_budgets import (
     normalize_budget_period as _budgets_normalize_budget_period,
@@ -167,6 +169,14 @@ def get_default_money_source():
 
 def set_default_money_source(money_source: str):
     return _settings_set_default_money_source(get_connection, money_source)
+
+
+def get_family_visible_daily_money_sources():
+    return _settings_get_family_visible_daily_money_sources(get_connection)
+
+
+def set_family_visible_daily_money_source(money_source: str, visible: bool):
+    return _settings_set_family_visible_daily_money_source(get_connection, money_source, visible)
 
 
 

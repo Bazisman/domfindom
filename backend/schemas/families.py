@@ -119,6 +119,17 @@ class FamilyCapitalAccountItemResponse(BaseModel):
     is_default_target: bool
 
 
+class FamilyDailyAccountItemResponse(BaseModel):
+    owner_user_id: int
+    owner_email: str
+    owner_display_name: str
+    account_id: int
+    name: str
+    balance: float
+    money_source: Literal["cashless", "cash"]
+    is_visible: bool = True
+
+
 class FamilyCapitalSelectionResponse(BaseModel):
     target_owner_user_id: Optional[int] = None
     target_capital_account_id: Optional[int] = None
@@ -172,6 +183,7 @@ class FamilyDashboardResponse(BaseModel):
     balance: FamilyDashboardBalanceResponse
     member_money: List[FamilyDashboardMemberMoneyResponse] = []
     forecast: ForecastResponse
+    daily_accounts: List[FamilyDailyAccountItemResponse] = []
     capital_accounts: List[FamilyCapitalAccountItemResponse] = []
     current_member_capital_target: FamilyCapitalSelectionResponse = FamilyCapitalSelectionResponse()
     recent_transactions: List[FamilyDashboardTransactionResponse]

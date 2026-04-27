@@ -403,6 +403,16 @@ export type FamilyDashboardResponse = {
     main_balance: number;
   }>;
   forecast: DashboardResponse["forecast"];
+  daily_accounts: Array<{
+    owner_user_id: number;
+    owner_email: string;
+    owner_display_name: string;
+    account_id: number;
+    name: string;
+    balance: number;
+    money_source: MoneySource;
+    is_visible: boolean;
+  }>;
   capital_accounts: Array<{
     owner_user_id: number;
     owner_email: string;

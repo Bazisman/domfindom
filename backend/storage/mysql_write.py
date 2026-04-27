@@ -1888,6 +1888,13 @@ class MySqlWriteRepository(MySqlReadRepository):
         self.set_app_setting(conn, legacy_user_id, "default_money_source", normalized)
         return {"status": "upserted", "default_money_source": normalized}
 
+    def set_family_visible_daily_money_source(self, conn, legacy_user_id: int, money_source: str, visible: bool) -> Dict[str, Any]:
+        from core_money import normalize_money_source
+
+        normalized = normalize_money_source(money_source)
+        self.set_app_setting(conn, legacy_user_id, f"family_visible_daily_{normalized}", "1" if visible else "0")
+        return {"status": "upserted", "money_source": normalized, "family_visible": bool(visible)}
+
     def mirror_reconciliation(
         self,
         conn,

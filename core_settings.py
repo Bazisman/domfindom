@@ -59,3 +59,17 @@ def set_default_money_source(get_connection, money_source: str):
     normalized = normalize_money_source(money_source)
     set_app_setting(get_connection, "default_money_source", normalized)
     return normalized
+
+
+def get_family_visible_daily_money_sources(get_connection):
+    result = set()
+    for source in ("cashless", "cash"):
+        if str(get_app_setting(get_connection, f"family_visible_daily_{source}", "0")) == "1":
+            result.add(source)
+    return result
+
+
+def set_family_visible_daily_money_source(get_connection, money_source: str, visible: bool):
+    normalized = normalize_money_source(money_source)
+    set_app_setting(get_connection, f"family_visible_daily_{normalized}", "1" if visible else "0")
+    return visible

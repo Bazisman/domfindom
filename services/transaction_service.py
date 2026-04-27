@@ -1472,6 +1472,33 @@ class TransactionService:
         except Exception as e:
             app_logger.error(f"Ошибка установки источника денег по умолчанию: {e}", exc_info=True)
             return self.get_default_money_source()
+
+    def get_family_visible_daily_money_sources(self) -> set[str]:
+        try:
+            repo, legacy_user_id = _mysql_read_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    return repo.get_family_visible_daily_money_sources(conn, legacy_user_id)
+            return core.get_family_visible_daily_money_sources()
+        except Exception as e:
+            app_logger.error(f"Ошибка получения видимости карты/наличных для семьи: {e}", exc_info=True)
+            return set()
+
+    def set_family_visible_daily_money_source(self, money_source: str, visible: bool) -> bool:
+        try:
+            repo, legacy_user_id, _source_db_path = _mysql_write_repo_for_current_user()
+            if repo is not None and legacy_user_id is not None:
+                with repo.connect() as conn:
+                    repo.set_family_visible_daily_money_source(conn, legacy_user_id, money_source, visible)
+                    conn.commit()
+                result = bool(visible)
+            else:
+                result = core.set_family_visible_daily_money_source(money_source, visible)
+            self.notify_listeners()
+            return result
+        except Exception as e:
+            app_logger.error(f"Ошибка сохранения видимости карты/наличных для семьи: {e}", exc_info=True)
+            return False
     
     # ========== БЮДЖЕТЫ ==========
     

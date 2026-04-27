@@ -1527,6 +1527,23 @@ class WebApiTestCase(unittest.TestCase):
         )
         self.assertTrue(any(item["email"] == self._primary_email and item["main_balance"] == 1000.0 for item in member_money))
         self.assertTrue(any(item["email"] == second_email and item["main_balance"] == 500.0 for item in member_money))
+        self.assertEqual(family_dashboard.json()["daily_accounts"], [])
+
+        publish_member_card = second_client.patch("/api/v1/accounts/1", json={"family_visible": True})
+        self.assertEqual(publish_member_card.status_code, 200)
+        self.assertTrue(publish_member_card.json()["family_visible"])
+
+        family_dashboard_after_publish = self.client.get(f"/api/v1/families/{family_id}/dashboard")
+        self.assertEqual(family_dashboard_after_publish.status_code, 200)
+        daily_accounts = family_dashboard_after_publish.json()["daily_accounts"]
+        self.assertTrue(
+            any(
+                item["owner_email"] == second_email
+                and item["money_source"] == "cashless"
+                and item["balance"] == 500.0
+                for item in daily_accounts
+            )
+        )
 
         owner_accounts = self.client.get("/api/v1/accounts")
         self.assertEqual(owner_accounts.status_code, 200)

@@ -71,6 +71,7 @@ def _daily_account_response(row) -> AccountResponse:
     account_id = int(_row_value(row, "id", 0))
     account_type = str(_row_value(row, "type", "main") or "main")
     money_source = "cash" if account_id == 2 or account_type == "cash" else "cashless"
+    family_visible_sources = transaction_service.get_family_visible_daily_money_sources()
     return AccountResponse(
         id=account_id,
         name=_row_value(row, "name", ""),
@@ -81,7 +82,7 @@ def _daily_account_response(row) -> AccountResponse:
         is_default=False,
         icon=None,
         color=None,
-        family_visible=False,
+        family_visible=money_source in family_visible_sources,
         family_default_target=False,
         money_source=money_source,
         purpose="cushion",
@@ -196,7 +197,6 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
             "color",
             "is_active",
             "is_default",
-            "family_visible",
             "family_default_target",
             "purpose",
             "counts_as_cushion",
@@ -211,6 +211,12 @@ def update_account(account_id: int, payload: AccountUpdateRequest, current_user=
             name=update_data.get("name"),
             balance=update_data.get("balance"),
         )
+        if "family_visible" in update_data:
+            money_source = "cash" if account_id == 2 else "cashless"
+            updated = transaction_service.set_family_visible_daily_money_source(
+                money_source,
+                bool(update_data["family_visible"]),
+            ) and updated
         if not updated:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Не удалось обновить счет")
         refreshed = _find_account_row(account_id, include_inactive=True)

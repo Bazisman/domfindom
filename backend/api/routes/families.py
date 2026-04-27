@@ -15,6 +15,7 @@ from backend.schemas.families import (
     FamilyCapitalContributionListResponse,
     FamilyCapitalSelectionResponse,
     FamilyCapitalTargetUpdatePayload,
+    FamilyDailyAccountItemResponse,
     FamilyCategoryAuditFindingResponse,
     FamilyCategoryAuditGroupResponse,
     FamilyCategoryAuditMemberResponse,
@@ -428,6 +429,39 @@ def _collect_family_capital_accounts(family_id: int) -> List[Dict[str, object]]:
     return result
 
 
+def _collect_family_daily_accounts(members: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    result: List[Dict[str, object]] = []
+    for member in members:
+        user_id = int(member["user_id"])
+        user_email = str(member["email"] or "")
+        user_display_name = str(member.get("display_name") or "").strip()
+
+        def _action():
+            visible_sources = transaction_service.get_family_visible_daily_money_sources()
+            accounts = []
+            for account in transaction_service.get_all_accounts(include_inactive=False):
+                account_id = int(account["id"])
+                money_source = "cash" if account_id == 2 or str(account["type"]) == "cash" else "cashless"
+                if money_source not in visible_sources:
+                    continue
+                accounts.append(
+                    {
+                        "owner_user_id": user_id,
+                        "owner_email": user_email,
+                        "owner_display_name": user_display_name,
+                        "account_id": account_id,
+                        "name": str(account["name"] or ("Наличные" if money_source == "cash" else "Карта")),
+                        "balance": float(account["balance"] or 0),
+                        "money_source": money_source,
+                        "is_visible": True,
+                    }
+                )
+            return accounts
+
+        result.extend(_run_in_user_db(user_id, _action))
+    return result
+
+
 def _collect_family_dashboard(family_id: int, family_name: str, current_user_id: int) -> FamilyDashboardResponse:
     members = auth_service.list_family_members(family_id)
     now = datetime.now()
@@ -444,6 +478,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
     forecast_executed_planned_expense = 0.0
     recent_transactions: List[Dict[str, object]] = []
     member_money: List[Dict[str, object]] = []
+    daily_accounts = _collect_family_daily_accounts(members)
     capital_accounts = _collect_family_capital_accounts(family_id)
     capital_balance = sum(float(item["balance"] or 0) for item in capital_accounts)
     cushion_balance = sum(
@@ -550,6 +585,7 @@ def _collect_family_dashboard(family_id: int, family_name: str, current_user_id:
         ),
         member_money=member_money,
         forecast=family_forecast,
+        daily_accounts=[FamilyDailyAccountItemResponse(**item) for item in daily_accounts],
         capital_accounts=[FamilyCapitalAccountItemResponse(**item) for item in capital_accounts],
         current_member_capital_target=FamilyCapitalSelectionResponse(
             target_owner_user_id=int(current_target["owner_user_id"]) if current_target else None,

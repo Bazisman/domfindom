@@ -301,6 +301,7 @@ export function AccountsPage() {
     [capitalAccounts],
   );
   const familyVisibleAccounts = familyDashboard.data?.capital_accounts ?? [];
+  const familyVisibleDailyAccounts = familyDashboard.data?.daily_accounts ?? [];
   const familyModeEnabled = selectedFamilyId !== null && preferences.data?.workspace_mode === "family";
   const familyMemberMoney = familyDashboard.data?.member_money ?? [];
 
@@ -494,8 +495,21 @@ export function AccountsPage() {
         group: account.purpose === "personal" ? "Для платежей семьи" : account.purpose === "investment" ? "Инвестиции" : "Подушка",
       });
     });
+    familyVisibleDailyAccounts
+      .filter((account) => account.owner_user_id !== me.data?.id)
+      .forEach((account) => {
+        const ownerLabel = account.owner_display_name || account.owner_email || "Семья";
+        places.push({
+          key: `family-daily:${account.owner_user_id}:${account.account_id}`,
+          name: account.name,
+          tone: `${account.money_source === "cash" ? "Наличные" : "Карта"} семьи · ${ownerLabel}`,
+          balance: account.balance,
+          color: account.money_source === "cash" ? "#1d8f61" : "#3578e5",
+          group: "Для платежей семьи",
+        });
+      });
     return places;
-  }, [capitalAccounts, cashAccount, cashlessAccount, currentUserLabel, familyModeEnabled, familyVisibleAccounts, personalAccountsPublishedToFamily]);
+  }, [capitalAccounts, cashAccount, cashlessAccount, currentUserLabel, familyModeEnabled, familyVisibleAccounts, familyVisibleDailyAccounts, me.data?.id, personalAccountsPublishedToFamily]);
   const moneyPlaceGroups = useMemo(() => {
     const order = ["Деньги на жизнь", "Для платежей семьи", "Подушка", "Инвестиции", "Личные деньги"];
     return order
@@ -1457,6 +1471,21 @@ export function AccountsPage() {
                     <strong>{formatMoney(account.balance)}</strong>
                   </div>
                   <div className="category-card-actions">
+                    {selectedFamilyId !== null && (
+                      <button
+                        className="ghost-button"
+                        disabled={updateFamilyVisibilityMutation.isPending}
+                        onClick={() =>
+                          updateFamilyVisibilityMutation.mutate({
+                            accountId: account.id,
+                            familyVisible: !account.family_visible,
+                          })
+                        }
+                        type="button"
+                      >
+                        {account.family_visible ? "Убрать из семьи" : "Добавить в семью"}
+                      </button>
+                    )}
                     <button className="ghost-button" onClick={() => fillAccountForm(account)} type="button">
                       Изменить
                     </button>

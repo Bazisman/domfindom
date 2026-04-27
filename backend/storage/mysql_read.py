@@ -807,6 +807,13 @@ class MySqlReadRepository:
             self.get_app_setting(conn, legacy_user_id, "default_money_source", MONEY_SOURCE_CASHLESS)
         )
 
+    def get_family_visible_daily_money_sources(self, conn, legacy_user_id: int) -> set[str]:
+        result = set()
+        for source in ("cashless", "cash"):
+            if self.get_app_setting(conn, legacy_user_id, f"family_visible_daily_{source}", "0") == "1":
+                result.add(source)
+        return result
+
     def get_recurring_templates(self, conn, legacy_user_id: int, template_type: Optional[str] = None) -> List[Dict[str, Any]]:
         user_id = self.get_user_id_by_legacy(conn, legacy_user_id)
         if user_id is None:
