@@ -2,7 +2,7 @@
 import core
 import core_runtime
 from models import Transaction, Balance, Transfer
-from typing import List, Optional, Callable, Any
+from typing import List, Optional, Callable, Any, Set
 from datetime import datetime, timedelta
 import calendar
 from pathlib import Path
@@ -1473,7 +1473,7 @@ class TransactionService:
             app_logger.error(f"Ошибка установки источника денег по умолчанию: {e}", exc_info=True)
             return self.get_default_money_source()
 
-    def get_family_visible_daily_money_sources(self) -> set[str]:
+    def get_family_visible_daily_money_sources(self) -> Set[str]:
         try:
             repo, legacy_user_id = _mysql_read_repo_for_current_user()
             if repo is not None and legacy_user_id is not None:
