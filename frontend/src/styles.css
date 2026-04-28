@@ -230,6 +230,16 @@ body {
     transform var(--dur-fast) var(--ease-smooth);
 }
 
+.toggle,
+.ghost-button,
+.primary-button {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
 .nav-link {
   padding: 10px 14px;
   white-space: nowrap;
@@ -728,6 +738,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  min-width: 0;
 }
 
 .summary-report-item-main {
@@ -735,6 +746,14 @@ body {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.summary-report-item-main > div {
+  min-width: 0;
+}
+
+.summary-report-item-main strong {
+  overflow-wrap: anywhere;
 }
 
 .summary-report-item-main p {
@@ -1321,6 +1340,7 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+  min-width: 0;
 }
 
 .toolbar-group-between {
@@ -1535,6 +1555,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .category-dot {
@@ -1743,6 +1764,50 @@ body {
     gap: 12px;
   }
 
+  .summary-grid-2,
+  .summary-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-report-controls .toolbar-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+  }
+
+  .summary-report-controls .field-inline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .summary-report-item {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .summary-report-item-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+  }
+
+  .summary-report-item-head > .money {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .summary-report-rank {
+    min-width: 22px;
+  }
+
+  .summary-report-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
   .accounts-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -1792,6 +1857,10 @@ body {
     font-size: 16px;
   }
 
+  .field-inline span {
+    white-space: normal;
+  }
+
   .field .date-input {
     display: block !important;
     width: 100% !important;
@@ -1809,6 +1878,19 @@ body {
 
   .transaction-actions {
     justify-content: flex-start;
+  }
+
+  .transaction-actions .ghost-button,
+  .category-card-actions .ghost-button,
+  .category-card-actions .primary-button,
+  .action-row .ghost-button,
+  .action-row .primary-button,
+  .confirm-actions .account-action {
+    flex: 1 1 min(160px, 100%);
+  }
+
+  .confirm-actions {
+    flex-wrap: wrap;
   }
 
   .category-card,
