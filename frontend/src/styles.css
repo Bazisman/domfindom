@@ -368,7 +368,7 @@ body {
 .balance-carousel-viewport {
   overflow: hidden;
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-y;
 }
 
 .balance-carousel-track {
@@ -399,7 +399,7 @@ body {
   overflow: visible;
   scroll-snap-type: none;
   scroll-behavior: auto;
-  touch-action: none;
+  touch-action: pan-y;
   cursor: inherit;
   will-change: transform;
 }

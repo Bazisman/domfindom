@@ -68,16 +68,20 @@ export function DashboardPage() {
   const balanceDragStateRef = useRef<{
     pointerId: number;
     startX: number;
+    startY: number;
     startOffset: number;
     lastClientX: number;
     lastDirection: -1 | 0 | 1;
+    gesture: "pending" | "horizontal";
   } | null>(null);
   const forecastDragStateRef = useRef<{
     pointerId: number;
     startX: number;
+    startY: number;
     startOffset: number;
     lastClientX: number;
     lastDirection: -1 | 0 | 1;
+    gesture: "pending" | "horizontal";
   } | null>(null);
   const balanceSettleFrameRef = useRef<number | null>(null);
   const balanceSettleStartRef = useRef<number | null>(null);
@@ -553,13 +557,17 @@ export function DashboardPage() {
     balanceDragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      startY: event.clientY,
       startOffset: balanceDragOffset,
       lastClientX: event.clientX,
       lastDirection: 0,
+      gesture: event.pointerType === "mouse" ? "horizontal" : "pending",
     };
-    event.preventDefault();
-    setIsBalanceDragging(true);
-    viewport.setPointerCapture(event.pointerId);
+    if (event.pointerType === "mouse") {
+      event.preventDefault();
+      setIsBalanceDragging(true);
+      viewport.setPointerCapture(event.pointerId);
+    }
   }
 
   function handleBalancePointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -569,6 +577,23 @@ export function DashboardPage() {
       return;
     }
     const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    if (dragState.gesture === "pending") {
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      if (absY > 8 && absY > absX) {
+        balanceDragStateRef.current = null;
+        setIsBalanceDragging(false);
+        setBalanceDragOffset(0);
+        return;
+      }
+      if (absX <= 8 || absX <= absY) {
+        return;
+      }
+      dragState.gesture = "horizontal";
+      setIsBalanceDragging(true);
+      viewport.setPointerCapture(event.pointerId);
+    }
     const stepX = event.clientX - dragState.lastClientX;
     if (stepX !== 0) {
       dragState.lastDirection = stepX < 0 ? 1 : -1;
@@ -634,6 +659,10 @@ export function DashboardPage() {
     if (viewport.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
     }
+    if (dragState.gesture !== "horizontal") {
+      setBalanceDragOffset(0);
+      return;
+    }
     const totalDeltaX = event.clientX - dragState.startX;
     const direction =
       dragState.lastDirection !== 0
@@ -673,13 +702,17 @@ export function DashboardPage() {
     forecastDragStateRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      startY: event.clientY,
       startOffset: forecastDragOffset,
       lastClientX: event.clientX,
       lastDirection: 0,
+      gesture: event.pointerType === "mouse" ? "horizontal" : "pending",
     };
-    event.preventDefault();
-    setIsForecastDragging(true);
-    viewport.setPointerCapture(event.pointerId);
+    if (event.pointerType === "mouse") {
+      event.preventDefault();
+      setIsForecastDragging(true);
+      viewport.setPointerCapture(event.pointerId);
+    }
   }
 
   function handleForecastPointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -689,6 +722,23 @@ export function DashboardPage() {
       return;
     }
     const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    if (dragState.gesture === "pending") {
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      if (absY > 8 && absY > absX) {
+        forecastDragStateRef.current = null;
+        setIsForecastDragging(false);
+        setForecastDragOffset(0);
+        return;
+      }
+      if (absX <= 8 || absX <= absY) {
+        return;
+      }
+      dragState.gesture = "horizontal";
+      setIsForecastDragging(true);
+      viewport.setPointerCapture(event.pointerId);
+    }
     const stepX = event.clientX - dragState.lastClientX;
     if (stepX !== 0) {
       dragState.lastDirection = stepX < 0 ? 1 : -1;
@@ -753,6 +803,10 @@ export function DashboardPage() {
     setIsForecastDragging(false);
     if (viewport.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
+    }
+    if (dragState.gesture !== "horizontal") {
+      setForecastDragOffset(0);
+      return;
     }
     const totalDeltaX = event.clientX - dragState.startX;
     const direction =
