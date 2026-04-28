@@ -1823,6 +1823,11 @@ body {
   .panel {
     padding: 16px;
     border-radius: 22px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    animation: none;
+    transition: none;
+    box-shadow: 0 12px 28px rgba(53, 48, 34, 0.08);
   }
 
   .panel h2 {
