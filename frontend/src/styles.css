@@ -638,22 +638,6 @@ body {
   grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
 }
 
-.transactions-layout-stack {
-  grid-template-columns: 1fr;
-}
-
-.transactions-layout-stack > .panel-form {
-  order: 1;
-}
-
-.transactions-layout-stack > .panel-list {
-  order: 3;
-}
-
-.transactions-layout-stack > .reconciliation-panel {
-  order: 2;
-}
-
 .transactions-page-stack > .panel,
 .transactions-page-stack > .transactions-layout-stack {
   grid-column: 1 / -1;
@@ -837,15 +821,6 @@ body {
 .reconciliation-actions {
   display: grid;
   gap: 10px;
-}
-
-.reconciliation-details-panel {
-  display: grid;
-  gap: 14px;
-}
-
-.reconciliation-toggle-row {
-  margin-top: -4px;
 }
 
 .reconciliation-history-item {
