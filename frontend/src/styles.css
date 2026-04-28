@@ -839,6 +839,15 @@ body {
   gap: 10px;
 }
 
+.reconciliation-details-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.reconciliation-toggle-row {
+  margin-top: -4px;
+}
+
 .reconciliation-history-item {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -3091,8 +3100,6 @@ body {
     padding-bottom: var(--mobile-dock-safe-offset);
     background-attachment: scroll;
     overscroll-behavior-y: auto;
-    touch-action: pan-y;
-    -webkit-overflow-scrolling: touch;
   }
 
   .topbar {
@@ -3113,21 +3120,6 @@ body {
   .shell-content {
     padding-bottom: calc(var(--mobile-dock-safe-offset) + 20px);
     scroll-padding-bottom: calc(var(--mobile-dock-safe-offset) + 24px);
-  }
-
-  .transactions-page-stack,
-  .transactions-layout-stack,
-  .transactions-page-stack .panel,
-  .transaction-table,
-  .transaction-row,
-  .reconciliation-panel {
-    touch-action: pan-y;
-  }
-
-  .transactions-page-stack .panel,
-  .transactions-layout-stack > .reconciliation-panel,
-  .transactions-layout-stack > .panel-list {
-    overflow-anchor: none;
   }
 
   .mobile-dock {
